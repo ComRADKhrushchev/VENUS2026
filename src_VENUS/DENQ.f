@@ -1,0 +1,96 @@
+      SUBROUTINE DENQ(WK,EN,NS,RHO)
+
+      use venus_params
+      use venus_data, only: NS_H => NS
+      use venus_data
+      IMPLICIT DOUBLE PRECISION (A-H,O-Z)
+      DIMENSION WK(NDA3)
+ 
+   
+      EVM1=EN+50.0D0
+      CALL SUMQ(WK,EVM1,NS,SS)
+      SUM1=SS
+   
+      EVM2=EVM1-100.0D0
+      CALL SUMQ(WK,EVM2,NS,SS)
+      SUM2=SS
+   
+      RHO=(SUM1-SUM2)/100.0D0
+  
+      RETURN
+      END SUBROUTINE DENQ
+C
+C
+C
+      SUBROUTINE SUMQ(W,EN,NSTMP,SUM)
+C
+C     THIS SUBROUTINE MAKES A DIRECT COUNT OF QUANTUM STATES
+C     USING BEYER-SWINHART ALGORITHM
+C
+      use venus_params
+      IMPLICIT DOUBLE PRECISION (A-H,O-Z)
+
+      DIMENSION W(NDA3)
+      DOUBLE PRECISION EN, SUM, DEL, DUM1, DUM2
+      DIMENSION NEFIN(NSTMP)
+      INTEGER MAXT, MAX, NDELT, NSTMP, MNR, I, J, K
+      DOUBLE PRECISION, DIMENSION(:), ALLOCATABLE :: T
+C
+C
+      DEL=1.0D0
+      MAX=20
+C
+C
+      IF(EN .LT. 0.0D0) THEN
+        SUM=0.0D0
+        RETURN
+      ENDIF
+C
+C
+      MAXT=IDINT(EN/DEL+0.499999D0)
+      MAXT=MAXT+MAX
+C
+      ALLOCATE (T(MAXT))
+C
+C     CALCULATION OF EFFECTIVE INTEGER FOR EACH FREQUENCY
+C
+      DO I=1,NSTMP
+        NEFIN(I)=IDINT(W(I)/DEL+0.499999D0)
+      ENDDO
+C           
+C     INITIALIZE T ARRAY      
+C
+      T(1)=1.0D0
+      DO I=2,MAXT
+        T(I)=0.0D0
+      ENDDO
+C    
+C     ADDITION SEQUENCE FOR THE T ARRAY.  EMAX=(MAX-1)*DEL
+C
+      DO I=1,NSTMP
+        K=1
+        DO J=NEFIN(I)+K,MAXT
+          MNR=NEFIN(I)+K
+          T(MNR)=T(MNR)+T(K)
+          K=K+1
+        ENDDO
+      ENDDO
+C
+C     CONVERT SUM AT E TO SUM FOR E=0 TO E
+C
+      DO I=2,MAXT
+        T(I)=T(I)+T(I-1)
+      ENDDO
+C
+C
+      NDELT=IDINT(EN/DEL)
+      DUM1=T(NDELT+2)-T(NDELT+1)
+      DUM2=EN/DEL-DBLE(NDELT)
+      SUM=T(NDELT+1)+DUM1*DUM2
+C
+C
+
+      DEALLOCATE(T)
+
+      RETURN
+      END SUBROUTINE SUMQ
