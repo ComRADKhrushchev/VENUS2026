@@ -1,0 +1,16 @@
+# 表面 MD 零温分支 —— 程序实际输出摘录
+# 来源: 运行 stdout（采样回显；ISEED=20260830，NT=1，NS=5）
+# ============================================================
+
+【示例轨迹】采样回显
+
+  DOING MD SAMPLING
+                     0 , THERMOTEMP =  0.000000000000000E+000 , NRGD =
+ system temperature=  0.000000000000000E+000
+ system temperature=  0.000000000000000E+000
+ system temperature=  0.000000000000000E+000
+ system temperature=  0.000000000000000E+000
+ system temperature=  0.000000000000000E+000
+
+【说明】B 片段温度回读全零（动量置零、早期返回，无均衡横幅）；A z 跨步变化
+0.01316 bohr（自由飞行）；双跑逐位。见 README.md。
