@@ -1,0 +1,47 @@
+# =====================================================================
+# 表面 MD 恒温均衡 —— 规范整理输入
+# 源输入: regression/cases/p25_nact7_md_equilibrate/input_qct.txt
+# 整理说明: 按 &SYSTEM / &DYNAMICS / &OUTPUT 三块重排，逐关键字中文注释；
+#           关键字值与源输入一致。TITLE1 已语义化（源输入标题含工程编号 P2.5）。
+# =====================================================================
+
+# ===== &SYSTEM =====   系统定义 + 电子结构
+# 模型预设：多原子表面板块（NSURF=1、NACTB=7→MD）
+MODEL = FULL-SURFACE
+# 标题行（语义化）
+TITLE1 = MD thermostated slab sampling - NACT=7, THERMOTEMP=300 K, NT=100
+# 任务类型：经典轨迹
+TASK = TRAJECTORY
+# 体系无关测试势：简谐势（每原子独立阱）
+TEST_PES = HARMONIC
+HARM_K = 1.0, 1.0, 1.0      # 三方向力常数 k [eV/Å²]
+HARM_X0 = 0.0, 0.0, 0.0     # 简谐势平衡位置 [Å]（原点）
+NATOMS = 4                  # 原子总数（1 个 A + 3 个 B）
+ATOM_MASSES = 1.008, 1.008, 1.008, 1.008   # 原子质量 [u]（全部相等）
+NATOMA = 1                  # 片段 A 原子数（表面振子锚）
+NLINA = 0                   # 片段 A 线型标志：0 = 非线性
+NATOMB = 3                  # 片段 B 原子数（板块多原子，触发 MD 均衡分支）
+# 电子方法：绝热经典
+ELEC_METHOD = ADIABATIC
+
+# ===== &DYNAMICS =====   动力学方法 + 初始条件
+# 积分器：Verlet
+INTEGRATOR = VERLET
+ISEED = 20260830            # 随机种子（固定；恒温分支 GASDEV 系统种子 → 双跑非逐位，见说明）
+NT = 100                    # 轨迹数
+NS = 3                      # 每轨迹 MD 步数
+DT = 0.01                   # 时间步 [10 fs]
+# 片段 A 初始采样：MB（A 随后被冻结提升，见原理）
+INIT_SAMPLING_A = MB
+# 片段 B 初始采样：MD 恒温均衡（NACTB=7）
+INIT_SAMPLING_B = MD
+THERMOTEMP = 300            # 恒温温度 T [K]（均衡目标）
+NSCALE = 200                # 速度重标间隔步数（NSCALE 阶段，V.13E）
+NEQUAL = 0                  # 均衡时长因子
+NSEL_B = 1                  # B 片段采样选择
+NRGD_B = 0                  # B 片段刚性标志：0 = 非刚性
+QZA_EQ = 0.0, 0.0, 5.0      # A 片段平衡构型 [Å]（FULL-SURFACE 提升后恢复位置见说明）
+QZB_EQ = -1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0   # B 片段平衡构型（板块，9 个坐标）
+
+# ===== &OUTPUT =====     输出控制
+NCOOR = 1                   # 坐标输出参数
