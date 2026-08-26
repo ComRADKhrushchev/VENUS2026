@@ -1,0 +1,49 @@
+# Build artifacts (Intel ifx + gfortran)
+*.obj
+*.o
+*.mod
+*.exe
+*.e
+*.pdb
+*.exp
+*.lib
+
+# Runtime output (Fortran unit files)
+fort.*
+# A2: case 轨迹产物放行前 10 条（fort.1001-1010）供用户检验
+!cases/*/fort.100?
+!cases/*/fort.1010
+
+# Log files (generated at runtime)
+*.log
+
+# Program metadata
+venus.date
+
+# Large generated output files
+diag_out*.txt
+run_output.txt
+run_out*.txt
+out.txt
+out[0-9]*.txt
+pot0_out.txt
+
+# Temporary work files
+_tmp_*
+_test_*
+
+# Generated analysis reports
+Ephi_analysis.txt
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# OS generated files
+desktop.ini
+Thumbs.db
+
+# Deployment tarballs
+*.tar.gz
