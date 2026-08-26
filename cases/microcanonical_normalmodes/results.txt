@@ -1,0 +1,13 @@
+# 微正则简正模采样 —— 程序实际输出摘录
+# 来源: 运行 stdout（采样回显；ISEED=20260825，NT=1000）
+# ============================================================
+
+【示例轨迹】第 1 条轨迹的采样回显
+
+   ACTIVATE WITH CLASSICAL MICROCANONICAL NORMAL MODE SAMPLING
+
+（stdout 继而打印简正模频谱表：col1-3 平动 <1 cm⁻¹，col7/col8 E′ 简并对
+1013.5 cm⁻¹，col9 呼吸模 1803.8 cm⁻¹；随后逐轨迹打印缩放迭代的 INTERNAL ENERGY
+直至收敛于 ENMT_A=1.0 kcal/mol ± 0.1%。）
+
+【说明】统计结论（频谱锚点、能量闭合、F19 签名 0.2008/0.7992）见 README.md。
