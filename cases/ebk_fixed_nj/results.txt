@@ -1,0 +1,13 @@
+# 固定 n,J 的 EBK 采样 —— 程序实际输出摘录
+# 来源: 运行 stdout（采样回显；ISEED=20260820，NT=1000，有效样本 999）
+# ============================================================
+
+【示例轨迹】第 1 条轨迹的采样回显
+
+     TRV:    -1.000     TROT:     0.000     AI:     0.989     N:  3        J:  2
+   NORMAL MODES AND VIBRATIONAL FREQUENCIES (CM-1)
+     CHOSEN:   EROTA =  0.409 KCAL/MOL
+     CHOSEN:   EVIBA = 22.313 KCAL/MOL
+
+【说明】每轨迹回显一组 CHOSEN EROTA/EVIBA；999 个样本的统计结论见 README.md
+（EBK 态展宽全 0、r 分布 KS、EVIBA 解析闭合）。
