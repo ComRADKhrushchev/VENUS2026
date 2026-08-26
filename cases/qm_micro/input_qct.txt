@@ -1,0 +1,47 @@
+# =====================================================================
+# 量子微正则采样 —— 规范整理输入
+# 源输入: regression/cases/p27_qm_micro_leps/input_qct.txt
+# 整理说明: 按 &SYSTEM / &DYNAMICS / &OUTPUT 三块重排，逐关键字中文注释；
+#           关键字值与源输入一致。TITLE1 已语义化（源输入标题含工程编号 P2.7）。
+# =====================================================================
+
+# ===== &SYSTEM =====   系统定义 + 电子结构
+# 模型预设：气相碰撞（无表面）
+MODEL = GAS-PHASE
+# 标题行（语义化）
+TITLE1 = QM-MICRO quantum microcanonical sampling - LEPS triatomic, ENMT=8.38, NT=100
+# 任务类型：经典轨迹
+TASK = TRAJECTORY
+# 体系无关测试势：London-Eyring-Polyanyi-Sato 三原子势
+TEST_PES = LEPS
+LEPS_DE = 4.746             # LEPS 离解能 De [eV]
+LEPS_RE = 1.401             # LEPS 平衡键长 re [Å]
+LEPS_A = 1.028              # LEPS Morse 指数 a [Å⁻¹]
+LEPS_DELTA = 0.164          # LEPS Sato 参数 Δ
+NATOMS = 3                  # 原子总数（三原子）
+ATOM_MASSES = 1.008, 1.008, 1.008   # 原子质量 [u]（H₃ 类等边体系）
+NATOMA = 3                  # 片段 A 原子数（全部原子）
+NLINA = 0                   # 片段 A 线型标志：0 = 非线性
+NATOMB = 0                  # 片段 B 原子数（无）
+# 电子方法：绝热经典
+ELEC_METHOD = ADIABATIC
+
+# ===== &DYNAMICS =====   动力学方法 + 初始条件
+# 积分器：Verlet
+INTEGRATOR = VERLET
+ISEED = 20260830            # 随机种子（QMMICRO 全跑 RAND0 → 双跑逐位一致）
+NT = 100                    # 轨迹数
+NS = 3                      # 每轨迹 MD 步数
+DT = 0.01                   # 时间步 [10 fs]
+# 片段 A 初始采样：量子微正则简正模（NACTA=8）
+INIT_SAMPLING_A = QM-MICRO
+# 量子微正则总能量 [kcal/mol]。QMMICRO 计算 DUM1=(ENMT_A-ZPE/C1)*CAL2CM；
+# 本 case 取 ENMT_A=8.38 → DUM1=1015.7 cm⁻¹——mode3（1803.8 cm⁻¹）不可达
+# （IDINT<1 且 n3=1 留负剩余能量 → DENQ 拒绝，物理正确）；简并对 {1013.5,1013.5}
+# 恰接纳 (1,0)/(0,1)（SCOUNT=2 均匀）。能量闭合 sum(n_j+1/2)ν_j=2928.9 cm⁻¹
+# = 8.374 kcal/mol vs ENMT_A=8.38（偏差 0.006 kcal，在 ±100 cm⁻¹ 网格容差内）。
+ENMT_A = 8.38               # 量子微正则总能量 [kcal/mol]
+QZA_EQ = 0.0, 1.016102, 0.0, -0.879955, -0.508051, 0.0, 0.879955, -0.508051, 0.0   # 等边三角形平衡构型（LEPS 全局极小，边长 1.759910 Å）
+
+# ===== &OUTPUT =====     输出控制
+NCOOR = 1                   # 坐标输出参数
