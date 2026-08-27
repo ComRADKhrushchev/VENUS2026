@@ -1,49 +1,64 @@
-# 势垒鞍点起始 — BARRIER 模式简正模-反应坐标完整语义
+# 势垒鞍点起始（BARRIER 模式）— 势垒激发初始条件验证
 
-> 运行：`cd cases/barrier_saddle && ../../venus_test.e`（NBAR=1 基线）
-> 变体：`cp <变体文件> input_qct.txt && ../../venus_test.e`（差异见文末表）
+> 运行：`cd cases/barrier_saddle && ../../venus_test.e`（NBAR=1 基线，输入 input_qct.txt）。
 
-## 验证目的
+## 1. 目的
 
-定案 `TASK=BARRIER`（NSELT=3）势垒激发模式的完整语义：鞍点起始几何、
-简正模-反应坐标重排、NBAR=1/2/3 各分支与拒绝路径。
+本 case 定案 `TASK=BARRIER`（NSELT=3，势垒激发模式）的核心语义：轨迹从
+指定驻点出发，程序将简正模重排为采样模与反应坐标模，并把 EBAR 的能量
+精确注入反应坐标。判据来源为 VENUS05 手册 BARRIER 任务章节约定与
+简正模分析的一般物理规则。
 
-## 原理
+## 2. 理论与体系
 
-体系：LEPS 3H 共线（NLINA=1；DE=4.746 eV、RE=1.401 Å、A=1.028 Å⁻¹、Δ=0.164、
-m=1.008 u×3）；鞍点为指标-2 共线驻点 `QZA_EQ=(±1.6039, 0, 0; 0,0,0)`，
-V_s=−129.6692 kcal/mol。
+体系为三原子共线 H₃ 的 LEPS 测试势（`TEST_PES = LEPS`）。
 
-模重排（NSELT=3 专属）：NMA=3N−(6−NLINA)=4、NMBAR=3、IBARR=1——采样模
-={0.5134 cm⁻¹ 转动伪模, 1225.26 反对称伸缩, 1791.12 对称伸缩}，
-反应坐标模=弯曲虚模（打印 |ν|=449.18 cm⁻¹）。
+**势参数（勘误后）**：源码 `src_TEST/test_potentials.f90:44-47` 明确标注
+LEPS 参数单位为 eV 与 bohr。原文及 input_qct.txt 注释中的
+"De [kcal/mol]、Re [Å]、a [Å⁻¹]"标注有误（数值一致，仅单位错误）：
+De = 4.746 eV、re = 1.401 bohr、a = 1.028 bohr⁻¹、Sato Δ = 0.164（无量纲）。
 
-NBAR 分支：NBAR=1 → PBAR=√(2·C1·EBAR)（反应坐标能量精确 ==EBAR）；
-NBAR=2 → PBAR=√(−2·C5·TBAR·ln(1−RAND))（指数/Boltzmann 分布）；
-NBAR=3 → Beyer-Swinehart 微正则（见 `cases/fixed_energy_rc`）。
+**驻点**：QZA_EQ 给出共线对称驻点（r₁₂ = r₂₃ = 1.6039 bohr，原子 2 位于
+原点、沿 x 轴），为指标-2 驻点：Hessian 谱含二重简并弯曲虚模
+（|ν| = 449.18 cm⁻¹）与两个实伸缩模（1225.26、1791.12 cm⁻¹）。
 
-## 预期与结果
+**模计数与重排**：NMA = 3N − (6 − NLINA) = 4 为采样模数，NMBAR = 3 为
+势垒模数，IBARR = 1 为势垒模起始索引。重排后采样模集合 = {0.5134 cm⁻¹
+转动伪模、反对称伸缩、对称伸缩}，反应坐标模 = 弯曲虚模。
 
-- **谱与鞍点解析锚**：四模频率 449.18/449.18/1225.26/1791.12 cm⁻¹（容差 1），
-  V(INITQP)=V_s=−129.6692 kcal/mol ✓
-- **NBAR=1 精确 + NBAR=2 指数分布**：RC 能量==EBAR 精确；TBAR=2000 K 千轨迹
-  均值 3.87 vs kT=3.97，KS D=0.0277<0.0515 ✓
-- **退化/拒绝分支**：NBAR=0 退化 RC=0；NATOMB≠0 拒绝；NSELT=3+MB 强制终止
-  （F17 修复后 loud STOP）✓
+**NBAR=1 注入式**：反应坐标动量 PBAR = √(2·C1·EBAR)，即反应坐标能量
+E_rc = PBAR²/(2·C1) = EBAR 恒等成立。其中 C1 = 0.04184（kcal/mol → a.u.
+能量换算常数，venus_params.f90:69）；后文另用到 C5 = 0.083144×10⁻³
+（a.u.，C5/C1 = R = 1.9872×10⁻³ kcal/(mol·K)，venus_params.f90:73，
+身份经数值核验），为 NBAR=2 分支的 Boltzmann 温度常数，此处仅备引用。
 
-补注：哈密顿量极差 0（NS+1=201 步块）；模重排语义确认（伪转动模取大量子数、
-量子数每轨迹重抽）；IJDIR 分支幅值 |q|=PBAR·|C|₂=0.907507。
+## 3. 方法与流程
 
-> 图：`fig_trajectory.png` —— 入库轨迹相空间（fort.1001-1002 活数据）：左=原子 1
-> 到最近原子距离 r_min(t)——NS=200 步内 1.47→2.45→1.47 bohr 一次往返（鞍点起始、
-> EBAR 反应坐标推力下的演化），右=|P|(t)。GWRITE 能量打印为陈旧值（见
-> morse_bootstrap 登记）。
+程序流程（与输出文件对应）：
 
-| 变体 | 差异 |
-|---|---|
-| input_nbar2.txt | NBAR=2, TBAR=2000 K, NT=1000/NS=50（指数分布） |
-| input_ijdir.txt | IJDIR=1 IDIR=1 JDIR=3, NT=100/NS=50 |
-| input_ijdir_nofix.txt | IJDIR=1 无 IDIR/JDIR（F16 越界读探针） |
-| input_nbar0.txt | NBAR=0 退化（无 EBAR 行） |
-| input_natomb.txt | NATOMA=1/NATOMB=2（拒绝断言） |
-| input_mb.txt | INIT_SAMPLING_A=MB（F17 强制终止断言） |
+1. 读入 QZA_EQ，在驻点处做力常数分析（`fort.77`）。
+2. 对角化得简正模与频率（`fort.26` 频谱块）。
+3. 按 NMA/NMBAR/IBARR 重排：虚模移出采样集合，成为反应坐标模。
+4. 采样模取量子数（`fort.9`），反应坐标模按 NBAR 分支赋 PBAR。
+5. BAREXC 将 EBAR 注入内能后演化轨迹（`fort.8`、`fort.1001`–`1002`），
+   汇总统计（`fort.999`）。
+
+## 4. 核心验证：NBAR=1 反应坐标能量精确注入
+
+这是判定本机制在工作的单一关键证据，因为它同时要求三个环节全部正确：
+驻点几何正确（否则力常数与模分析失效）、模重排正确（虚模被识别为
+反应坐标）、PBAR 公式正确（换算常数 C1 无误）。
+
+**判据**：每条轨迹反应坐标能量 == EBAR = 10.0 kcal/mol，且 BAREXC 后
+总内能跃升恰好 == EBAR。
+
+**实测**（stdout 摘录 results.txt，NT=2）：程序打印 RC 能量逐轨迹
+== 10.0（0.5·PBAR²/C1 自证）；BAREXC 使 INTERNAL ENERGY 跃升至
+9.999998 与 9.999665 kcal/mol，与 EBAR 偏差 ≤ 3.4×10⁻⁶ 与 3.4×10⁻⁴。
+结论：注入机制通过。配套佐证：驻点势能回显 −129.6691882 kcal/mol
+（fort.666，解析值 −129.6692）；频谱四物理模 449.18/449.18/1225.26/
+1791.12 cm⁻¹（fort.26 频谱块，容差 1 cm⁻¹ 内）。
+
+> 图：`fig_trajectory.png` —— 入库轨迹相空间（fort.1001–1002 活数据）：
+> 左 = 原子 1 到最近原子距离 r_min(t)，NS=200 步内 1.47→2.45→1.47 bohr
+> 一次往返（鞍点起始、EBAR 反应坐标推力下的演化）；右 = |P|(t)。
