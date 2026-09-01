@@ -24,6 +24,9 @@ subroutine POT0(NDUM, Vpot, Qarr)
    ! evaluate on live Q (Q, not the dummy Qarr)
    call test_pot_v(NATOMS, Q(1:3*NATOMS), v_ev)
    Vpot = v_ev * 23.0605d0
+   ! Raw engine E_int (before the VZERO reactant shift) in kcal/mol, so the
+   ! fort.1001 'E0(eV)' diagnostic column matches the 2D interface behaviour.
+   E0 = Vpot
 end subroutine POT0
 
 subroutine DPESHON(NDUM, Qarr)

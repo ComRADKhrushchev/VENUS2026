@@ -31,6 +31,7 @@ endif
 SRC := \
   venus_params.f90 venus_data.f90 input_parser.f90 \
   param_mapping.f90 presets.f90 harmonic_sampling.f90 \
+  src_TEST/emt_nn_pes.f90 \
   src_TEST/test_potentials.f90 \
   DVDQ.f \
   venus_input.f90 \
