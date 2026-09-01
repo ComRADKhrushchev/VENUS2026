@@ -109,9 +109,9 @@ cd cases/morse_bootstrap
 | 值 | NSURF | NACTA | NACTB | 适用场景 | 示例 |
 |---|---|---|---|---|---|
 | `GAS-PHASE` | 0 | 0 | 0 | 气相碰撞/孤立分子 | `cases/morse_bootstrap`、`cases/twobody_collision` |
-| `RELAXED-SURFACE` | 1 | 5 | 0 | 松弛表面束流散射 | `cases/beam_relaxed_surface` |
+| `RELAXED-SURFACE` | 1 | 5 | 0 | 松弛表面束流散射 | `cases/emt_beam_scattering`（EMT-NN Au） |
 | `RIGID-SURFACE` | 2 | 0 | 0 | ⚠️ 刚性表面，当前损坏（F24） | `cases/rigid_surface_defect` |
-| `FULL-SURFACE` | 1 | 0 | 7 | 多原子表面板块 + MD 均衡 | `cases/md_surface_equilibrate` |
+| `FULL-SURFACE` | 1 | 0 | 7 | 多原子表面板块 + MD 均衡 | `cases/emt_surface_md`（EMT-NN Au） |
 
 体系描述参数（`NATOMS`、`ATOM_MASSES`、`NATOMA`、`NATOMB`、`QZA_EQ`、`QZB_EQ`、
 `BOXLX`、`BOXLY`、`SKEW`）不由预设设置，必须显式给定。`SURFACE_MODEL=NONE/
@@ -129,7 +129,7 @@ RELAXED/RIGID` 为 NSURF 的字符串别名；旧整数 `NSURF=2` 会被重映�
 | `LOCAL-MODE`（4） | ⚠️ 局域模，参数无来源 → NaN+挂起（F20） | — |
 | `BOLTZMANN-VIB`（5） | 玻尔兹曼振动（几何分布，`TVIB_A`） | `cases/boltzmann_vib` |
 | `FIXED-ENERGY`（6） | 固定能量含反应坐标（`NBAR=3` 自动触发） | `cases/fixed_energy_rc` |
-| `MD`（7，仅 B） | 表面 MD 恒温均衡（`THERMOTEMP`/`NSCALE`） | `cases/md_surface_equilibrate`、`cases/md_surface_zeroT` |
+| `MD`（7，仅 B） | 表面 MD 恒温均衡（`THERMOTEMP`/`NSCALE`） | `cases/emt_surface_md` |
 | `QM-MICRO`（8） | 量子微正则（态密度取态） | `cases/qm_micro` |
 | `CI-QM-MICRO`（9） | ⚠️ 死循环（F23） | — |
 
