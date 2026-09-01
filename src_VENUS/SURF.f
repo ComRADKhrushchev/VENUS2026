@@ -28,10 +28,21 @@ C     REFERENCE Z-AXIS VECTOR IS ORTHOGONAL TO THE SURFACE PLANE
 C
 !   ADDED BY BIN, 2016/7/30
       IF (NSURF.EQ.2) THEN
-         NN1=NATOMS+1
-         NN2=NATOMS+2
-         NN3=NATOMS+3
-         NN4=NATOMS+4
+C        F24/D3 fix: the unit cell (NN1 the origin, NN2/NN3/NN4 in
+C        anticlockwise sequence, NN1-NN3 defining the reference plane) is
+C        given by the first four atoms of fragment B -- the rigid slab
+C        itself. The old indices NATOMS+1..NATOMS+4 lie outside the
+C        initialised coordinate range (3*NATOMS), so the cell read zeros
+C        and SKEW became NaN on every trajectory.
+         IF (NATOMB(1).LT.4) THEN
+            WRITE(6,*)'ERROR: NSURF=2 NEEDS >= 4 SURFACE ATOMS'
+            WRITE(6,*)'       NATOMB(1)=',NATOMB(1)
+            STOP
+         ENDIF
+         NN1=LB(1,1)
+         NN2=LB(1,2)
+         NN3=LB(1,3)
+         NN4=LB(1,4)
          WRITE(6,*)'SURFACE UNIT CELL IS DEFINED BY ATOMS'
      &,NN1,NN2,NN3,NN4
          EDGE(1:3,1)=Q(NN1*3-2:NN1*3)
@@ -44,6 +55,12 @@ C
      &**2+(Q(3*NN4)-Q(3*NN1))**2)
          DNN24=DSQRT((Q(3*NN4-2)-Q(3*NN2-2))**2+(Q(3*NN4-1)-Q(3*NN2-1))
      &**2+(Q(3*NN4)-Q(3*NN2))**2)
+         IF (BOXLX.LE.0.0D0 .OR. BOXLY.LE.0.0D0) THEN
+            WRITE(6,*)'ERROR: DEGENERATE RIGID-SURFACE CELL'
+            WRITE(6,*)'       ATOMS ',NN1,NN2,NN3,NN4
+            WRITE(6,*)'       BOXLX=',BOXLX,' BOXLY=',BOXLY
+            STOP
+         ENDIF
          CSKEW=(BOXLX**2+BOXLY**2-DNN24**2)/(2D0*BOXLX*BOXLY)
          IF (CSKEW.GE.1D0) CSKEW=1D0
          IF (CSKEW.LE.-1D0) CSKEW=-1D0
@@ -95,6 +112,24 @@ C
             RAND=RAND0(ISEED)
             CHI0=CHI*RAND
          ENDIF
+         PI2=2.0D0*DACOS(0.0D0)
+C        F24/D4 fix (VENUS05 manual Sec. K, Eq. V.24-V.25): polar incidence
+C        angle for the rigid surface. NTHTA>=-1 keeps the beam behaviour
+C        THETA=THTA (fixed); NTHTA=-2 samples THETA in [0,THTA=theta_max]
+C        with P(theta)~sin(theta), i.e.
+C        cos(theta)=1-R*(1-cos(theta_max)).
+         IF (NSURF.EQ.2 .AND. NTHTA.EQ.-2) THEN
+            RAND=RAND0(ISEED)
+            THTA0=DACOS(1.0D0-RAND*(1.0D0-DCOS(THTA0)))
+         ENDIF
+C        F24/D4 fix (manual Eq. V.27): azimuth PHI2 of the incident
+C        velocity. NCHI=1 keeps the fixed CHI; NCHI=2 samples PHI2 uniform
+C        in [0,2pi). The legacy NCHI<>1 branch above is kept untouched for
+C        NSURF=1.
+         IF (NSURF.EQ.2 .AND. NCHI.EQ.2) THEN
+            RAND=RAND0(ISEED)
+            CHI0=PI2*RAND
+         ENDIF
          WRITE(6,13)THTA0/C4,CHI0/C4
 
 C
@@ -115,7 +150,25 @@ C
          XMAX=XMIN+BOXLX
          RX0=XMIN+(XMAX-XMIN)*RAND
       end if
-      
+
+C        F24/D4 fix (manual Eq. V.19/V.27): disk aiming of fragment A
+C        around the origin: impact parameter b fixed (NOB=1) or
+C        b=BMAX*sqrt(R) (b^2 uniform on [0,BMAX^2], Eq. V.19), azimuth
+C        PHI1 uniform in [0,2pi). Applied for NSURF=2 when BMAX>0;
+C        BMAX=0 (default) aims at the origin and consumes no random
+C        numbers, so the beam-type stream is unchanged.
+         IF (NSURF.EQ.2 .AND. BMAX.GT.0.0D0) THEN
+            IF (NOB.EQ.1) THEN
+               BDUM=BMAX
+            ELSE
+               BDUM=BMAX*DSQRT(RAND0(ISEED))
+            ENDIF
+            RAND=RAND0(ISEED)
+            PHI1=PI2*RAND
+            RX0=RX0+BDUM*DCOS(PHI1)
+            RY0=RY0+BDUM*DSIN(PHI1)
+         ENDIF
+
 C        THE SURFACE IS IN XY PLANE
          RZ0=0D0
          WRITE(88,*)RX0,RY0

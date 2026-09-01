@@ -148,7 +148,11 @@ contains
     elseif (str_eq(str, 'NORMAL-MODE')) then
        nact = 3; iostat = 0; errmsg = ''
     elseif (str_eq(str, 'LOCAL-MODE')) then
-       nact = 4; iostat = 0; errmsg = ''
+       ! F20: the LOCAL-MODE branch is removed (its parameters have no input
+       ! source and the path produced NaN + hang). Loud rejection at read,
+       ! same contract as the removed non-adiabatic ELEC_METHOD entries.
+       nact = -1; iostat = 1
+       errmsg = 'ERROR: INIT_SAMPLING=LOCAL-MODE 分支已移除（F20），不接受该关键字'
     elseif (str_eq(str, 'BOLTZMANN-VIB')) then
        nact = 5; iostat = 0; errmsg = ''
     elseif (str_eq(str, 'FIXED-ENERGY')) then
@@ -158,12 +162,15 @@ contains
     elseif (str_eq(str, 'QM-MICRO')) then
        nact = 8; iostat = 0; errmsg = ''
     elseif (str_eq(str, 'CI-QM-MICRO')) then
-       nact = 9; iostat = 0; errmsg = ''
+       ! F23: the CI-QM-MICRO branch is removed (MICROCI dead-loops). Loud
+       ! rejection at read.
+       nact = -1; iostat = 1
+       errmsg = 'ERROR: INIT_SAMPLING=CI-QM-MICRO 分支已移除（F23），不接受该关键字'
     else
        nact = 0; iostat = 1
        errmsg = 'ERROR: INIT_SAMPLING must be MB, ORTHANT, MICROCANONICAL, &
-                &NORMAL-MODE, LOCAL-MODE, BOLTZMANN-VIB, FIXED-ENERGY, &
-                &MD, QM-MICRO, or CI-QM-MICRO'
+                &NORMAL-MODE, BOLTZMANN-VIB, FIXED-ENERGY, MD, or QM-MICRO &
+                &(LOCAL-MODE/CI-QM-MICRO removed, F20/F23)'
     end if
   end subroutine map_init_sampling
 

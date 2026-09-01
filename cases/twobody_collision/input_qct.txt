@@ -30,8 +30,8 @@ ELEC_METHOD = ADIABATIC
 # 积分器：Verlet
 INTEGRATOR = VERLET
 ISEED = 20260832            # 随机种子（固定 → 双跑逐位一致）
-NT = 200                    # 轨迹数
-NS = 5                      # 每轨迹 MD 步数
+NT = 200                   # 轨迹数
+NS = 5                     # 每轨迹 MD 步数
 DT = 0.01                   # 时间步 [10 fs]
 # 片段 A 初始采样：MB 双原子（TRVA=0 → 冷刚性转子）
 INIT_SAMPLING_A = MB

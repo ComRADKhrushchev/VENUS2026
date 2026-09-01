@@ -1,9 +1,13 @@
 #!/usr/bin/env python
-"""twobody_collision: long-trajectory r_AB(t) overlay (8 trajectories).
+"""twobody_collision: long-trajectory r_AB(t) overlay (8 closest encounters).
 
-Data: fort.1001..fort.1200 (200 trajectories, per-record blocks with header
-'--- step N t(fs)=... ---' and C x y z vx vy vz lines for the 3 H atoms).
-A = H2 (atoms 1+2), B = atom 3. r_AB = |R_A(com of 1,2) - r_3|.
+Data: fort.1001..fort.1020 (NT=20 post-fix rerun 2026-09-01, NS=300000),
+per-record blocks with header '--- step N t(fs)=... ---' and C x y z
+vx vy vz lines for the 3 H atoms. A = H2 (atoms 1+2), B = atom 3.
+r_AB = |R_A(com of 1,2) - r_3|.
+Trajectories now TERMINATE at r_AB ~ RMAX = 8 A via the generic gas-phase
+scattering criterion in TEST.f (RCM_AB >= RMAX with outward COM velocity) --
+the curves end near 8 A instead of drifting to 1e6 A as in pre-fix runs.
 Note: each per-trajectory file begins with one summary record of the final
 state before the history replay; that record is dropped (dedup by step).
 Time axis: t(fs)/1000 -> ps.
@@ -50,24 +54,27 @@ for f in files:
     if len(ts) >= 50:
         scored.append((rab.min(), f, ts, rab))
 scored.sort(key=lambda s: s[0])
-# prefer longer records among the closest encounters
-close = [s for s in scored if s[0] < 1.5 and len(s[2]) > 2000][:8]
-sel = close if len(close) >= 5 else scored[:8]
-print('selected:', [(s[1], round(s[0], 2), len(s[2])) for s in sel])
+sel = scored[:8]
+print('selected:', [(s[1], round(s[0], 2), len(s[2]), round(s[3].max(), 2)) for s in sel])
 
 fig, ax = plt.subplots(figsize=(10, 5.5))
 cmap = plt.cm.viridis(np.linspace(0, 0.9, len(sel)))
 for (_, f, ts, rab), c in zip(sel, cmap):
     ax.plot(ts, rab, lw=1.2, color=c, label=f'{f} (min {rab.min():.2f} A)')
 
-ax.set_ylim(0, 15)
+ax.axhline(8.0, color='crimson', lw=1.0, ls='--', alpha=0.8)
+ax.annotate('RMAX = 8 A: trajectory terminates here (scattered, outward COM velocity)',
+            xy=(0.02, 0.965), xycoords='axes fraction', fontsize=8, color='crimson')
+
+ax.set_ylim(0, 12)
 ax.set_xlabel('time t [ps]')
 ax.set_ylabel(r'$r_{AB}$ = |R(H$_2$ com) - H$_B$| [$\AA$]')
-ax.set_title('Two-body collision H$_2$ + H (LEPS batch, 8 closest encounters of 200 trajectories):\n'
-             'approach - collision (r$_{AB}$ dip) - scattering (axis clipped at 15 A)', fontsize=12)
-ax.legend(fontsize=8, ncol=2, loc='upper right')
+ax.set_title('Two-body collision H$_2$ + H (LEPS, post-fix rerun NT=20, 8 closest encounters):\n'
+             'approach - collision (r$_{AB}$ dip) - scattering termination at RMAX = 8 $\\AA$',
+             fontsize=12)
+ax.legend(fontsize=8, ncol=2, loc='lower right')
 fig.tight_layout()
 fig.savefig('fig_long_trajectory.png', dpi=150)
 print('saved fig_long_trajectory.png')
 for _, f, ts, rab in sel:
-    print(f'{f}: n={len(ts)} t=[{ts[0]:.3f},{ts[-1]:.3f}] ps r_AB min={rab.min():.3f} A')
+    print(f'{f}: n={len(ts)} t=[{ts[0]:.3f},{ts[-1]:.3f}] ps r_AB min={rab.min():.3f} max={rab.max():.3f} A')

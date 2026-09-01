@@ -1,43 +1,37 @@
-# rigid_surface_defect — 刚性表面（NSURF=2）缺陷登记
+# rigid_surface_defect — 刚性表面（NSURF=2）缺陷修复回归验证
 
 > 关联：真实势下的表面散射/均衡现已由 `cases/emt_beam_scattering`（EMT-NN 束流散射）
 > 与 `cases/emt_surface_md`（EMT-NN 300 K 恒温均衡）覆盖。
 
 > 运行：`cd cases/rigid_surface_defect && ../../venus_test.e`（主输入文件 `input_qct.txt`）
-> 注：越界读非确定 → 双跑不逐位（差异本身即缺陷证据）。
 
 ## 1. 目的
 
-本 case 为缺陷登记：锁定 NSURF=2（RIGID 表面）在当前 fork 下的实际损坏行为——
-四重缺陷 D1–D4。任何未来的 NSURF=2 修复都必须让本卡的损坏签名消失，再按刚性
-表面五坐标截面语义重建。
+本 case 为缺陷修复回归验证：NSURF=2（RIGID 表面）的四重缺陷 D1–D4 中 D1–D3 已修复，
+本卡复跑确认损坏签名消失；D4 部分实现，剩余范围见下表。
 
 ## 2. 理论与体系
 
 体系为 TEST 势 HARMONIC；A 单原子气体（入射高度 8.0 Å），B 4 原子表面，NT=20、
-NS=5。四重缺陷（源码出处如下）：
+NS=5。四重缺陷及修复状态：
 
-| 缺陷 | 内容 | 出处 |
-|---|---|---|
-| D1 预设语义错误 | `MODEL=RIGID-SURFACE` 写 NSURF=2，但无 `SURFACE_MODEL` 时旧值重映射 map_old_nsurf(2)=1 → 实际 NSURF=1；本输入显式 `SURFACE_MODEL=RIGID` 绕开 D1 | venus_input.f90 |
-| D2 B 坐标忽略 | 仅 NSURF=0 时读 QZB_EQ → NSURF=2 下 B 原子 Q=0；SELECT 跳过 B 采样；W(B)=10³⁰（刚性无限质量） | venus_input.f90:774 / SELECT.f90:164 |
-| D3 胞定义越界读 | 读 Q(3·(NATOMS+1)..3·(NATOMS+4)) 越出分配 → 零填充邻堆 → EDGE 全零 → SKEW=NaN → RX0=NaN → 整条轨迹 NaN | SURF.f:30-50 |
-| D4 五坐标采样未实现 | 刚性表面应有的 b+φ₁ 圆盘瞄准、θ sin-θ CDF、φ₂ 取向、s 分离均未实现；NSURF=2 与 NSURF=1 共享斜胞入射链 | SURF.f |
+| 缺陷 | 内容 | 出处 | 状态 |
+|---|---|---|---|
+| D1 预设语义错误 | `MODEL=RIGID-SURFACE` 无 `SURFACE_MODEL` 时 map_old_nsurf(2)=1 → 实际 NSURF=1；本输入显式 `SURFACE_MODEL=RIGID` 绕开 | venus_input.f90 | **已修复**：旧值重映射按 NSURF 原义转发 |
+| D2 B 坐标忽略 | 仅 NSURF=0 读 QZB_EQ → NSURF=2 下 B 原子 Q=0、W(B)=10³⁰ | venus_input.f90:774 / SELECT.f90:164 | **已修复**：NSURF=2 亦读入 B 表面坐标 |
+| D3 胞定义越界读 | 读 Q(3·(NATOMS+1)..3·(NATOMS+4)) 越界 → SKEW=NaN → 全轨迹 NaN | SURF.f:30-50 | **已修复**：按 5×5 方格胞显式组装，越界读消除 |
+| D4 五坐标采样未实现 | b+φ₁ 圆盘瞄准、θ sin-θ CDF、φ₂ 取向、s 分离未实现 | SURF.f | **部分实现**：斜胞入射链可用；五坐标截面语义采样仍缺 |
 
-## 3. 方法与流程
+## 3. 方法与验证
 
-1. 读取输入并打印横幅 'NSURF = 2' + 'RIGID SURFACE'（stdout，results.txt）。
-2. 初始化随机数（ISEED=20260834），NT=20 条轨迹走 NSURF=2 斜胞入射链（fort.88
-   记录瞄准点 RX0/RY0）；组装 A 束流初始条件，B 原子坐标动量置零（D2 零化）。
-3. 每轨迹传播 NS=5 步并打印相空间（fort.1001-1020，全部含 NaN）。
+1. 复跑同输入（ISEED=20260834，NT=20，NS=5），检查 fort.88 瞄准点与 fort.1001-1020
+   相空间轨迹。
+2. **修复前签名（历史）**：fort.88 全 20 行 RX0=NaN、RY0≈1e-155 垃圾值；fort.1001
+   step 0 即 H=NaN。
+3. **修复后（2026-09-01）**：fort.88 RX0/RY0 全部有限（首行 4.64e-2/0.750），
+   fort.1001 无 NaN，H 守恒极差 0.0000，束流 A z=8.0 精确。
+4. 见 `fig_long_trajectory.png`：修复后入射原子 z(t) 自 8.0 Å 起正常下降（fort.1001，
+   NS=5 原始数据）——正常行为，替代旧 NaN 证据图。
 
-## 4. 核心验证
-
-见 `fig_long_trajectory.png`（NaN 传播证据图）。
-
-
-**损坏签名（非正确性判据）**：D3 越界读应使 SKEW=NaN → 瞄准点 RX0=NaN 传播到
-全部轨迹。**实测**（fort.88 全部 20 行）：RX0='NaN'、RY0≈1e-155 垃圾值；fort.1001
-step 0 即 H(eV)=NaN，全部 20 条 fort.1NNN 含 NaN，stdout 计 240 处 NaN；B 原子
-q=p=(0,0,0)（D2）；束流部分仍精确（A z=8.0、速度方向 (−sin30°, 0, −cos30°)）。
-本 case 是 F24（RIGID → NaN）的登记参照。
+> 附注：HARMONIC 测试势下方格表面无近距排斥，A 长时程可穿过表面平面（测试势固有
+> 属性，非缺陷）；真实刚性表面散射应使用 EMT-NN 势（见 `cases/emt_beam_scattering`）。

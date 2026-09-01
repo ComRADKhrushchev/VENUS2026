@@ -82,7 +82,10 @@ c       Check if C adatom (atom 1) has scattered away from the surface.
 c       Surface top layer is at z=0 (from Slab.xyz). C atom z = Q(3).
 c       Skip first 50 integration steps to avoid triggering on initial position.
 c       Also require outward velocity (P(3) > 0) for non-reactive detection.
-       if (I.eq.1) then
+c       System-specific criterion: only meaningful for surface runs (slab
+c       below atom 1); guarded to NSURF>0 so gas-phase systems fall through
+c       to the generic COM-separation criterion below.
+       if (I.eq.1 .and. NSURF.GT.0) then
          rd = Q(3)  ! C atom height above surface (z=0)
          if (NC > 50) then
            if (rd.ge.RBAR(I) .and. P(3).gt.0.0d0) NTEST=1
@@ -91,6 +94,57 @@ c       Also require outward velocity (P(3) > 0) for non-reactive detection.
        endif
 
 c!-->   end for H2/Cu(111)
+
+c!-->   generic gas-phase bimolecular separation criterion (fallback)
+c       For any system with no system-specific criterion above: terminate on
+c       the COM separation of the two fragments of this path (LA(I,*) / LB(I,*),
+c       mass-weighted as in CENMAS). NTEST=1 at RBAR(I) (intermediate event),
+c       NTEST=2 at RMAX(I) with receding COM relative velocity (radial
+c       component > 0, tested via the dot product -- no division by RCM).
+c       Only for pure gas-phase bimolecular systems: NSURF=0 (a surface slab
+c       has no meaningful COM criterion) and fragment B present.
+       IF (NTEST.EQ.0 .AND. NSURF.EQ.0 .AND. NATOMB(I).GT.0) THEN
+          WTMA=0.0D0
+          WTMB=0.0D0
+          DO J=1,3
+             QCMA(J)=0.0D0
+             VCMA(J)=0.0D0
+             QCMB(J)=0.0D0
+             VCMB(J)=0.0D0
+          ENDDO
+          DO J=1,NATOMA(I)
+             JAT=LA(I,J)
+             WTMA=WTMA+W(JAT)
+             DO JD=1,3
+                QCMA(JD)=QCMA(JD)+W(JAT)*Q(3*JAT+JD-3)
+                VCMA(JD)=VCMA(JD)+P(3*JAT+JD-3)
+             ENDDO
+          ENDDO
+          DO J=1,NATOMB(I)
+             JAT=LB(I,J)
+             WTMB=WTMB+W(JAT)
+             DO JD=1,3
+                QCMB(JD)=QCMB(JD)+W(JAT)*Q(3*JAT+JD-3)
+                VCMB(JD)=VCMB(JD)+P(3*JAT+JD-3)
+             ENDDO
+          ENDDO
+          WTMA=1.0D0/WTMA
+          WTMB=1.0D0/WTMB
+          RCMAB=0.0D0
+          VRDOT=0.0D0
+          DO J=1,3
+             QCMA(J)=QCMA(J)*WTMA
+             VCMA(J)=VCMA(J)*WTMA
+             QCMB(J)=QCMB(J)*WTMB
+             VCMB(J)=VCMB(J)*WTMB
+             RCMAB=RCMAB+(QCMA(J)-QCMB(J))**2
+             VRDOT=VRDOT+(QCMA(J)-QCMB(J))*(VCMA(J)-VCMB(J))
+          ENDDO
+          RCMAB=DSQRT(RCMAB)
+          IF (RCMAB.GE.RBAR(I)) NTEST=1
+          IF (RCMAB.GE.RMAX(I) .AND. VRDOT.GT.0.0D0) NTEST=2
+       ENDIF
+c!-->   end generic gas-phase criterion
 
 !-->   for CH4/Ni(111) dissociative chemisorption only
 

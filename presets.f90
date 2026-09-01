@@ -108,6 +108,13 @@ contains
   ! RIGID-SURFACE: rigid surface atoms with infinite mass
   ! ---------------------------------------------------------------------------
   subroutine preset_rigid_surface()
+    ! D1 fix (F24): declare the surface via the SURFACE_MODEL string path.
+    ! The old NSURF='2' default alone went through the integer fallback,
+    ! where map_old_nsurf interprets 2 in the OLD numbering (2=RELAXED) and
+    ! remaps it to 1 — the RIGID-SURFACE preset silently yielded a relaxed
+    ! surface. SURFACE_MODEL takes precedence over the NSURF integer in
+    ! venus_input, so the preset now yields NSURF=2 as intended.
+    call set_default('SURFACE_MODEL', 'RIGID')
     call set_default('NSURF', '2')
     call set_default('NSELT', '2')
     call set_default('NACTA', '0')

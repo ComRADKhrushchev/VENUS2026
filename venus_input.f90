@@ -404,6 +404,14 @@ contains
           end if
        else
           NACTA = get_int('NACTA', 0)
+          ! 整数回退同封闭：4=LOCAL-MODE（F20）/9=CI-QM-MICRO（F23）已移除，
+          ! 读入即显式终止（照 NSELT 域校验先例）
+          if (NACTA == 4 .or. NACTA == 9) then
+             write(6,*) 'ERROR: NACTA=', NACTA, &
+                '（LOCAL-MODE/CI-QM-MICRO 分支已移除（F20/F23），不接受该关键字）；'// &
+                'use INIT_SAMPLING_A keyword instead'
+             stop
+          end if
        end if
        if (has_keyword('INIT_SAMPLING_B')) then
           call map_init_sampling(trim(get_str('INIT_SAMPLING_B','MB')), NACTB, ios, errmsg)
@@ -413,6 +421,12 @@ contains
           end if
        else
           NACTB = get_int('NACTB', 0)
+          if (NACTB == 4 .or. NACTB == 9) then
+             write(6,*) 'ERROR: NACTB=', NACTB, &
+                '（LOCAL-MODE/CI-QM-MICRO 分支已移除（F20/F23），不接受该关键字）；'// &
+                'use INIT_SAMPLING_B keyword instead'
+             stop
+          end if
        end if
        ISEED = get_int('ISEED', 0)
     END IF
@@ -737,6 +751,21 @@ contains
        ENDDO
        K=3*K
        WRITE(6,907)
+
+       IF (NSURF.EQ.2) THEN
+          ! F24/D2 fix: the rigid-surface slab coordinates come from QZB_EQ
+          ! in the absolute Cartesian frame (no COM/principal-axes transform
+          ! — the slab defines the lab frame). Previously QZB was only read
+          ! for NSURF=0, leaving every B atom at the origin. Must be read
+          ! BEFORE the POTENZ(II) call below so that VZERO/DELH reference
+          ! the actual slab geometry.
+          call get_real_arr('QZB_EQ', QZB(1,1:K), K)
+          WRITE(6,836)(QZB(1,J),J=1,K)
+          II=3*NATOMA(1)
+          DO J=1,K
+             Q(J+II)=QZB(1,J)
+          ENDDO
+       ENDIF
 
        ! VZERO determination
        IF(NVZERO.EQ.1)THEN
