@@ -1,1 +1,1 @@
-src_VENUS/GASDEV.f: 正态随机数 grandom()（Box-Muller）
+src_VENUS/GFINAL.f: 轨迹终态分析汇总写入
