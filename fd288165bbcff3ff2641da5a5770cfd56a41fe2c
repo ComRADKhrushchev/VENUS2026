@@ -1,1 +1,1 @@
-src_VENUS/DENQ.f: 量子态密度计算（EBK 能级）
+src_VENUS/EBOND.f: 局域模（Morse 振子）能量计算
