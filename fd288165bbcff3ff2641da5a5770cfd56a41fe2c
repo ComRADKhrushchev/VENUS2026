@@ -1,1 +1,1 @@
-src_VENUS/FINAL.f: 产物能量与散射角计算
+src_VENUS/FINLNJ.f: 产物双原子振动/转动量子数（作用量积分）
