@@ -1,1 +1,1 @@
-src_VENUS/GLO.f90: 广义 Langevin 浴（GLO 模型）
+src_VENUS/GLPAR.f: Gauss-Legendre 求积参数
