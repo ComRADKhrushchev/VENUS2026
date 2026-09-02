@@ -1,1 +1,1 @@
-src_VENUS/CENMAS.f90: 去质心动量与质心坐标
+src_VENUS/CPUSEC.f: CPU 计时
