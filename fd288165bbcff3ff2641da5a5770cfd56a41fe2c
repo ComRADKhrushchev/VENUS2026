@@ -1,1 +1,1 @@
-src_VENUS/GAMA.f: 整数阶 gamma 分布随机数
+src_VENUS/GASDEV.f: 正态随机数 grandom()（Box-Muller）
