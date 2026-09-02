@@ -1,1 +1,1 @@
-src_VENUS/FMTRX.f: 力常数矩阵构造
+src_VENUS/GAMA.f: 整数阶 gamma 分布随机数
