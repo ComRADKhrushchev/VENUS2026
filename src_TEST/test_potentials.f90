@@ -3,7 +3,7 @@ module test_potentials
 ! TEST PES suite — system-independent potentials for VENUS core validation
 !
 ! Potentials, selected at runtime via input keyword
-!   TEST_PES = HARMONIC | MORSE | LEPS | EMT-NN     (default HARMONIC)
+!   TEST_PES = HARMONIC | MORSE | LEPS | EMT-NN | RST   (default HARMONIC)
 !
 ! Unit convention (the PES interface contract, see interface_TEST.f90):
 ! positions in angstrom (Q), potential in eV, gradient in eV/angstrom.
@@ -25,18 +25,34 @@ module test_potentials
 !     EMTNN_ALAT         (default 2.88 A)
 !     EMTNN_NSIDE        (default 6)
 !   Reference assets: data/emt_nn/.
+!
+! RST: C/Au(111) RST pairwise-NN adsorption PES + Born-von Karman elastic
+! slab (2D development repo interface_RST, ported into src_TEST/rst_pes.f90
+! + src_TEST/rst_slab_bvk.f90). Adiabatic ground state (state 7); slab atoms
+! move under the BVK elastic forces, the RST force acts on the adsorbate
+! only (2D interface_RST convention). Keyword-overridable assets:
+!     RST_WEIGHTS_FILE  (default nn_weights_rst.txt)
+!     RST_BVK_FILE      (default Analytic_Potential.txt)
+!     RST_SLAB_SOURCE   (default GENERATE; FILE uses RST_SLAB_FILE)
+!     RST_SLAB_FILE     (default Slab.xyz, only for RST_SLAB_SOURCE=FILE)
+!     RST_ALAT / RST_NLAYERS / RST_NSIDE (slab generator, 2.95 / 4 / 6)
+!   Reference assets: data/rst/.
 !*******************************************************************************
    use input_parser
    use venus_params, only: C4
    use venus_data
    use emt_nn_pes_venus, only: emt_nn_init, calc_emt_nn_energy, emt_nn_box, &
                                emt_nn_natoms, emt_nn_rcut, emt_nn_acut
+   use rst_slab_bvk, only: rst_bvk_read_params, rst_bvk_load_weights, &
+                           rst_bvk_generate_slab, rst_bvk_load_slab_file, &
+                           rst_bvk_nslab, rst_bvk_box, rst_bvk_alat_value, &
+                           rst_bvk_slab_coords, rst_total_vg, rst_gs_available
    implicit none
    private
    public :: init_test_potentials, test_pot_v, test_pot_vg, test_pes_name
 
    integer, parameter :: PES_HARMONIC = 1, PES_MORSE = 2, PES_LEPS = 3, &
-                         PES_EMTNN = 4
+                         PES_EMTNN = 4, PES_RST = 5
    integer, save :: test_pes_id = PES_HARMONIC
 
    ! HARMONIC: independent anisotropic well on every atom
@@ -68,10 +84,11 @@ contains
 
    subroutine init_test_potentials()
       character(len=64) :: s
-      character(len=256) :: slab_file, weights_file
+      character(len=256) :: slab_file, weights_file, bvk_file, slab_source
       character(len=2) :: elem
-      real(8) :: a_lat, blx, bly, bskew, cx, cy, cz
-      integer :: n_side, ios, u_slab, n_hdr, i_sl
+      real(8), allocatable :: slab_coords_tmp(:,:)
+      real(8) :: a_lat, blx, bly, bskew, cx, cy, cz, a_slab
+      integer :: n_side, ios, u_slab, n_hdr, i_sl, n_layers, i_sl2
       logical :: ex
       test_pes_name = upper(get_str('TEST_PES', 'HARMONIC'))
       select case (trim(test_pes_name))
@@ -79,8 +96,9 @@ contains
       case ('MORSE');    test_pes_id = PES_MORSE
       case ('LEPS');     test_pes_id = PES_LEPS
       case ('EMT-NN');   test_pes_id = PES_EMTNN
+      case ('RST');      test_pes_id = PES_RST
       case default
-         write(6,*) 'ERROR: TEST_PES must be HARMONIC, MORSE, LEPS, or EMT-NN (got ', &
+         write(6,*) 'ERROR: TEST_PES must be HARMONIC, MORSE, LEPS, EMT-NN, or RST (got ', &
                     trim(test_pes_name), ')'
          stop
       end select
@@ -195,6 +213,84 @@ contains
          end do
          close(u_slab)
          write(6,'(A,I0,A)') ' Slab loaded into QZB: ', NATOMB(1), ' atoms'
+
+      case (PES_RST)
+         ! Assets: paths default to the CWD (loud-stop on missing content),
+         ! keyword-overridable so case dirs can point at data/rst/. Slab is
+         ! generated as an ideal FCC(111) surface at the fitted a_lat by
+         ! default (geometrically self-consistent with the RST weights and
+         ! the BVK parameters); RST_SLAB_SOURCE=FILE reads RST_SLAB_FILE.
+         weights_file = trim(get_str('RST_WEIGHTS_FILE', 'nn_weights_rst.txt'))
+         bvk_file     = trim(get_str('RST_BVK_FILE',     'Analytic_Potential.txt'))
+         slab_source  = upper(get_str('RST_SLAB_SOURCE', 'GENERATE'))
+         slab_file    = trim(get_str('RST_SLAB_FILE',    'Slab.xyz'))
+         a_slab       = get_real('RST_ALAT',    2.95d0)
+         n_layers     = get_int ('RST_NLAYERS', 4)
+         n_side       = get_int ('RST_NSIDE',   6)
+         write(6,'(A,A)')    ' weight file  :', trim(weights_file)
+         write(6,'(A,A)')    ' bvk file     :', trim(bvk_file)
+         write(6,'(A,A)')    ' slab source  :', trim(slab_source)
+
+         call rst_bvk_read_params(bvk_file)
+         call rst_bvk_load_weights(weights_file)
+         if (.not. rst_gs_available()) then
+            write(6,*) 'ERROR: RST weight file has no GS state (state 7), ', &
+                       'required for TEST_PES=RST (adiabatic)'
+            stop
+         end if
+
+         select case (trim(slab_source))
+         case ('GENERATE')
+            write(6,'(A,F10.4,A,I0,A,I0,A)') ' slab generate : a=', a_slab, &
+               ' A, ', n_layers, ' layers x ', n_side**2, ' atoms/layer'
+            call rst_bvk_generate_slab(a_slab, n_layers, n_side)
+         case ('FILE')
+            write(6,'(A,A)') ' slab file     :', trim(slab_file)
+            call rst_bvk_load_slab_file(slab_file)
+         case default
+            write(6,*) 'ERROR: RST_SLAB_SOURCE must be GENERATE or FILE (got ', &
+                       trim(slab_source), ')'
+            stop
+         end select
+         write(6,'(A,I0,A)') ' slab atoms    :', rst_bvk_nslab(), &
+            ' (NATOMS must be 1 + this)'
+
+         ! Atom-count cross-check (loud-stop, EMT-NN pattern): atom 1 = C
+         ! adsorbate, atoms 2..NATOMS = slab.
+         NATOMB(1) = NATOMS - NATOMA(1)
+         if (NATOMA(1) /= 1) then
+            write(6,*) 'ERROR: TEST_PES=RST requires NATOMA = 1 (got ', &
+                       NATOMA(1), '): atom 1 = adsorbate, 2..NATOMS = slab'
+            stop
+         end if
+         if (NATOMB(1) /= rst_bvk_nslab()) then
+            write(6,*) 'ERROR: NATOMB = ', NATOMB(1), &
+                       ' but RST slab has ', rst_bvk_nslab(), ' atoms'
+            stop
+         end if
+
+         ! Slab geometry into QZB (2D interface_RST POTPRE pattern):
+         ! SELECT.setup_b_coords copies QZB into the global Q array.
+         allocate(slab_coords_tmp(3, rst_bvk_nslab()))
+         call rst_bvk_slab_coords(slab_coords_tmp)
+         do i_sl2 = 1, NATOMB(1)
+            QZB(1, 3*i_sl2-2) = slab_coords_tmp(1, i_sl2)
+            QZB(1, 3*i_sl2-1) = slab_coords_tmp(2, i_sl2)
+            QZB(1, 3*i_sl2)   = slab_coords_tmp(3, i_sl2)
+         end do
+         deallocate(slab_coords_tmp)
+         write(6,'(A,I0,A)') ' Slab loaded into QZB: ', NATOMB(1), ' atoms'
+
+         ! Engine box overrides the input cell (2D interface_RST POTPRE
+         ! convention: rectangular slab box, SKEW=90 deg): SURF.f impact
+         ! sampling and GWRITE PBC use these.
+         call rst_bvk_box(blx, bly)
+         BOXLX = blx
+         BOXLY = bly
+         SKEW  = 90.0d0*C4
+         write(6,'(A,F8.4,A,F8.4,A,F6.1,A)') &
+            ' engine cell : ', BOXLX, ' x ', BOXLY, ' A, skew ', SKEW/C4, &
+            ' deg (input BOXLX/BOXLY/SKEW overridden by engine geometry)'
       end select
    end subroutine init_test_potentials
 
@@ -218,6 +314,7 @@ contains
       case (PES_MORSE);    call morse_vg(natom, q, v, g)
       case (PES_LEPS);     call leps_vg(natom, q, v, g)
       case (PES_EMTNN);    call emtnn_vg(natom, q, v, g)
+      case (PES_RST);      call rst_vg(natom, q, v, g)
       end select
    end subroutine test_pot_vg
 
@@ -243,6 +340,16 @@ contains
          g(3*(k-1)+3) = -forces(3, k)
       end do
    end subroutine emtnn_vg
+
+   !--- RST: atom 1 = C adsorbate, atoms 2..n = Au slab -------------------------
+   ! rst_total_vg returns V[eV] and g = +dV/dq [eV/A] directly (BVK elastic
+   ! slab forces + RST GS adsorbate gradient; see rst_slab_bvk.f90).
+   subroutine rst_vg(natom, q, v, g)
+      integer, intent(in)  :: natom
+      real(8), intent(in)  :: q(3*natom)
+      real(8), intent(out) :: v, g(3*natom)
+      call rst_total_vg(natom, q, v, g)
+   end subroutine rst_vg
 
    !--- anisotropic harmonic well on each atom -----------------------------------
    subroutine harm_vg(natom, q, v, g)

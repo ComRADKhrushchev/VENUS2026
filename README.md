@@ -50,9 +50,11 @@ cd cases/morse_bootstrap
 | `HARMONIC` | 每原子独立简谐阱 | `HARM_K`（eV/Å²，逐原子） |
 | `MORSE` | 双原子 Morse | `MORSE_DE`（eV）、`MORSE_RE`（Å）、`MORSE_A`（Å⁻¹） |
 | `LEPS` | 三原子 LEPS | `LEPS_DE`、`LEPS_RE`、`LEPS_A`、`LEPS_DELTA`（Sato Δ） |
+| `RST` | C/Au(111) 成对 1D-NN 吸附势 + BVK 弹性板块 | `RST_WEIGHTS_FILE`、`RST_BVK_FILE`、`RST_SLAB_SOURCE`、`RST_ALAT`/`RST_NLAYERS`/`RST_NSIDE`（资源取自 `data/rst/`） |
 
-势与梯度全部由 `src_TEST/test_potentials.f90` 解析给出，程序不读取任何外部
-势文件。仅经典动力学（`ELEC_METHOD=ADIABATIC`）；非绝热方法
+势与梯度全部由 `src_TEST/test_potentials.f90` 解析给出；HARMONIC/MORSE/LEPS
+不读取任何外部势文件（RST 例外：NN 权重与 BVK 参数读自 `data/rst/`，见
+`cases/rst_beam_scattering`、`cases/rst_surface_md`）。仅经典动力学（`ELEC_METHOD=ADIABATIC`）；非绝热方法
 （TDHF-FSSH/IESH/MDEF）的入口在本构建中为 **loud-stop 桩**——调用即打印明确
 消息并 STOP，不会静默给出错误物理。
 
@@ -109,9 +111,9 @@ cd cases/morse_bootstrap
 | 值 | NSURF | NACTA | NACTB | 适用场景 | 示例 |
 |---|---|---|---|---|---|
 | `GAS-PHASE` | 0 | 0 | 0 | 气相碰撞/孤立分子 | `cases/morse_bootstrap`、`cases/twobody_collision` |
-| `RELAXED-SURFACE` | 1 | 5 | 0 | 松弛表面束流散射 | `cases/emt_beam_scattering`（EMT-NN Au） |
+| `RELAXED-SURFACE` | 1 | 5 | 0 | 松弛表面束流散射 | `cases/rst_beam_scattering`（RST 势 Au） |
 | `RIGID-SURFACE` | 2 | 0 | 0 | 刚性表面（2026-09 修复，回归 case 在） | `cases/rigid_surface_defect` |
-| `FULL-SURFACE` | 1 | 0 | 7 | 多原子表面板块 + MD 均衡 | `cases/emt_surface_md`（EMT-NN Au） |
+| `FULL-SURFACE` | 1 | 0 | 7 | 多原子表面板块 + MD 均衡 | `cases/rst_surface_md`（RST 势 Au） |
 
 体系描述参数（`NATOMS`、`ATOM_MASSES`、`NATOMA`、`NATOMB`、`QZA_EQ`、`QZB_EQ`、
 `BOXLX`、`BOXLY`、`SKEW`）不由预设设置，必须显式给定。`SURFACE_MODEL=NONE/
@@ -129,7 +131,7 @@ RELAXED/RIGID` 为 NSURF 的字符串别名；旧整数 `NSURF=2` 会被重映�
 | `LOCAL-MODE`（4） | ⚠️ 已移除，关键字显式拒绝 | — |
 | `BOLTZMANN-VIB`（5） | 玻尔兹曼振动（几何分布，`TVIB_A`） | `cases/boltzmann_vib` |
 | `FIXED-ENERGY`（6） | 固定能量含反应坐标（`NBAR=3` 自动触发） | 已移除 case（低频功能） |
-| `MD`（7，仅 B） | 表面 MD 恒温均衡（`THERMOTEMP`/`NSCALE`） | `cases/emt_surface_md` |
+| `MD`（7，仅 B） | 表面 MD 恒温均衡（`THERMOTEMP`/`NSCALE`） | `cases/rst_surface_md` |
 | `QM-MICRO`（8） | 量子微正则（态密度取态） | 已移除 case（低频功能） |
 | `CI-QM-MICRO`（9） | ⚠️ 已移除，关键字显式拒绝 | — |
 
