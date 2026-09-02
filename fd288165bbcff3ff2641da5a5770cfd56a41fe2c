@@ -1,1 +1,1 @@
-src_VENUS/HOMOQP.f90: 双原子初始坐标与动量
+src_VENUS/INITEBK.f90: EBK 量化初条件——固定振动/转动量子数
