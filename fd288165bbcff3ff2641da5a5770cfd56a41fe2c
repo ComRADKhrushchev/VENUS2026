@@ -1,1 +1,1 @@
-src_VENUS/HIST.f90: 碰撞结果直方图记录
+src_VENUS/HOMOQP.f90: 双原子初始坐标与动量
