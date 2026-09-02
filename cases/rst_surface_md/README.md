@@ -23,6 +23,7 @@ MD 链与数值设置：
 - 恒温重标至 300 K（fort.30 SYSTEM TEMPERATURE 逐步输出）。
 - 均衡完成后进入轨迹传播（NS=30000、DT=0.01=0.1 fs、NIP=50，
   `system temperature=` 每 50 步回显于 run_full.log）。
+
 ## 3. 方法与流程
 
 1. 读取 input_qct.txt，初始化 RST+BVK 板块并做 MD 均衡（NSCALE/NEQUAL=5000，

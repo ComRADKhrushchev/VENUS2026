@@ -19,6 +19,7 @@
   （349.755 为 cm⁻¹→kcal/mol 换算因子）。
 - 能量闭合缩放至完整非谐 LEPS 势。
 - 随机相位由 `INITQP` 逐轨迹重抽——能量固定、相位随机，是固定量子数语义的关键。
+
 ## 3. 方法与流程
 
 1. 读取输入并打印 NORMAL MODE SAMPLING 与量子数表（stdout，results.txt）。

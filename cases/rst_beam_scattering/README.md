@@ -22,12 +22,13 @@ RST 势（C-Au 相互作用）：
 - QZA_EQ=0,0,-3.5 → 初始 C 高度 z=2.5 Å，vz<0 朝表面。
 - NS=30000（DT=0.01=0.1 fs → 3000 fs）、NIP=50、ISEED=20260821、GWRITE_LEVEL=1
  （fort.10NN 头含 E0/T/H、Q(C)、r_min）。
+
 ## 3. 方法与流程
 
 1. 运行 NT=20 条轨迹（run_full.log）。
 2. plot_fig.py 逐行 split 解析 fort.1001-1020 叠绘 20 条 z(t) 与 r_min(t)
    → fig_scattering.png（dpi=150，ps 轴）。
-3. 终止分类：块数=601（=NS/NIP+1）即跑满 → 吸附；<601 即散射提前终止。
+3. 终止分类：输出块数达到最大值（NS/NIP+1=601）说明轨迹跑满全程 → 吸附；块数不足说明散射提前终止。
 
 ## 4. 核心验证
 
