@@ -19,7 +19,8 @@ RST 势（C-Au 相互作用）：
 - GENERATE 生成 Au₁₄₄，BOXLX=20.65、BOXLY=18.2786、SKEW=90°。
 
 初始条件与数值设置：
-- QZA_EQ=0,0,0.5 → 初始 C 高度 z=6.5 Å（渐近区，势能≈0），vz<0 朝表面。
+- 入射高度由 EREL 第二元素控制（S=6.5 Å，加于 QZA_EQ 之上；SURF.f 中 ACZ=S），
+渐近区势能≈0，vz<0 朝表面。
 - NS=30000（DT=0.01=0.1 fs → 3000 fs）、NIP=50、ISEED=20260821、GWRITE_LEVEL=1
  （fort.10NN 头含 E0/T/H、Q(C)、r_min）。
 
