@@ -1,1 +1,1 @@
-src_VENUS/PROBJ.f90: 拒绝采样判据
+src_VENUS/QMMICRO.f: 量子微正则采样（QM-MICRO）
