@@ -1,1 +1,1 @@
-src_VENUS/RAND1.f: 乘同余随机数生成器
+src_VENUS/RANDST.f: 随机数生成器初始化（Schwenke）
