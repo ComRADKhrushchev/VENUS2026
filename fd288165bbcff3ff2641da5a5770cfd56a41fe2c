@@ -1,1 +1,1 @@
-src_VENUS/ROTN.f90: 角动量/转动惯量张量/转动能计算
+src_VENUS/SELECT.f90: 初始条件选取总分派（NACTA/NACTB）
