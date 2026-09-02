@@ -1,7 +1,7 @@
 # rigid_surface — 刚性表面（NSURF=2）束流散射
 
 > 运行：`cd cases/rigid_surface && ../../venus_test.e`（主输入 `input_qct.txt`）
-> 注：双跑非逐位一致（随机数路径差异，非缺陷），验收以统计量为准。
+> 注：复跑非逐位一致（随机数路径差异，非缺陷），验收以统计量为准。
 
 ## 1. 目的
 

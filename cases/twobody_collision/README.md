@@ -15,7 +15,7 @@
 `ROTATE` 随机取向）→ `setup_gas_collision`——碰撞参数 SB=BMAX·√U（故 b² 在
 [0,BMAX²] 上均匀）；B 平移到 (0, SB, √(S²−SB²))；相对速度 √(2·SEREL/μ) 按质量比
 分配 VELA/VELB，总质心严格静止。Euler 取向：RPHI=2π·R1、cosθ=2R2−1、RCHI=2π·R3
-三次独立均匀抽取，ZYZ 旋转矩阵组装——球面均匀。全链跑 RAND0(ISEED)，双跑逐位确定。
+三次独立均匀抽取，ZYZ 旋转矩阵组装——球面均匀。全链跑 RAND0(ISEED)，复跑逐位确定。
 
 ## 3. 方法与流程
 

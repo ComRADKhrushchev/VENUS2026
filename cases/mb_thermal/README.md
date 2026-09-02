@@ -1,6 +1,6 @@
 # 热 n,J 采样 — 量子热振动/转动态分布
 
-> 运行：`cd cases/mb_thermal && ../../venus_test.e`（ISEED 固定，双跑逐位一致）。
+> 运行：`cd cases/mb_thermal && ../../venus_test.e`（ISEED 固定，复跑逐位一致）。
 
 ## 1. 目的
 

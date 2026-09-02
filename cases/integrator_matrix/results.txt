@@ -14,7 +14,7 @@
   → ADAMS 斜率 1.01（损坏：有效 1 阶）
 
 【长时间能量漂移】（DT=0.01，10 ps；能量由 fort 坐标/动量重算，
-  GWRITE 的 E/T 打印在 ADIABATIC TEST 构建下为死值）
+  能量由 fort 坐标/动量重算）
 
   VERLET         NS=100000  E0=160.1825 drift=2.120e-04
   BEEMAN         NS=100000  E0=160.1825 drift=7.064e-05

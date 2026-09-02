@@ -10,5 +10,5 @@
 （stdout 频谱表：col7/col8 E′ 简并对 1013.5 cm⁻¹、col9 呼吸 1803.8 cm⁻¹；
   ANQ 行每轨迹一行 1.00 2.00 3.00）
 
-【说明】统计结论（量子数回显、谐波能量 29.636 vs 29.642 kcal/mol、EVIBA 展宽
+【说明】统计结论（量子数打印、谐波能量 29.636 vs 29.642 kcal/mol、EVIBA 展宽
 0.059 kcal/mol）见 README.md。

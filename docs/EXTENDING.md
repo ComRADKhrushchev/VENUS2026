@@ -92,7 +92,7 @@ PES 接口层的换算责任划分：
 - **守恒验证用 fort 重算**，不要信能量打印（原因见 §5.1）：
   `cases/integrator_matrix` 给出了从 fort.1001 坐标/动量重算 E 的方法与
   10 ps 漂移门限的先例；
-- **逐位确定性**：固定 `ISEED` 双跑 diff 全部产物，是回归验证的最强手段。
+- **逐位确定性**：固定 `ISEED` 复跑 diff 全部产物，是回归验证的最强手段。
 
 ## 3. 接入自定义初始条件采样
 
@@ -190,7 +190,7 @@ case 均为此形态，任取一个照抄即可。
 - [ ] 势模块：public `v`/`vg`，参数走输入关键字，解析锚写注释
 - [ ] interface 三符号 `POTPRE`/`POT0`/`DPESHON`（eV→kcal/mol→code 两级换算）
 - [ ] Makefile `SRC` 按依赖顺序登记（势模块在 venus_input 前、interface 在后）
-- [ ] `make` 通过；冒烟 case 双跑逐位一致
+- [ ] `make` 通过；冒烟 case 复跑逐位一致
 - [ ] 验证 case：解析锚 + fort 重算守恒 + 图表
 
 接入采样 / 积分器 / 电子方法：
