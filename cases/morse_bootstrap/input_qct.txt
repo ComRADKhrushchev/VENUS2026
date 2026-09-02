@@ -27,7 +27,7 @@ ELEC_METHOD = ADIABATIC
 TASK = TRAJECTORY
 # 积分器：Verlet
 INTEGRATOR = VERLET
-ISEED = 12345               # 随机种子（固定 → 双跑确定性）
+ISEED = 12345               # 随机种子
 NT = 1                      # 轨迹数
 NS = 5000                   # 每轨迹 MD 步数（总时长 5 ps）
 DT = 0.01                   # 时间步 [10 fs]

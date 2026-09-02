@@ -31,9 +31,7 @@
 ## 3. 方法与流程
 
 1. 读取输入并逐轨迹打印 IMPACT PARAMETER（stdout，results.txt）。
-2. 初始化随机数（ISEED=20260832），NT=200 条轨迹抽取 SB=BMAX·√U 与 Euler 取向；
-   `setup_gas_collision` 组装 A/B 坐标与按质量比分配的速度。
-3. 每轨迹传播 NS=5 步并打印相空间（fort.1001-1200 每文件一条轨迹）。
+2. 每轨迹传播 NS=5 步并打印相空间（fort.1001-1200 每文件一条轨迹）。
 
 ## 4. 核心验证
 

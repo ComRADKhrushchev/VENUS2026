@@ -28,7 +28,7 @@ ELEC_METHOD = ADIABATIC
 # ===== &DYNAMICS =====   动力学方法 + 初始条件
 # 积分器：Verlet
 INTEGRATOR = VERLET
-ISEED = 20260821            # 随机种子（固定 → 双跑逐位一致）
+ISEED = 20260821            # 随机种子
 NT = 1000                   # 轨迹数
 NS = 10                     # 每轨迹 MD 步数
 DT = 0.01                   # 时间步 [10 fs]
