@@ -1,1 +1,1 @@
-src_VENUS/THERMO.f: 速度重标度恒温器
+src_VENUS/THRMAN.f: 热布居采样——温度到振动/转动能（QM-MICRO 链）
