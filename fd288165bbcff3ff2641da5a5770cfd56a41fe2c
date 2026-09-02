@@ -1,1 +1,1 @@
-src_VENUS/RANDST.f: 随机数生成器初始化（Schwenke）
+src_VENUS/ROTATE.f90: 片段构型旋转
