@@ -1,1 +1,1 @@
-src_VENUS/INITEBK.f90: EBK 量化初条件——固定振动/转动量子数
+src_VENUS/INITQP.f90: 正则准周期初条件采样
