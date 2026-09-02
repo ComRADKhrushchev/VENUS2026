@@ -1,0 +1,32 @@
+# 积分器矩阵 —— 程序实际输出摘录
+# 来源: 内部扫描运行记录（8 入口 × DT 扫描 × 10 ps 长跑矩阵）
+# ============================================================
+
+【阶数收敛扫描片段】（总时长 T=1.0 code 固定，err vs 解析终态）
+
+  VERLET         DT=0.04     NS=25    err_pos=2.068e-03 err_mom=1.202e-02
+  VERLET         DT=0.02     NS=50    err_pos=5.180e-04 err_mom=3.006e-03
+  VERLET         DT=0.01     NS=100   err_pos=1.280e-04 err_mom=7.519e-04
+  VERLET         DT=0.005    NS=200   err_pos=2.804e-05 err_mom=1.874e-04
+  → VERLET 斜率 2.06（二阶）
+  ADAMS          DT=0.04     NS=175   err_pos=3.551e-01 err_mom=7.539e-02
+  ...
+  → ADAMS 斜率 1.01（损坏：有效 1 阶）
+
+【长时间能量漂移】（DT=0.01，10 ps；能量由 fort 坐标/动量重算，
+  GWRITE 的 E/T 打印在 ADIABATIC TEST 构建下为死值）
+
+  VERLET         NS=100000  E0=160.1825 drift=2.120e-04
+  BEEMAN         NS=100000  E0=160.1825 drift=7.064e-05
+  SYMPLECTIC-4   NS=100000  E0=160.1825 drift=2.830e-04
+  SYMPLECTIC-6   NS=100000  E0=160.1825 drift=1.588e-06
+  SYMPLECTIC-8   NS=100000  E0=160.1825 drift=1.588e-06
+  RADAU-FIXED    NS=100000  E0=160.1825 drift=1.588e-06
+  RADAU-ADAPTIVE NS=100000  E0=160.1825 drift=1.026e-06
+  ADAMS          NS=20000   E0=160.1825 drift=1.252e+00   （损坏）
+
+  漂移排序: RADAU-ADAPTIVE(1.0e-06) < SYMPLECTIC-6/8/RADAU-FIXED(1.6e-06)
+    < BEEMAN(7.1e-05) < VERLET(2.1e-04) < SYMPLECTIC-4(2.8e-04) < ADAMS(1.3e+00)
+
+【说明】step-0 全矩阵逐位一致（随机数流与 INTEGRATOR/DT/NS/NIP 解耦）。
+结论解读见 README.md。

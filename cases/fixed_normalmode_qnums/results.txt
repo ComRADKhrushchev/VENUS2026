@@ -1,0 +1,14 @@
+# 固定简正模量子数 —— 程序实际输出摘录
+# 来源: 运行 stdout（采样回显；ISEED=20260826，NT=1000）
+# ============================================================
+
+【示例轨迹】第 1 条轨迹的采样回显
+
+   ACTIVATE WITH NORMAL MODE SAMPLING
+     NORMAL MODE QUANTUM NUMBERS:
+
+（stdout 频谱表：col7/col8 E′ 简并对 1013.5 cm⁻¹、col9 呼吸 1803.8 cm⁻¹；
+  ANQ 行每轨迹一行 1.00 2.00 3.00）
+
+【说明】统计结论（量子数回显、谐波能量 29.636 vs 29.642 kcal/mol、EVIBA 展宽
+0.059 kcal/mol）见 README.md。

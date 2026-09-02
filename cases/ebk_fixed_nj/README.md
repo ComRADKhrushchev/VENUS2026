@@ -1,0 +1,38 @@
+# ebk_fixed_nj — 固定 n,J 的 EBK 量子态采样
+
+> 运行：`cd cases/ebk_fixed_nj && ../../venus_test.e`（主输入文件 `input_qct.txt`）
+
+## 1. 目的
+
+验证 EBK 固定量子态采样在 MORSE 双原子 H₂（各 1.008 u，μ=0.5040 u）上的正确性：
+固定 n=3、J=2 采样 999 条有效轨迹（NT=1000），考察态不变性、核间距 WKB 密度命中
+与振转能量解析闭合。
+
+## 2. 理论与体系
+
+采样链 `NACTA=0`（双原子 MB/EBK 分支）+ `TRV_A<0`（固定量子数标志）→ `INITEBK`
+按 WKB 经典密度采样：p(r)∝1/|p_r(r)|，径向动量 PR=√(2μ·SUMM(r))（SUMM 为有效势），
+符号以 50% 概率翻转；经典可达域由 EBK 转折点 [RMIN, RMAX] 限定。能级（含非谐修正
+与刚性转子项）：
+
+  EVIBA = hc[ωe(n+½) − ωexe(n+½)²] + hc·Be·J(J+1)
+
+MORSE 谱常数 ωe=2326.4 cm⁻¹、ωexe=35.35 cm⁻¹；n=3、J=2 时理论对照值 EVIBA=22.3347
+kcal/mol。
+
+## 3. 方法与流程
+
+1. 读取输入并打印 TRV/TROT/N/J 量子数与频谱表（stdout，results.txt）。
+2. 初始化随机数（ISEED=20260820），NT=1000 条轨迹由 `INITEBK` 采样 r 并组装径向/
+   转动动量，打印 CHOSEN EROTA/EVIBA（results.txt）。
+3. 每轨迹传播 NS=10 步并打印相空间（fort.1001 起每文件一条轨迹）。
+
+## 4. 核心验证
+
+见 `fig_sampling_stats.png`。
+
+> 图注：左 = 各轨迹 EVIBA+EROTA（22.46-22.84 kcal/mol，EVIBA 部分恒为 22.3134，
+> 固定量子数语义的直接体现），右 = 逐轨迹采样过程（stdout `CHOSEN:`，10 条轨迹）。
+> 判定依据：ENJA/RMIN/RMAX 跨 999 个采样相对展宽全为 0（态不变性）；r 分布 KS
+> Dmax=0.0254 ≤ 3/√N=0.0949，实测可达域 [1.0431, 1.9820] 与解析转折点一致；EVIBA
+> 均值 22.3134 vs 理论对照值 22.3347 kcal/mol（相对偏差 9.6×10⁻⁴，门限 0.5%）。

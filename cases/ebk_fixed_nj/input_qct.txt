@@ -1,0 +1,43 @@
+# =====================================================================
+# 固定 n,J 的 EBK 采样 —— 规范整理输入
+# 源输入: regression/cases/p21_ebk_fixed_nj/input_qct.txt
+# 整理说明: 按 &SYSTEM / &DYNAMICS / &OUTPUT 三块重排，逐关键字中文注释；
+#           关键字值与源输入一致。TITLE1 已语义化（源输入标题含工程编号 P2.1）。
+# =====================================================================
+
+# ===== &SYSTEM =====   系统定义 + 电子结构
+# 模型预设：气相碰撞（无表面）
+MODEL = GAS-PHASE
+# 标题行（语义化）
+TITLE1 = EBK fixed n,J sampling - MORSE diatomic, n=3 J=2, NT=1000
+# 任务类型：经典轨迹
+TASK = TRAJECTORY
+# 体系无关测试势：Morse 双原子势
+TEST_PES = MORSE
+MORSE_DE = 4.746            # Morse 离解能 De [eV]（H₂）
+MORSE_RE = 1.401            # Morse 平衡键长 re [Å]
+MORSE_A = 1.028             # Morse 指数 a [Å⁻¹]
+NATOMS = 2                  # 原子总数（双原子）
+ATOM_MASSES = 1.008, 1.008  # 原子质量 [u]（H₂）
+NATOMA = 2                  # 片段 A 原子数（全部原子）
+NLINA = 1                   # 片段 A 线型标志：1 = 线型（双原子）
+NATOMB = 0                  # 片段 B 原子数（无）
+# 电子方法：绝热经典
+ELEC_METHOD = ADIABATIC
+
+# ===== &DYNAMICS =====   动力学方法 + 初始条件
+# 积分器：Verlet
+INTEGRATOR = VERLET
+ISEED = 20260820            # 随机种子（固定 → 双跑逐位一致）
+NT = 1000                   # 轨迹数
+NS = 10                     # 每轨迹 MD 步数
+DT = 0.01                   # 时间步 [10 fs]
+NACTA = 0                   # 片段 A 采样方式：0 = MB/EBK 双原子（配合 TRV_A 负值走 EBK）
+TRV_A = -1.0                # 振动温度/标志：负值 → 固定振动量子数 EBK 采样（手册 V.16-18）
+NN_A = 3                    # 固定振动量子数 n（EBK 态）
+J_A = 2                     # 固定转动量子数 J（EBK 态）
+AI_A = 0.98925              # 转动惯量因子 [amu·Å²]（H₂）
+QZA_EQ = 0.0, 0.0, -0.7005, 0.0, 0.0, 0.7005   # 双原子平衡构型（键长 1.401 Å，±0.7005 Å）
+
+# ===== &OUTPUT =====     输出控制
+NCOOR = 1                   # 坐标输出参数
