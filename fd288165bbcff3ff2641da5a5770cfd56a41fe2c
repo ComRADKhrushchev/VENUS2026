@@ -1,1 +1,1 @@
-src_VENUS/LMEXCT.f: 局域模能量接受判据（Morse 振子）
+src_VENUS/LMODE.f: 局域模键长选取（Miller 半经典）
