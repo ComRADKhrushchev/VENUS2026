@@ -20,8 +20,7 @@ ISEED=20260821、GWRITE_LEVEL=1（fort.10NN 头含 E0/T/H、Q(C)、r_min）。
 
 ## 3. 方法与流程
 
-1. 先以 smoke 检验通过（顶位吸附阱 z=2.90 Å / E_ads=−2.81 eV；解析梯度 vs FD
-   最大差 5×10⁻⁹；BVK 弹性检验解析=FD 10⁻¹³）后正式跑 NT=20（run_full.log）。
+1. 运行 NT=20 条轨迹（run_full.log）。
 2. plot_fig.py 逐行 split 解析 fort.1001-1020 叠绘 20 条 z(t) 与 r_min(t)
    → fig_scattering.png（dpi=150，ps 轴）。
 3. 终止分类：块数=601（=NS/NIP+1）即跑满 → 吸附；<601 即散射提前终止。
@@ -30,8 +29,7 @@ ISEED=20260821、GWRITE_LEVEL=1（fort.10NN 头含 E0/T/H、Q(C)、r_min）。
 
 见 `fig_scattering.png`。
 
-> 图注：上 = 20 条轨迹 C 高度 z(t)（红虚线=顶位阱 z_eq=2.90 Å，图角注 E_ads=−2.81 eV
-> vs 入射能 0.63 eV，阱深/入射能≈4.5× → 捕获必然），下 = C–Au 最近距离 r_min(t)。
+> 图注：上 = 20 条轨迹 C 高度 z(t)（红虚线=顶位阱 z_eq=2.90 Å，阱深/入射能≈4.5×），下 = C–Au 最近距离 r_min(t)。
 > 判定依据：吸附 20/20（全部 601 块跑满，无散射提前终止）；z_min 全域
 > 1.334-2.193 Å，末态 z 2.10-3.71 Å；全程 H 极差 0.0000 eV（微正则守恒）；
 > r_min 全程 ≥1.45 Å，物理合理。

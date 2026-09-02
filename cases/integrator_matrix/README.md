@@ -22,8 +22,7 @@
 2. 阶数收敛扫描：总时长固定 T=1.0 code，DT 自 0.04 逐次折半，终态误差对解析解做
    log-log 拟合得有效阶数（results.txt 阶数收敛片段）。
 3. 长时间漂移：DT=0.01 跑 10 ps，能量由 fort.8/fort.1001 坐标动量按
-   E=ΣP²/2m+Σ½k_code(r−X0)² 重算（GWRITE 的 E0/T/H 在 ADIABATIC TEST 构建下为
-   死值，不可用）；漂移排序与门禁结论记于 results.txt。
+   E=ΣP²/2m+Σ½k_code(r−X0)² 重算；漂移排序与门禁结论记于 results.txt。
 
 ## 4. 核心验证
 
