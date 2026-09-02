@@ -1,1 +1,1 @@
-src_VENUS/POTEN.f: 旋转分子至质心系并求势能
+src_VENUS/POTENZ.f: 反应物/产物参考构型设置
