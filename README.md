@@ -112,7 +112,7 @@ cd cases/morse_bootstrap
 |---|---|---|---|---|---|
 | `GAS-PHASE` | 0 | 0 | 0 | 气相碰撞/孤立分子 | `cases/morse_bootstrap`、`cases/twobody_collision` |
 | `RELAXED-SURFACE` | 1 | 5 | 0 | 松弛表面束流散射 | `cases/rst_beam_scattering`（RST 势 Au） |
-| `RIGID-SURFACE` | 2 | 0 | 0 | 刚性表面（2026-09 修复，回归 case 在） | `cases/rigid_surface_defect` |
+| `RIGID-SURFACE` | 2 | 0 | 0 | 刚性表面束流散射 | `cases/rigid_surface` |
 | `FULL-SURFACE` | 1 | 0 | 7 | 多原子表面板块 + MD 均衡 | `cases/rst_surface_md`（RST 势 Au） |
 
 体系描述参数（`NATOMS`、`ATOM_MASSES`、`NATOMA`、`NATOMB`、`QZA_EQ`、`QZB_EQ`、

@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""rigid_surface_defect: FIXED (2026-09-01) - normal incident-atom z(t).
+"""rigid_surface: incident-atom z(t) under the rigid-surface (NSURF=2) branch.
 
 Post-fix data: fort.1001..fort.1020 all finite. Plot shows z(t) of the
 incident atom A (first C line of each step block, NS=5 raw data) from the
@@ -46,7 +46,7 @@ ax.annotate('surface plane (z=0)', xy=(0.02, 0.06), xycoords='axes fraction',
 
 ax.set_xlabel('time t [ps]')
 ax.set_ylabel('incident-atom z [$\\AA$]')
-ax.set_title('rigid_surface_defect - FIXED (2026-09-01): normal z(t) of incident atom A\n'
+ax.set_title('rigid_surface (NSURF=2): z(t) of incident atom A\n'
              'fort.1001, NS=5 raw data: z starts at 8.0 $\\AA$ and decreases toward '
              'the surface - all coordinates finite', fontsize=11)
 ax.grid(alpha=0.25)
