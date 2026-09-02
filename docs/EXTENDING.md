@@ -96,7 +96,7 @@ PES 接口层的换算责任划分：
 
 ## 3. 接入自定义初始条件采样
 
-关键字链：`INIT_SAMPLING_A=XXX`（input_qct.txt）→
+关键字流程：`INIT_SAMPLING_A=XXX`（input_qct.txt）→
 [param_mapping.f90](../param_mapping.f90) `map_init_sampling` 映射为整数
 `NACTA` → [src_VENUS/SELECT.f90](../src_VENUS/SELECT.f90) 按 `NACTA` 分派到
 采样例程（`NACTB`/片段 B 同理）。
@@ -124,7 +124,7 @@ PES 接口层的换算责任划分：
 
 ### 4.1 积分器
 
-关键字链：`INTEGRATOR=XXX` → `map_integrator` → 整数 `INTEGRATOR` +
+关键字流程：`INTEGRATOR=XXX` → `map_integrator` → 整数 `INTEGRATOR` +
 子模式 `LLL` → `VENUS.f90` 主循环分派（1=RADAU、2=SYMPLE、3=VERLET 族）。
 
 新增积分器三步：新例程（模板 `src_VENUS/VERLET.f90` / `RADAU.f` / `SYMPLE.f`）
