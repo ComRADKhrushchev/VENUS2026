@@ -1,1 +1,1 @@
-src_VENUS/GLO.f: 广义 Langevin 浴遗留副本（构建使用 GLO.f90）
+src_VENUS/GLO.f90: 广义 Langevin 浴（GLO 模型）
