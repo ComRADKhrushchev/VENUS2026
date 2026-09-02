@@ -1,1 +1,1 @@
-src_VENUS/INITQP.f90: 正则准周期初条件采样
+src_VENUS/JMAXCALC.f: 转动分布 J 上限计算（温度与转动惯量）
