@@ -1,1 +1,1 @@
-src_VENUS/EIGN.f: 矩阵对角化（Givens-Householder）
+src_VENUS/EIGOUT.f: 本征值/本征向量输出
