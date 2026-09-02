@@ -1,0 +1,104 @@
+      SUBROUTINE FINLNJ(ENJ,AM,RMIN,RMAX,DH,AN,AJ)
+      use venus_params
+      use venus_data, only: W, Q, V, LBOND
+      IMPLICIT DOUBLE PRECISION (A-H,O-Z)
+C
+C         CALCULATE VIBRATIONAL AND ROTATIONAL QUANTUM NUMBERS FOR
+C         A PRODUCT DIATOM
+C
+      DIMENSION QO(6),XGL(NCF),WGL(NCF)
+    5 FORMAT(/5X,'WARNING : A PROBLEM WITH THE SELECTED PRODUCT ',
+     *'DIATOM HAS OCCURRED'/15X,'THE DIATOM VIBRATIONAL QUANTUM ',
+     *'NUMBER CAN NOT BE EVALUATED.'/)
+C
+C         FIND THE ROTATIONAL QUANTUM NUMBER AJ FROM THE ROTATIONAL
+C         ANGULAR MOMENTUM AM IN UNITS OF H-BAR.
+C
+      AN=0.0D0
+      DUM=AM*AM
+      AJ=0.5D0*(-1.0D0+SQRT(1.0D0+4.0D0*DUM))
+C
+C         FIND THE VIBRATIONAL QUANTUM NUMBER AN, USING AN INVERSION
+C         OF THE SEMICLASSICAL RYDBERG-KLEIN-REES (RKR) APPROACH.
+C
+C         INITIALIZE SOME VARIABLES FOR THE DIATOM.
+C
+      L1=MIN0(LBOND(1),LBOND(2))
+      L2=MAX0(LBOND(1),LBOND(2))
+      RMASS=W(L1)*W(L2)/(W(L1)+W(L2))
+      ENJ=ENJ/C1
+      T3=Q(3*L2)-Q(3*L1)
+      T2=Q(3*L2-1)-Q(3*L1-1)
+      T1=Q(3*L2-2)-Q(3*L1-2)
+      RO=SQRT(T1*T1+T2*T2+T3*T3)
+      IF (RO.GT.6.0D0) THEN
+         WRITE(6,5)
+         GOTO 60
+      ENDIF
+      DO I=1,3
+         QO(I)=Q(3*L1-3+I)
+         QO(I+3)=Q(3*L2-3+I)
+         Q(3*L1-3+I)=(W(L1)*QO(I)+W(L2)*QO(I+3))/(W(L1)+W(L2))
+         Q(3*L2-3+I)=(W(L1)*QO(I)+W(L2)*QO(I+3))/(W(L1)+W(L2))
+      ENDDO
+      Q(3*L1)=Q(3*L1)-0.5D0*RO
+      Q(3*L2)=Q(3*L2)+0.5D0*RO
+C      CALL DVDQ        ! comment by bin, 2016/10/2
+      CALL ENERGY_1
+      VEFF=V-DH+0.5D0*DUM*C7*C7/(C1*RMASS*RO*RO)
+      IF (VEFF.GT.ENJ) THEN
+         WRITE(6,5)
+         GOTO 60
+      ENDIF
+C
+C         DETERMINE BOUNDARIES OF THE SEMICLASSICAL INTEGRAL
+C
+   20 Q(3*L2)=Q(3*L2)+0.001D0
+C      CALL DVDQ        ! comment by bin, 2016/10/2
+      CALL ENERGY_1
+      RZ=Q(3*L2)-Q(3*L1)
+      debug = V
+      debug_Q3 = Q(3)
+      debug_Q6 = Q(6)
+      debug_Q9 = Q(9)
+      VEFF=V-DH+0.5D0*DUM*C7*C7/(C1*RMASS*RZ*RZ)
+      IF (VEFF.LT.ENJ.AND.RZ.LT.50.0D0) GOTO 20
+      RMAX=RZ
+      Q(3*L2)=Q(3*L1)+RO
+   30 Q(3*L2)=Q(3*L2)-0.001D0
+      RZ=Q(3*L2)-Q(3*L1)
+      IF (RZ.LE.0.01D0) GOTO 70
+C      CALL DVDQ        ! comment by bin, 2016/10/2
+      CALL ENERGY_1
+      VEFF=V-DH+0.5D0*DUM*C7*C7/(C1*RMASS*RZ*RZ)
+      IF (VEFF.LT.ENJ) GOTO 30
+      RMIN=RZ
+      GOTO 72
+   70 WRITE(6,35) RZ
+   35 FORMAT(/5X,'WARNING : INNER TURNING POINT NOT FOUND IN FINLNJ',
+     *' RZ=',F10.5,' < 0.01 - USING HARD MINIMUM'/)
+      RMIN=0.01D0
+   72 CONTINUE
+C
+C         EVALUATE THE SEMICLASSICAL INTEGRAL BY GAUSSIAN QUADRATURE
+C
+      NGL=50
+      CALL GLPAR(RMIN,RMAX,XGL,WGL,NGL)
+      ASUM=0.0D0
+      DO J=1,NGL
+         RZ=XGL(J)
+         Q(3*L2)=Q(3*L1)+RZ
+C         CALL DVDQ        ! comment by bin, 2016/10/2
+         CALL ENERGY_1
+         VEFF=V-DH+0.5D0*DUM*C7*C7/(C1*RMASS*RZ*RZ)
+         IF (ENJ.GT.VEFF) ASUM=ASUM+WGL(J)*SQRT(ENJ-VEFF)
+      ENDDO
+      DO I=1,3
+         Q(3*L1-3+I)=QO(I)
+         Q(3*L2-3+I)=QO(I+3)
+      ENDDO
+      AN=SQRT(8.0D0*C1*RMASS)*ASUM/TWOPI/C7
+   60 ENJ=ENJ*C1
+      AN=AN-0.5D0
+      RETURN
+      END
