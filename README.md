@@ -98,6 +98,17 @@ Bin Jiang fork（2016）的泛化工程，本仓库只保留**体系无关的 TE
 | `CPUSEC.f` | CPU 计时 |
 | `VFDATE.f` | 当前日期时间获取 |
 
+### 主程序工作流程
+
+![VENUS 主程序工作流程](docs/venus_flow.png)
+
+主循环为双层结构（轨迹循环 NT × 积分循环 NS），主要子例程调用位置（行号）：
+`venus_input.f90:479` POTPRE（PES 初始化）→ `VENUS.f90:347` SELECT（初条件分派）→
+`:400-401` ENERGY_1/DVDQ_1（初势能/梯度）→ 积分器分派（`:431` RADAU / `:447` SYMPLE /
+`:453` VERLET-BEEMAN，每步经 DVDQ_1 调 PES 的 DPESHON）→ `:577` TEST（事件检测）→
+终态 FINAL（`:506/:594`）+ GFINAL（`:541/:628`）→ 全局统计。可编辑源图
+`docs/venus_flow.excalidraw`。
+
 ### 构建与运行
 
 ```bash
