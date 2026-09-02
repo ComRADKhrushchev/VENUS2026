@@ -1,1 +1,1 @@
-src_VENUS/ROTATE.f90: 片段构型旋转
+src_VENUS/ROTATEJKM.f: 对齐矢量至 Z 轴并旋转分子（J,K,M 制备）
