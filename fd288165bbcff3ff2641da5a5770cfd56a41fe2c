@@ -1,1 +1,1 @@
-src_VENUS/EIGOUT.f: 本征值/本征向量输出
+src_VENUS/ENMODE.f: 简正模能量计算
