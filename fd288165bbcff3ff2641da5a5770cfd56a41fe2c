@@ -1,1 +1,1 @@
-src_VENUS/GWRITE.f90: 逐步轨迹诊断写出（fort 相空间与 stdout 统计）
+src_VENUS/HIST.f90: 碰撞结果直方图记录
