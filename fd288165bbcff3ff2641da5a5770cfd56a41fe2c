@@ -1,1 +1,1 @@
-src_VENUS/THERMBATH.f: 热浴速度标定
+src_VENUS/THERMO.f: 速度重标度恒温器
