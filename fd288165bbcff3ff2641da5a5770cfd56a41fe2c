@@ -1,1 +1,1 @@
-src_VENUS/LMODE.f: 局域模键长选取（Miller 半经典）
+src_VENUS/MICROCI.f: CI 量子微正则采样（CI-QM-MICRO）
