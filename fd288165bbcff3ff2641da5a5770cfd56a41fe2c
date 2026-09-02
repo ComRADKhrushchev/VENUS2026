@@ -1,1 +1,1 @@
-src_VENUS/ROTEN.f90: 转动能采样（Boltzmann + 拒绝）
+src_VENUS/ROTN.f90: 角动量/转动惯量张量/转动能计算
