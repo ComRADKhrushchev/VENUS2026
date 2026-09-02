@@ -1,1 +1,1 @@
-src_VENUS/RAND0.f: 随机数序列取数
+src_VENUS/RAND1.f: 乘同余随机数生成器
