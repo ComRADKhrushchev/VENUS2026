@@ -1,1 +1,1 @@
-src_VENUS/ORTHAN.f90: 象限（orthant）采样
+src_VENUS/POTEN.f: 旋转分子至质心系并求势能
