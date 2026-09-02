@@ -1,1 +1,1 @@
-src_VENUS/SELECT.f90: 初始条件选取总分派（NACTA/NACTB）
+src_VENUS/SURF.f: 束流型/热型表面采样
