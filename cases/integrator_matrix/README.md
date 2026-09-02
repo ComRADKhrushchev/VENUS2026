@@ -10,11 +10,17 @@
 
 ## 2. 理论与体系
 
-体系为双原子（2×1.008 u）气相 TEST 势 HARMONIC：每原子独立各向异性简谐阱
-（k_x/k_y/k_z = 1/4/9，x0=0；test_potentials.f90:25-26），产生三个非简并简正
-频率。基线 DT=0.01（10 fs）、NS=100000（input_qct.txt）。ω²=23.0605·C1·k/m=
-0.965173·k/m（(10 fs)⁻²）；解析参照 x(t)=x₀cos(ωt)+(v₀/ω)sin(ωt)。
+体系与势：
+- 双原子（2×1.008 u）气相 TEST 势 HARMONIC。
+- 每原子独立各向异性简谐阱（k_x/k_y/k_z = 1/4/9，x0=0；test_potentials.f90:25-26），
+  产生三个非简并简正频率。
 
+数值设置：
+- 基线 DT=0.01（10 fs）、NS=100000（input_qct.txt）。
+- ω²=23.0605·C1·k/m=0.965173·k/m（(10 fs)⁻²）。
+
+解析参照：
+- x(t)=x₀cos(ωt)+(v₀/ω)sin(ωt)。
 ## 3. 方法与流程
 
 1. sweep.py 生成 8 入口 × DT 矩阵；本目录 input_qct.txt 仅承载 VERLET 10 ps 基线

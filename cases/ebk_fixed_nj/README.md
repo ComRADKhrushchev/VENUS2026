@@ -9,16 +9,20 @@
 
 ## 2. 理论与体系
 
-采样链 `NACTA=0`（双原子 MB/EBK 分支）+ `TRV_A<0`（固定量子数标志）→ `INITEBK`
-按 WKB 经典密度采样：p(r)∝1/|p_r(r)|，径向动量 PR=√(2μ·SUMM(r))（SUMM 为有效势），
-符号以 50% 概率翻转；经典可达域由 EBK 转折点 [RMIN, RMAX] 限定。能级（含非谐修正
-与刚性转子项）：
+采样链：
+- `NACTA=0`（双原子 MB/EBK 分支）+ `TRV_A<0`（固定量子数标志）→ `INITEBK` 采样。
+- r 按 WKB 经典密度采样：p(r)∝1/|p_r(r)|。
+- 径向动量 PR=√(2μ·SUMM(r))（SUMM 为有效势），符号以 50% 概率翻转。
+- 经典可达域由 EBK 转折点 [RMIN, RMAX] 限定。
+
+能级（含非谐修正与刚性转子项）：
 
   EVIBA = hc[ωe(n+½) − ωexe(n+½)²] + hc·Be·J(J+1)
 
-MORSE 谱常数 ωe=2326.4 cm⁻¹、ωexe=35.35 cm⁻¹；n=3、J=2 时理论对照值 EVIBA=22.3347
-kcal/mol。
+参数与理论对照：
 
+- MORSE 谱常数 ωe=2326.4 cm⁻¹、ωexe=35.35 cm⁻¹。
+- n=3、J=2 时理论对照值 EVIBA=22.3347 kcal/mol。
 ## 3. 方法与流程
 
 1. 读取输入并打印 TRV/TROT/N/J 量子数与频谱表（stdout，results.txt）。

@@ -10,15 +10,19 @@
 
 ## 2. 理论与体系
 
-RST 势：C-Au 成对 1D-NN（tanh 激活，GS 态 NH_surf=12/NH_inner=8，63 参数，
-nn_weights_rst.txt）+ cosine 平滑截断（r_cut=6、d_cut=0.5）+ 排斥核 A=10/B=3，
-吸附质受力；板块为 Born-von Karman 弹性 Au(111) slab（Analytic_Potential.txt：
-cutoff 6.0 / a_lat 2.95 / alpha 0.5 / beta 0.3 / gamma 0.1，GENERATE 生成
-Au₁₄₄，BOXLX=20.65、BOXLY=18.2786、SKEW=90°）。QZA_EQ=0,0,-3.8 → 初始
-C 高度 z=2.2 Å。MD 链：恒温重标至 300 K（fort.30 SYSTEM TEMPERATURE 逐步
-输出，10424 样本），均衡完成后进入轨迹传播（NS=30000、DT=0.01=0.1 fs、
-NIP=50，`system temperature=` 每 50 步回显于 run_full.log）。
+RST 势（C-Au 相互作用）：
+- 成对 1D-NN（tanh 激活，GS 态 NH_surf=12/NH_inner=8，63 参数，nn_weights_rst.txt）。
+- cosine 平滑截断（r_cut=6、d_cut=0.5）+ 排斥核 A=10/B=3，吸附质受力。
 
+板块（BVK 弹性 Au(111) slab，参数取 Analytic_Potential.txt）：
+- cutoff 6.0 / a_lat 2.95 / alpha 0.5 / beta 0.3 / gamma 0.1。
+- GENERATE 生成 Au₁₄₄，BOXLX=20.65、BOXLY=18.2786、SKEW=90°。
+
+MD 链与数值设置：
+- QZA_EQ=0,0,-3.8 → 初始 C 高度 z=2.2 Å。
+- 恒温重标至 300 K（fort.30 SYSTEM TEMPERATURE 逐步输出）。
+- 均衡完成后进入轨迹传播（NS=30000、DT=0.01=0.1 fs、NIP=50，
+  `system temperature=` 每 50 步回显于 run_full.log）。
 ## 3. 方法与流程
 
 1. 读取 input_qct.txt，初始化 RST+BVK 板块并做 MD 均衡（NSCALE/NEQUAL=5000，

@@ -9,13 +9,17 @@
 
 ## 2. 理论与体系
 
-TEST 势 MORSE（test_potentials.f90:36-38）；TRV_A=TROT_A=2000 K、NT=1000
-（input_qct.txt）；转动惯量 AIA=0.98925 u·Å²（venus_input 以 QZA_EQ 重算覆盖）。
-抽样公式（THRMAN.f、PROBJ.f）：振动 n=trunc(GAMA(1)/DUM)，GAMA(1)=−ln(U) 服从
-指数分布、DUM=ℏω/k_BT，即 P(n)=(1−q)qⁿ、q=exp(−hν/k_BT)；转动 B=48.5085/(2·AIA·T)，
-P(J)∝WGT(J)(2J+1)exp(−B·J(J+1))，H₂ 正/仲核自旋权重 WGT=奇 J 0.75/偶 J 0.25。
-T=2000 K 时 q=0.1876、B=0.012259。
+体系与输入参数：
+- TEST 势 MORSE（test_potentials.f90:36-38）。
+- TRV_A=TROT_A=2000 K、NT=1000（input_qct.txt）。
+- 转动惯量 AIA=0.98925 u·Å²（venus_input 以 QZA_EQ 重算覆盖）。
 
+抽样公式（THRMAN.f、PROBJ.f）：
+- 振动：n=trunc(GAMA(1)/DUM)，GAMA(1)=−ln(U) 服从指数分布、DUM=ℏω/k_BT，
+  即 P(n)=(1−q)qⁿ、q=exp(−hν/k_BT)。
+- 转动：B=48.5085/(2·AIA·T)，P(J)∝WGT(J)(2J+1)exp(−B·J(J+1))，
+  H₂ 正/仲核自旋权重 WGT=奇 J 0.75/偶 J 0.25。
+- T=2000 K 时 q=0.1876、B=0.012259。
 ## 3. 方法与流程
 
 1. `THRMAN` 按几何分布逐轨迹抽取 n（stdout `NNA =`，1000 条，results.txt）；
