@@ -1,1 +1,1 @@
-src_VENUS/GLPAR.f: Gauss-Legendre 求积参数
+src_VENUS/GWRITE.f90: 逐步轨迹诊断写出（fort 相空间与 stdout 统计）
