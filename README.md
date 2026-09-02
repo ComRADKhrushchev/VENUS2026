@@ -100,9 +100,9 @@ cd cases/morse_bootstrap
 |---|---|---|
 | `TRAJECTORY`（2） | 标准轨迹计算 | 多数 cases |
 | `READ-QP`（0） | 从 stdin 读任意几何+动量起点 | — |
-| `BARRIER`（3） | 势垒鞍点起始（配 `NBAR`/`EBAR`/`TBAR`） | `cases/barrier_saddle`、`cases/fixed_energy_rc` |
+| `BARRIER`（3） | 势垒鞍点起始（配 `NBAR`/`EBAR`/`TBAR`） | 已移除 case（低频功能，历史见 git log） |
 | `PES-SCAN`（4） | 势能曲线扫描 | — |
-| `NORMAL-MODE`（-1） | ⚠️ 死代码入口，读入即强制终止（F14） | — |
+| `NORMAL-MODE`（-1） | ⚠️ 已移除，读入即强制终止 | — |
 
 ### 预设 `MODEL`（自动填充行为参数，均可显式覆盖）
 
@@ -110,7 +110,7 @@ cd cases/morse_bootstrap
 |---|---|---|---|---|---|
 | `GAS-PHASE` | 0 | 0 | 0 | 气相碰撞/孤立分子 | `cases/morse_bootstrap`、`cases/twobody_collision` |
 | `RELAXED-SURFACE` | 1 | 5 | 0 | 松弛表面束流散射 | `cases/emt_beam_scattering`（EMT-NN Au） |
-| `RIGID-SURFACE` | 2 | 0 | 0 | ⚠️ 刚性表面，当前损坏（F24） | `cases/rigid_surface_defect` |
+| `RIGID-SURFACE` | 2 | 0 | 0 | 刚性表面（2026-09 修复，回归 case 在） | `cases/rigid_surface_defect` |
 | `FULL-SURFACE` | 1 | 0 | 7 | 多原子表面板块 + MD 均衡 | `cases/emt_surface_md`（EMT-NN Au） |
 
 体系描述参数（`NATOMS`、`ATOM_MASSES`、`NATOMA`、`NATOMB`、`QZA_EQ`、`QZB_EQ`、
@@ -123,15 +123,15 @@ RELAXED/RIGID` 为 NSURF 的字符串别名；旧整数 `NSURF=2` 会被重映�
 | 值 | 功能 | 示例 |
 |---|---|---|
 | `MB`（0） | Maxwell-Boltzmann；双原子配 `TRV_A<0` 走 EBK 固定 n,J | `cases/ebk_fixed_nj`、`cases/mb_thermal` |
-| `ORTHANT`（1） | 正交采样：固定内能+对称陀螺 | `cases/orthant_sampling` |
-| `MICROCANONICAL`（2） | 微正则简正模能量分配 | `cases/microcanonical_normalmodes` |
+| `ORTHANT`（1） | 正交采样：固定内能+对称陀螺 | 已移除 case（低频功能） |
+| `MICROCANONICAL`（2） | 微正则简正模能量分配 | 已移除 case（低频功能） |
 | `NORMAL-MODE`（3） | 固定简正模量子数 `ANQ_A` | `cases/fixed_normalmode_qnums` |
-| `LOCAL-MODE`（4） | ⚠️ 局域模，参数无来源 → NaN+挂起（F20） | — |
+| `LOCAL-MODE`（4） | ⚠️ 已移除，关键字显式拒绝 | — |
 | `BOLTZMANN-VIB`（5） | 玻尔兹曼振动（几何分布，`TVIB_A`） | `cases/boltzmann_vib` |
-| `FIXED-ENERGY`（6） | 固定能量含反应坐标（`NBAR=3` 自动触发） | `cases/fixed_energy_rc` |
+| `FIXED-ENERGY`（6） | 固定能量含反应坐标（`NBAR=3` 自动触发） | 已移除 case（低频功能） |
 | `MD`（7，仅 B） | 表面 MD 恒温均衡（`THERMOTEMP`/`NSCALE`） | `cases/emt_surface_md` |
-| `QM-MICRO`（8） | 量子微正则（态密度取态） | `cases/qm_micro` |
-| `CI-QM-MICRO`（9） | ⚠️ 死循环（F23） | — |
+| `QM-MICRO`（8） | 量子微正则（态密度取态） | 已移除 case（低频功能） |
+| `CI-QM-MICRO`（9） | ⚠️ 已移除，关键字显式拒绝 | — |
 
 ### 积分器 `INTEGRATOR`
 
@@ -158,7 +158,7 @@ RELAXED/RIGID` 为 NSURF 的字符串别名；旧整数 `NSURF=2` 会被重映�
 | 关键字 | 含义 |
 |---|---|
 | `NT` / `NS` / `DT` / `NIP` | 轨迹数 / 每轨迹步数 / 步长（10 fs）/ 输出间隔 |
-| `ISEED` | 随机种子（非 0 固定；F15：NSELT=2/3 下用户种子实际无效，序列由种子 1 决定） |
+| `ISEED` | 随机种子（非 0 固定；NSELT=2/3 下用户种子实际无效，序列由种子 1 决定） |
 | `EREL` / `NREL` | 初始相对平动能（kcal/mol）/ 固定（1）或温度（0）模式 |
 | `BMAX` / `THTA` / `CHI` / `NCHI` | 碰撞参数上限（Å）/ 入射角（度）/ 方位角 / 固定取向标志 |
 | `ENMT_A` | 固定内能（kcal/mol，ORTHANT/MICROCANONICAL/FIXED-ENERGY/QM-MICRO） |

@@ -47,3 +47,14 @@ Thumbs.db
 
 # Deployment tarballs
 *.tar.gz
+docs/KNOWN_ISSUES.local.md
+*.orig.md
+*.pre_clean.md
+stdout*.txt
+run*.log
+fort.*
+cases/*/stdout*
+_verify*
+verify_*.log
+run_*.log
+*.log
