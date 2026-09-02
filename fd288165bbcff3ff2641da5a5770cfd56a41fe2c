@@ -1,1 +1,61 @@
+src_VENUS/ANGVEL.f: 角速度扣除（去整体转动）
+src_VENUS/ArbitraryAxisRotation.f: 绕任意轴旋转（rotaline）
+src_VENUS/BAREXC.f90: 势垒激发——反应坐标动量选取
+src_VENUS/CENMAS.f90: 去质心动量与质心坐标
+src_VENUS/CPUSEC.f: CPU 计时
+src_VENUS/DENQ.f: 量子态密度计算（EBK 能级）
+src_VENUS/EBOND.f: 局域模（Morse 振子）能量计算
+src_VENUS/EIGN.f: 矩阵对角化（Givens-Householder）
+src_VENUS/EIGOUT.f: 本征值/本征向量输出
+src_VENUS/ENMODE.f: 简正模能量计算
+src_VENUS/FGMTRX.f: 质量加权 Wilson F-G 矩阵构造
+src_VENUS/FINAL.f: 产物能量与散射角计算
+src_VENUS/FINLNJ.f: 产物双原子振动/转动量子数（作用量积分）
+src_VENUS/FMTRX.f: 力常数矩阵构造
+src_VENUS/GAMA.f: 整数阶 gamma 分布随机数
+src_VENUS/GASDEV.f: 正态随机数 grandom()（Box-Muller）
+src_VENUS/GFINAL.f: 轨迹终态分析汇总写入
+src_VENUS/GLO.f: 广义 Langevin 浴遗留副本（构建使用 GLO.f90）
+src_VENUS/GLO.f90: 广义 Langevin 浴（GLO 模型）
+src_VENUS/GLPAR.f: Gauss-Legendre 求积参数
+src_VENUS/GWRITE.f90: 逐步轨迹诊断写出（fort 相空间与 stdout 统计）
+src_VENUS/HIST.f90: 碰撞结果直方图记录
+src_VENUS/HOMOQP.f90: 双原子初始坐标与动量
+src_VENUS/INITEBK.f90: EBK 量化初条件——固定振动/转动量子数
+src_VENUS/INITQP.f90: 正则准周期初条件采样
+src_VENUS/JMAXCALC.f: 转动分布 J 上限计算（温度与转动惯量）
+src_VENUS/LMEXCT.f: 局域模能量接受判据（Morse 振子）
+src_VENUS/LMODE.f: 局域模键长选取（Miller 半经典）
+src_VENUS/MICROCI.f: CI 量子微正则采样（CI-QM-MICRO）
+src_VENUS/NMODE.f90: 简正模分析驱动
+src_VENUS/ORTHAN.f90: 象限（orthant）采样
+src_VENUS/POTEN.f: 旋转分子至质心系并求势能
+src_VENUS/POTENZ.f: 反应物/产物参考构型设置
+src_VENUS/PRINFO.f: 采样信息打印
+src_VENUS/PROBJ.f90: 拒绝采样判据
+src_VENUS/QMMICRO.f: 量子微正则采样（QM-MICRO）
+src_VENUS/RADAU.f: RADAU（RA15）积分器——定步/变步
+src_VENUS/RAND0.f: 随机数序列取数
+src_VENUS/RAND1.f: 乘同余随机数生成器
+src_VENUS/RANDST.f: 随机数生成器初始化（Schwenke）
+src_VENUS/ROTATE.f90: 片段构型旋转
+src_VENUS/ROTATEJKM.f: 对齐矢量至 Z 轴并旋转分子（J,K,M 制备）
+src_VENUS/ROTATEJM.f: (J,M) 态矢量模型旋转双原子
+src_VENUS/ROTATEX.f: 绕质心欧拉角随机旋转子步骤
+src_VENUS/ROTATEY.f: 绕质心欧拉角随机旋转子步骤
+src_VENUS/ROTATEZ.f: 绕质心欧拉角随机旋转子步骤
+src_VENUS/ROTEN.f90: 转动能采样（Boltzmann + 拒绝）
+src_VENUS/ROTN.f90: 角动量/转动惯量张量/转动能计算
+src_VENUS/SELECT.f90: 初始条件选取总分派（NACTA/NACTB）
+src_VENUS/SURF.f: 束流型/热型表面采样
+src_VENUS/SYMPLE.f: 4/6/8 阶辛积分器（Schlier 参数）
+src_VENUS/TEST.f: 中间与终态事件检测
+src_VENUS/THERMBATH.f: 热浴速度标定
+src_VENUS/THERMO.f: 速度重标度恒温器
+src_VENUS/THRMAN.f: 热布居采样——温度到振动/转动能（QM-MICRO 链）
+src_VENUS/VERLET.f90: 速度 Verlet 与 Beeman 积分器
+src_VENUS/VFDATE.f: 当前日期时间获取
+src_VENUS/VOLPSCONE.f: CI 微正则相空间锥体积
+src_VENUS/WEBOND.f: 局域模能量均值/方差累积与分箱
+src_VENUS/WENMOD.f: 简正模能量均值/方差累积与分箱
 src_VENUS/WLBOND.f: 局域模能量统计累积
