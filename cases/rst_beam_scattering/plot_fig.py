@@ -19,6 +19,7 @@ NTRJ = 20
 Z_EQ = 2.90      # atop adsorption well position (A), from smoke test
 E_ADS = -2.81    # adsorption well depth (eV)
 E_INC = 0.63     # incident kinetic energy (eV) = 14.528 kcal/mol
+START_Z = 6.5    # asymptotic-region start height (A)
 
 
 def parse(path):
@@ -43,6 +44,7 @@ def parse(path):
 
 cmap = plt.cm.viridis
 fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(9, 9), sharex=True)
+n_scat = n_ads = 0  # filled in the loop below
 
 stats = []
 for i in range(NTRJ):
@@ -50,10 +52,12 @@ for i in range(NTRJ):
     if len(ts) == 0:
         continue
     tps = ts / 1000.0  # fs -> ps
-    c = cmap(i / max(NTRJ - 1, 1))
+    full = len(ts) >= 601  # NIP=50 over NS=30000 -> 601 blocks if full run
+    c = 'crimson' if full else cmap(i / max(NTRJ - 1, 1))
     ax1.plot(tps, zs, color=c, lw=0.9)
     ax2.plot(tps, rmins, color=c, lw=0.9)
-    full = len(ts) >= 601  # NIP=50 over NS=30000 -> 601 blocks if full run
+    if full: n_ads += 1
+    else: n_scat += 1
     stats.append((i + 1, len(ts), zs.min(), zs[-1], rmins.min(), full))
 
 # adsorption-well annotations on the z panel
@@ -61,13 +65,13 @@ ax1.axhline(Z_EQ, color='crimson', ls='--', lw=1.0,
             label=f'atop well z$_{{eq}}$={Z_EQ:.2f} Å')
 ax1.text(0.02, 0.96,
          f'E$_{{ads}}$ = {E_ADS:.2f} eV  vs  E$_{{inc}}$ = {E_INC:.2f} eV\n'
-         f'well depth / incident energy = {abs(E_ADS)/E_INC:.1f}x '
-         '→ trapping guaranteed',
+         f'scattered {n_scat}/{NTRJ}, adsorbed {n_ads}/{NTRJ}\n'
+         '(phonon channel of elastic slab carries away energy)',
          transform=ax1.transAxes, va='top', ha='left', fontsize=9,
          bbox=dict(boxstyle='round', fc='wheat', alpha=0.85))
 ax1.set_ylabel('C height z (Å)')
-ax1.set_title('RST C/Au(111) beam scattering, '
-              f'E$_{{rel}}$=14.528 kcal/mol, NT={NTRJ}')
+ax1.set_title('RST C/Au(111) beam scattering (asymptotic start z=6.5 A), '
+              f'E$_{{rel}}$=14.528 kcal/mol, NT={NTRJ}; red=adsorbed')
 ax1.legend(loc='upper right', fontsize=9)
 ax2.set_ylabel('C–Au nearest r$_{min}$ (Å)')
 ax2.set_xlabel('Time t (ps)')
