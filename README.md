@@ -167,6 +167,14 @@ cd cases/morse_bootstrap
 | `fort.88` | 束流几何（瞄准点 RX0/RY0 等，表面 case） |
 | `fort.999` | 汇总统计与运行耗时 |
 
+## 现代化改进对照
+
+本仓库相对旧版 VENUS（Fortran 77 固定格式 + COMMON 块 + GOTO 网络）的
+结构性现代化，以 `OLD VENUS VERSIONS/VENUS_TSH_HO2` 为参照，逐主题给出
+"旧 → 新"实际代码摘录：COMMON 块 → 模块（运行时分配）、GOTO 网络 →
+结构化命名循环、顺序 READ(5) 输入 → 关键字解析、固定格式 → 自由格式、
+死代码移除。见 [docs/modernization.md](docs/modernization.md)。
+
 ## 扩展
 
 接入自定义势能面、初始条件采样方法、积分器或非绝热电子方法，见
