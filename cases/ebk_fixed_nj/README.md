@@ -23,6 +23,7 @@
 
 - MORSE 谱常数 ωe=2326.4 cm⁻¹、ωexe=35.35 cm⁻¹。
 - n=3、J=2 时理论对照值 EVIBA=22.3347 kcal/mol。
+
 ## 3. 方法与流程
 
 1. 读取输入并打印 TRV/TROT/N/J 量子数与频谱表（stdout，results.txt）。
