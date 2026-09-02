@@ -1,1 +1,1 @@
-src_VENUS/RADAU.f: RADAU（RA15）积分器——定步/变步
+src_VENUS/RAND0.f: 随机数序列取数
