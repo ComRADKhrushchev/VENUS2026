@@ -52,7 +52,9 @@ Bin Jiang fork（2016）的泛化工程，本仓库只保留**体系无关的 TE
 | `EBOND.f` | 局域模（Morse 振子）能量计算 |
 | **旋转与转动** | |
 | `ROTATE.f90` | 片段构型旋转 |
-| `ROTATEX/Y/Z.f` | 绕质心欧拉角随机旋转子步骤 |
+| `ROTATEX.f` | 绕质心欧拉角随机旋转子步骤（X 轴） |
+| `ROTATEY.f` | 绕质心欧拉角随机旋转子步骤（Y 轴） |
+| `ROTATEZ.f` | 绕质心欧拉角随机旋转子步骤（Z 轴） |
 | `ROTATEJM.f` | (J,M) 态矢量模型旋转双原子 |
 | `ROTATEJKM.f` | 对齐矢量至 Z 轴并旋转分子（J,K,M 制备） |
 | `ArbitraryAxisRotation.f` | 绕任意轴旋转（rotaline） |
