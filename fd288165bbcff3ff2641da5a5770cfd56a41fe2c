@@ -1,1 +1,1 @@
-src_VENUS/ENMODE.f: 简正模能量计算
+src_VENUS/FGMTRX.f: 质量加权 Wilson F-G 矩阵构造
