@@ -19,12 +19,82 @@ Bin Jiang fork（2016）的泛化工程，本仓库只保留**体系无关的 TE
 ├── presets.f90            # MODEL 预设
 ├── harmonic_sampling.f90  # 谐振子 Boltzmann 能量采样
 ├── ENERGY.f / DVDQ.f      # 能量/导数
-├── src_VENUS/             # 引擎子程序库（积分器、初条件采样、旋转、
-│                          #   分析、恒温浴，及输出 writer）
+├── src_VENUS/             # 引擎子程序库（60 文件，逐文件功能见下表）
 ├── src_TEST/              # TEST 势三件套 + POTPRE 接口
 └── cases/                 # 16 个示例 case，各含 README.md + input_qct.txt
                            #   + results.txt（+验证图与入库轨迹）
 ```
+
+### src_VENUS/ 引擎子程序库
+
+| 文件 | 功能 |
+|---|---|
+| **初条件采样（SELECT 分派，NACTA/NACTB）** | |
+| `SELECT.f90` | 初始条件选取总分派（NACTA/NACTB） |
+| `HOMOQP.f90` | 双原子初始坐标与动量 |
+| `INITEBK.f90` | EBK 量化初条件——固定振动/转动量子数 |
+| `INITQP.f90` | 正则准周期初条件采样 |
+| `ORTHAN.f90` | 象限（orthant）采样 |
+| `BAREXC.f90` | 势垒激发——反应坐标动量选取 |
+| `QMMICRO.f` | 量子微正则采样（QM-MICRO） |
+| `MICROCI.f` | CI 量子微正则采样（CI-QM-MICRO） |
+| `THRMAN.f` | 热布居采样——温度到振动/转动能 |
+| `SURF.f` | 束流型/热型表面采样 |
+| **简正模与局域模分析** | |
+| `NMODE.f90` | 简正模分析驱动 |
+| `FGMTRX.f` | 质量加权 Wilson F-G 矩阵构造 |
+| `FMTRX.f` | 力常数矩阵构造 |
+| `EIGN.f` | 矩阵对角化（Givens-Householder） |
+| `EIGOUT.f` | 本征值/本征向量输出 |
+| `ENMODE.f` | 简正模能量计算 |
+| `LMODE.f` | 局域模键长选取（Miller 半经典） |
+| `LMEXCT.f` | 局域模能量接受判据（Morse 振子） |
+| `EBOND.f` | 局域模（Morse 振子）能量计算 |
+| **旋转与转动** | |
+| `ROTATE.f90` | 片段构型旋转 |
+| `ROTATEX/Y/Z.f` | 绕质心欧拉角随机旋转子步骤 |
+| `ROTATEJM.f` | (J,M) 态矢量模型旋转双原子 |
+| `ROTATEJKM.f` | 对齐矢量至 Z 轴并旋转分子（J,K,M 制备） |
+| `ArbitraryAxisRotation.f` | 绕任意轴旋转（rotaline） |
+| `ROTN.f90` | 角动量/转动惯量张量/转动能计算 |
+| `ROTEN.f90` | 转动能采样（Boltzmann + 拒绝） |
+| `CENMAS.f90` | 去质心动量与质心坐标 |
+| `ANGVEL.f` | 角速度扣除（去整体转动） |
+| **积分器** | |
+| `VERLET.f90` | 速度 Verlet 与 Beeman 积分器 |
+| `SYMPLE.f` | 4/6/8 阶辛积分器（Schlier 参数） |
+| `RADAU.f` | RADAU（RA15）积分器——定步/变步 |
+| **势能与参考构型** | |
+| `POTEN.f` | 旋转分子至质心系并求势能 |
+| `POTENZ.f` | 反应物/产物参考构型设置（VZERO 基准） |
+| **随机数** | |
+| `RANDST.f` | 随机数生成器初始化（Schwenke） |
+| `RAND1.f` | 乘同余随机数生成器 |
+| `RAND0.f` | 随机数序列取数 |
+| `GAMA.f` | 整数阶 gamma 分布随机数 |
+| `GASDEV.f` | 正态随机数（Box-Muller） |
+| `PROBJ.f90` | 拒绝采样判据 |
+| `JMAXCALC.f` | 转动分布 J 上限计算（温度与转动惯量） |
+| `DENQ.f` | 量子态密度计算（EBK 能级） |
+| `GLPAR.f` | Gauss-Legendre 求积参数 |
+| `VOLPSCONE.f` | CI 微正则相空间锥体积 |
+| **恒温与热浴** | |
+| `THERMO.f` | 速度重标度恒温器 |
+| `THERMBATH.f` | 热浴速度标定 |
+| `GLO.f90` | 广义 Langevin 浴（GLO 模型）；`GLO.f` 为遗留副本（构建用 .f90） |
+| **终态分析与输出** | |
+| `TEST.f` | 中间与终态事件检测（散射/反应判据） |
+| `FINAL.f` | 产物能量与散射角计算 |
+| `FINLNJ.f` | 产物双原子振动/转动量子数（作用量积分） |
+| `GFINAL.f` | 轨迹终态分析汇总写入 |
+| `GWRITE.f90` | 逐步轨迹诊断写出（fort 相空间与 stdout 统计） |
+| `HIST.f90` | 碰撞结果直方图记录 |
+| `PRINFO.f` | 采样信息打印 |
+| `WEBOND.f` / `WLBOND.f` | 局域模能量统计累积（均值/方差/分箱） |
+| `WENMOD.f` | 简正模能量均值/方差累积与分箱 |
+| **工具** | |
+| `CPUSEC.f` | CPU 计时 |
+| `VFDATE.f` | 当前日期时间获取 |
 
 ### 构建与运行
 
