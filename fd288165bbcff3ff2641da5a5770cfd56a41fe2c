@@ -1,1 +1,1 @@
-src_VENUS/EBOND.f: 局域模（Morse 振子）能量计算
+src_VENUS/EIGN.f: 矩阵对角化（Givens-Householder）
