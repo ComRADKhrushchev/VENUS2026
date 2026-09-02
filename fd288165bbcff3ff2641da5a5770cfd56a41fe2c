@@ -1,1 +1,1 @@
-src_VENUS/NMODE.f90: 简正模分析驱动
+src_VENUS/ORTHAN.f90: 象限（orthant）采样
