@@ -1,1 +1,1 @@
-src_VENUS/PRINFO.f: 采样信息打印
+src_VENUS/PROBJ.f90: 拒绝采样判据
