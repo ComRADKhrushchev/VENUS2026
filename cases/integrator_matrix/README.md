@@ -18,7 +18,7 @@
 ## 3. 方法与流程
 
 1. sweep.py 生成 8 入口 × DT 矩阵；本目录 input_qct.txt 仅承载 VERLET 10 ps 基线
-   （Tier B 双跑门禁判定）。
+   。
 2. 阶数收敛扫描：总时长固定 T=1.0 code，DT 自 0.04 逐次折半，终态误差对解析解做
    log-log 拟合得有效阶数（results.txt 阶数收敛片段）。
 3. 长时间漂移：DT=0.01 跑 10 ps，能量由 fort.8/fort.1001 坐标动量按
