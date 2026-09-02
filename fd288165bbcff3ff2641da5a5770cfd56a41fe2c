@@ -1,1 +1,1 @@
-src_VENUS/THRMAN.f: 热布居采样——温度到振动/转动能（QM-MICRO 链）
+src_VENUS/VERLET.f90: 速度 Verlet 与 Beeman 积分器
