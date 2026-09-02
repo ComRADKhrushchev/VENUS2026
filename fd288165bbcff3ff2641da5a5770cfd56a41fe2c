@@ -1,1 +1,1 @@
-src_VENUS/CPUSEC.f: CPU 计时
+src_VENUS/DENQ.f: 量子态密度计算（EBK 能级）
