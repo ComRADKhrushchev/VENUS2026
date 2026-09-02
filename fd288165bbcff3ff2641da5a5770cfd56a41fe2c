@@ -1,1 +1,1 @@
-src_VENUS/ROTATEJM.f: (J,M) 态矢量模型旋转双原子
+src_VENUS/ROTATEX.f: 绕质心欧拉角随机旋转子步骤
