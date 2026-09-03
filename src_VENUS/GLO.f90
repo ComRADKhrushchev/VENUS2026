@@ -38,10 +38,10 @@
       FACTOR=DSQRT(TVIBB*BOLTZ*W(NATOMA(1)+1))
       FACTOR2=DSQRT(627.509D0*C1*1822.89D0)
       DO I=1,3
-      G1=GASDEV(ISEED)
-      G2=GASDEV(ISEED)
-      G3=GASDEV(ISEED)
-      G4=GASDEV(ISEED)
+      G1=gasdev()
+      G2=gasdev()
+      G3=gasdev()
+      G4=gasdev()
       J=3*(NATOMA(1))+I
       K=3*(NATOMA(1)+1)+I
       Q(J)=FACTOR*G1/WEFF(I)/W(NATOMA(1)+1)
@@ -82,7 +82,7 @@
       K=3*(NATOMA(1)+1)+II
       I1=NATOMA(1)+1
       I2=NATOMA(1)+2
-      GN(K)=GASDEV(IDUM)*GSW
+      GN(K)=gasdev()*GSW
       PDOT(J)=PDOT(J)-2D0*WS2(II)*W(I1)*Q(J)+WGS2(II)*W(I1)*Q(K)
       PDOT(K)=PDOT(K)-2D0*WG2(II)*W(I2)*Q(K)+WGS2(II)*W(I2)*Q(J)
       PDOT(K)=PDOT(K)-FCG*P(K)+GN(K)
@@ -110,7 +110,7 @@
       K=3*(NATOMA(1)+1)+II
       I1=NATOMA(1)+1
       I2=NATOMA(1)+2
-      GN(K)=GASDEV(IDUM)*GSW
+      GN(K)=gasdev()*GSW
       PDOT(J)=PDOT(J)-2D0*WS2(II)*W(I1)*Q(J)+WGS2(II)*W(I1)*Q(K)
       PDOT(K)=PDOT(K)-2D0*WG2(II)*W(I2)*Q(K)+WGS2(II)*W(I2)*Q(J)
       PDOT(K)=PDOT(K)-FCG*P(K)+GN(K)

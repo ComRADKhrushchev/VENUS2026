@@ -414,6 +414,7 @@ contains
        P(J2) = GASDEV*DESKET*sqrt(W(J))
        P(J3) = GASDEV*DESKET*sqrt(W(J))
     end do
+    write(6,*) 'DBG-MBA TRVA=',TRVA,' DESKET=',DESKET,' P=',P(1:3)
 
     do I = 1, NATOMA(1)
        L(I) = LA(1,I)

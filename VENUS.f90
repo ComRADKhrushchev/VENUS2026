@@ -334,8 +334,10 @@ program VENUS
         ENDDO
      ENDIF
 
-     ! Enforce surface alignment before SELECT modifies Q
-     if (NZDOWN == 1) call FIXROTDATM(1)
+     ! Enforce surface alignment before SELECT modifies Q.
+     ! Only meaningful for a polyatomic fragment A (aligns its surface bond);
+     ! a monatomic A is spherically symmetric - skip the alignment stub.
+     if (NZDOWN == 1 .and. NATOMA(1) > 1) call FIXROTDATM(1)
 
      ! If user specified a fixed incident angle (NTHTA >= 0), ensure
      ! THTA is correctly set in radians before SELECT overwrites it.

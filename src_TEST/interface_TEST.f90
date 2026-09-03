@@ -44,15 +44,68 @@ subroutine DPESHON(NDUM, Qarr)
 end subroutine DPESHON
 
 
-! FIXROTDATM: surface-bond alignment (surface builds only). TEST systems
-! have no surface bond; reaching this means NZDOWN=1 was set with a TEST PES,
-! which is not a supported combination — stop loudly.
+! FIXROTDATM: align fragment A's atom1-atom2 axis with the z direction
+! (surface-oscillator / surface-bond builds). Ported from the 2D interface.
+! Degenerate case (coincident atoms, e.g. a GLO spring pair at equilibrium)
+! is a no-op - there is no axis to align.
 subroutine FIXROTDATM(I)
+   use venus_data, only: Q, W
    integer :: I
-   write(6,*) 'ERROR: FIXROTDATM stub reached in TEST build ', &
-              '(NZDOWN=1 is surface-specific; not valid with TEST_PES)'
-   stop
+   real(8) :: VECZ(3), BDVC(3), VECX(3), BDVCXY(3)
+   real(8) :: COSPHI, PHI, COSTHTA, nxy, n3
+   VECX = (/1.0d0, 0.0d0, 0.0d0/)
+   VECZ = (/0.0d0, 0.0d0, 1.0d0/)
+   BDVC = Q(4:6) - Q(1:3)
+   n3 = sqrt(dot_product(BDVC, BDVC))
+   if (n3 < 1.0d-8) return          ! coincident pair: nothing to align
+   BDVCXY(1:2) = BDVC(1:2)
+   nxy = sqrt(dot_product(BDVCXY, BDVCXY))
+   if (nxy > 1.0d-8) then
+      COSPHI = dot_product(BDVCXY, VECX) / nxy
+      PHI = acos(max(-1.0d0, min(1.0d0, COSPHI)))
+      ! rotate about z by -+PHI to bring the pair into the xz plane
+      call ALIGN_ZSTEP(PHI)
+   end if
+   BDVC = Q(4:6) - Q(1:3)
+   COSTHTA = dot_product(BDVC, VECZ) / sqrt(dot_product(BDVC, BDVC))
+   ! tilt onto the z axis (rotation about y by the complement angle)
+   call ALIGN_YSTEP(COSTHTA)
+   write(6,*) '#### ENFORCED ROTATION ACTIVATED ####'
 end subroutine FIXROTDATM
+
+! Rotate atoms 1-2 about the z axis by angle PHI (rigid, about origin).
+subroutine ALIGN_ZSTEP(PHI)
+   use venus_data, only: Q, P
+   real(8) :: PHI, CP, SP, x, y, px, py
+   integer :: J
+   CP = cos(PHI); SP = sin(PHI)
+   do J = 1, 2
+      x = Q(3*J-2); y = Q(3*J-1)
+      Q(3*J-2) =  x*CP + y*SP
+      Q(3*J-1) = -x*SP + y*CP
+      px = P(3*J-2); py = P(3*J-1)
+      P(3*J-2) =  px*CP + py*SP
+      P(3*J-1) = -px*SP + py*CP
+   end do
+end subroutine ALIGN_ZSTEP
+
+! Rotate atoms 1-2 about the y axis so that the pair axis cos matches
+! COSTHTA with the z axis (sign-aware tilt).
+subroutine ALIGN_YSTEP(COSTHTA)
+   use venus_data, only: Q, P
+   real(8) :: COSTHTA, SNT, CST, x, z, px, pz
+   integer :: J
+   CST = COSTHTA
+   SNT = sqrt(max(0.0d0, 1.0d0 - CST*CST))
+   do J = 1, 2
+      x = Q(3*J-2); z = Q(3*J)
+      Q(3*J-2) = x*CST - z*SNT
+      Q(3*J)   = x*SNT + z*CST
+      px = P(3*J-2); pz = P(3*J)
+      P(3*J-2) = px*CST - pz*SNT
+      P(3*J)   = px*SNT + pz*CST
+   end do
+end subroutine ALIGN_YSTEP
 
 ! GASDEV: normal deviate (Box-Muller). Called by THERMO/GLO and the VERLET
 ! thermostat path; src_VENUS/GASDEV.f provides the equivalent grandom().

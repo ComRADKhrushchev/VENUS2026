@@ -353,12 +353,18 @@ contains
 
    !--- anisotropic harmonic well on each atom -----------------------------------
    subroutine harm_vg(natom, q, v, g)
+      use venus_data, only: NSURF, NGLO, NATOMA
       integer, intent(in)  :: natom
       real(8), intent(in)  :: q(3*natom)
       real(8), intent(out) :: v, g(3*natom)
-      integer :: i, k
+      integer :: i, k, imax
       v = 0.0d0
-      do i = 1, natom
+      ! GLO surface-oscillator mode: atoms 1..NATOMA (spring pair + ghost)
+      ! are driven entirely by the GLO spring/friction equations - the PES
+      ! must not add its own well on top of them.
+      imax = natom
+      if (NSURF == 2 .and. NGLO /= 0) imax = NATOMA(1)
+      do i = 1, imax
          do k = 1, 3
             v = v + 0.5d0*h_k(k)*(q(3*(i-1)+k) - h_x0(k))**2
             g(3*(i-1)+k) = h_k(k)*(q(3*(i-1)+k) - h_x0(k))

@@ -34,10 +34,26 @@ C        given by the first four atoms of fragment B -- the rigid slab
 C        itself. The old indices NATOMS+1..NATOMS+4 lie outside the
 C        initialised coordinate range (3*NATOMS), so the cell read zeros
 C        and SKEW became NaN on every trajectory.
-         IF (NATOMB(1).LT.4) THEN
-            WRITE(6,*)'ERROR: NSURF=2 NEEDS >= 4 SURFACE ATOMS'
+         IF (NGLO.EQ.0 .AND. NATOMB(1).LT.4) THEN
+            WRITE(6,*)'ERROR: NSURF=2 (rigid cell) NEEDS >= 4 SURFACE',
+     &                ' ATOMS'
             WRITE(6,*)'       NATOMB(1)=',NATOMB(1)
             STOP
+         ENDIF
+         IF (NGLO.NE.0) THEN
+C           Surface-oscillator model (GLO): a single mobile surface atom
+C           coupled by springs to a dissipative ghost - no unit cell.
+C           Set a degenerate 1x1 reference (SKEW=pi/4 avoids the
+C           tan(pi/2) singularity in the NRNDXY aiming formulas).
+            BOXLX=0.0D0
+            BOXLY=0.0D0
+            SKEW=0.7853981633974483D0
+            DO I=1,3
+               DO J=1,4
+                  EDGE(J,I)=0.0D0
+               ENDDO
+            ENDDO
+            GOTO 330
          ENDIF
          NN1=LB(1,1)
          NN2=LB(1,2)
@@ -85,6 +101,7 @@ C        and SKEW became NaN on every trajectory.
          WRITE(6,'(3F15.8)')EDGE(1:3,i)
         enddo
       ENDIF
+  330 CONTINUE
 !   END
 
 !-->    ADDED BY BIN AT 9/30/2016
@@ -208,14 +225,26 @@ C
       ACZ=ACZ+RZ0
 
       IF (NZDOWN.EQ.1) THEN
-!        Surface oscillator model: offset fragment B (gas atom) instead of A
-         N=NATOMB(1)
-         DO I=1,N
-            J=3*LB(1,I)
-            Q(J)=Q(J)+ACZ
-            Q(J-1)=Q(J-1)+ACY
-            Q(J-2)=Q(J-2)+ACX
-         ENDDO
+!        Surface oscillator model: offset the gas-phase species.
+!        With NATOMB>0 the gas is fragment B; in the GLO layout
+!        (NATOMB=0, A=gas + surface + ghost) it is fragment A itself.
+         IF (NATOMB(1).GT.0) THEN
+            N=NATOMB(1)
+            DO I=1,N
+               J=3*LB(1,I)
+               Q(J)=Q(J)+ACZ
+               Q(J-1)=Q(J-1)+ACY
+               Q(J-2)=Q(J-2)+ACX
+            ENDDO
+         ELSE
+            N=NATOMA(1)
+            DO I=1,N
+               J=3*LA(1,I)
+               Q(J)=Q(J)+ACZ
+               Q(J-1)=Q(J-1)+ACY
+               Q(J-2)=Q(J-2)+ACX
+            ENDDO
+         ENDIF
       ELSE
          N=NATOMA(1)
          DO I=1,N
@@ -248,7 +277,11 @@ C      VELA=DUM*WTB(1)/WT
 C      VELB=VELA-DUM
       IF(NREL.EQ.1)THEN
         IF (NZDOWN.EQ.1) THEN
-          DUM=SQRT(2.0D0*SEREL/WTB(1))
+C         Gas species mass: fragment B, or fragment A in the GLO
+C         NATOMB=0 layout (where WTB=0 would divide by zero).
+          WGAS=WTB(1)
+          IF (NATOMB(1).LE.0) WGAS=WTA(1)
+          DUM=SQRT(2.0D0*SEREL/WGAS)
           VELA=0D0
           VELB=DUM
         ELSE
@@ -262,7 +295,9 @@ C      VELB=VELA-DUM
       IF(NREL.EQ.2)THEN
         SEREL=TRANS*C1
         IF (NZDOWN.EQ.1) THEN
-          VELA0=SQRT(2.0D0*SEREL/WTB(1))
+          WGAS=WTB(1)
+          IF (NATOMB(1).LE.0) WGAS=WTA(1)
+          VELA0=SQRT(2.0D0*SEREL/WGAS)
         ELSE
           VELA0=SQRT(2.0D0*SEREL/WTA(1))
         END IF
@@ -306,15 +341,27 @@ C
 C     CONTRIBUTION OF RELATIVE VELOCITY TO A AND B MOMENTUM
 C
       IF (NZDOWN.EQ.1) THEN
-!        Surface oscillator model: velocity to fragment B (gas atom)
-         N=NATOMB(1)
-         DO I=1,N
-            J=3*LB(1,I)
-            PMOD=W(LB(1,I))*VELB
-            P(J)=P(J)+PMOD*UIZ
-            P(J-1)=P(J-1)+PMOD*UIY
-            P(J-2)=P(J-2)+PMOD*UIX
-         ENDDO
+!        Surface oscillator model: incident velocity to the gas species
+!        (fragment B, or fragment A in the GLO NATOMB=0 layout).
+         IF (NATOMB(1).GT.0) THEN
+            N=NATOMB(1)
+            DO I=1,N
+               J=3*LB(1,I)
+               PMOD=W(LB(1,I))*VELB
+               P(J)=P(J)+PMOD*UIZ
+               P(J-1)=P(J-1)+PMOD*UIY
+               P(J-2)=P(J-2)+PMOD*UIX
+            ENDDO
+         ELSE
+            N=NATOMA(1)
+            DO I=1,N
+               J=3*LA(1,I)
+               PMOD=W(LA(1,I))*VELB
+               P(J)=P(J)+PMOD*UIZ
+               P(J-1)=P(J-1)+PMOD*UIY
+               P(J-2)=P(J-2)+PMOD*UIX
+            ENDDO
+         ENDIF
       ELSE
          N=NATOMA(1)
          DO I=1,N

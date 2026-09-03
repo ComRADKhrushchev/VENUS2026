@@ -1,26 +1,23 @@
-# 刚性表面束流散射 —— 程序实际输出摘录
-# 来源: 运行 stdout 与 fort.88/fort.1NNN（ISEED 固定，NT=20）
+# 表面振子（GLO）束流散射 —— 程序实际输出摘录
+# 来源: 本仓库 venus_test.e 实跑（cases/rigid_surface/input_qct.txt）
 # ============================================================
 
 【程序横幅】
 
                    NSELT =  2    NSURF =  2
-          GAS/SURFACE COLLISION --- RIGID SURFACE
-
-【瞄准点（fort.88，每轨迹一行 RX0/RY0）】
-
-  4.638292966625533E-002  0.749603759138946
-  0.162285495034069       0.438271026380520
-  0.819518044961268        4.10688318974825
-  ...（全部 20 行均为有限值）
+         GAS/SURFACE COLLISION --- RIGID SURFACE
+ GENERALIZED LANGEVIN OSCILLATOR MODEL
+ FREQUENCY AND FRICTION PARAMETERS IN AU
+   2.37410E-04  2.37410E-04  2.37410E-04  2.37410E-04  2.37410E-04  2.37410E-04   0.01000
+   （WS1/WG1 = 52.1 cm⁻¹ 的 AU 换算值；FCG = 0.01）
 
 【轨迹首步（fort.1001）】
 
   --- step       0 t(fs)=     0.000 ---
-  E0(eV)      90.46756 T(eV)       0.21682 H(eV)    -121.31563
-  Q(C)=       4.04638       0.74960       8.00000
-   Au_nearest=    3 r_min  8.0914
+  E0(eV)      40.00000 T(eV)       0.26221 H(eV)      40.26364
+  Q(C)=       4.00000       0.00000       8.00000
+   Au_nearest=    2 r_min  8.2076
+   Au_xyz(Q)=     -0.0054   -0.0535    0.0386
 
-（stdout 与全部 fort.1NNN 零 NaN；A 起始高度 8.0、瞄准点与 fort.88 一致。）
-
-【说明】验证结论（瞄准点有限性、能量守恒）见 README.md。
+（H 自 8.0 Å 入射；表面 Au 初位移 ~0.04 Å = GLOSELECT 按 TVIB_B=300 K
+ 采样的振子热初条件。20 条轨迹全部数值有限。）

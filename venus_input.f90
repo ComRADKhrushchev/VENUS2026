@@ -258,6 +258,9 @@ contains
        call get_real_arr('WS1', WS1, 3)
        call get_real_arr('WG1', WG1, 3)
        FCG = get_real('FCG', 0.0d0)
+       ! GLO layout has NATOMB=0, so the NACTB==5 branch never runs:
+       ! read the oscillator sampling temperature here instead.
+       TVIBB = get_real('TVIB_B', 0.0d0)
        WRITE(6,*)'GENERALIZED LANGEVIN OSCILLATOR MODEL'
        WRITE(6,*)'FREQUENCY AND FRICTION PARAMETERS IN AU'
        WRITE(6,'(7F10.5)') WS1(1:3), WG1(1:3), FCG

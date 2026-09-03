@@ -156,8 +156,18 @@ contains
   ! FCG = 0 (default) degenerates to RELAXED-SURFACE behaviour.
   ! ---------------------------------------------------------------------------
   subroutine preset_glo_surface()
+    ! Surface-oscillator model: NSURF=2 + NGLO>0 activates the GLO
+    ! (ghost Langevin oscillator) path - a mobile surface atom coupled
+    ! by springs to a dissipative ghost. Layout: NATOMS = NATOMA+2
+    ! (gas fragment A + surface atom + ghost), NATOMB = 0.
     call preset_relaxed_surface()
-    call set_default('FCG', '0.0')
+    ! set SURFACE_MODEL (string path), not the NSURF integer: map_old_nsurf
+    ! would remap 2 to 1 (old numbering) and silently yield a relaxed
+    ! surface - the same trap the RIGID preset had (D1).
+    call set_default('SURFACE_MODEL', 'RIGID')
+    call set_default('NGLO', '1')
+    call set_default('NZDOWN', '1')
+    call set_default('FCG', '0.01')
   end subroutine preset_glo_surface
 
 end module presets

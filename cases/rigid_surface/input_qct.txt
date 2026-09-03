@@ -1,28 +1,35 @@
 # =====================================================================
-# 刚性表面缺陷登记 —— 规范整理输入
-# 源输入: regression/cases/p32_rigid_nsurf2/input_qct.txt
-# 整理说明: 按 &SYSTEM / &DYNAMICS / &OUTPUT 三块重排，逐关键字中文注释；
-#           关键字值与源输入一致。TITLE1 已语义化（源输入标题含工程编号 P3.2）。
-#           本 case 为缺陷登记：断言当前（损坏）行为，非手册 V.24-26 预期物理。
+# 表面振子（GLO）束流散射 —— NSURF=2 + NGLO=1
+# 布局: NATOMS = NATOMA + 2（气体 H + 表面 Au + GLO ghost），NATOMB = 0
+# 弹簧频率以 AU 输入（GLOINIT 内 ×413.4 换算）；采样温度 TVIB_B
 # =====================================================================
+
 
 # ===== &SYSTEM =====   系统定义 + 电子结构
 # 模型预设：刚性表面（预设语义 bug，见说明文档 D1）
-MODEL = RIGID-SURFACE
+MODEL = GLO-SURFACE
 # 显式刚性表面（绕开预设 bug，锁定 NSURF=2 真行为）
-SURFACE_MODEL = RIGID
+# SURFACE_MODEL 由 GLO-SURFACE 预设管理（NSURF=2）
 # 标题行（语义化）
-TITLE1 = RIGID surface cell-defect registry - 1-atom gas + 4-atom surface, NT=20
+TITLE1 = GLO surface oscillator - H atom on Au + ghost spring
 # 任务类型：经典轨迹
+# ===== 表面振子（GLO）参数 =====
+NGLO = 1                    # 广义 Langevin 振子开启（NSURF=2 + NGLO≠0 → surface-oscillator）
+NZDOWN = 1                  # 表面振子模式：气体物种定位（NATOMB=0 时作用于片段 A）
+WS1 = 2.373850e-04, 2.373850e-04, 2.373850e-04  # 表面弹簧频率 [AU]（52.1 cm⁻¹）
+WG1 = 2.373850e-04, 2.373850e-04, 2.373850e-04  # ghost 频率 [AU]
+FCG = 0.01                  # ghost 摩擦系数
+TVIB_B = 300.0               # 表面振子采样温度 [K]
+
 TASK = TRAJECTORY
 # 体系无关测试势：简谐势
 TEST_PES = HARMONIC
-NATOMS = 5                  # 原子总数（1 个 A + 4 个 B）
-ATOM_MASSES = 1.008, 1.008, 1.008, 1.008, 1.008   # 原子质量 [u]（全部相等）
-NATOMA = 1                  # 片段 A 原子数（单原子气体）
-NLINA = 1                   # 片段 A 线型标志：1 = 线型（单原子）
-NATOMB = 4                  # 片段 B 原子数（表面 4 原子）
-NLINB = 0                   # 片段 B 线型标志：0 = 非线性
+NATOMS = 3                  # H(A,气体) + 表面 Au(2) + GLO ghost(3)
+ATOM_MASSES = 1.008, 196.97, 196.97  # H + 表面 Au + ghost
+NATOMA = 1                  # 片段 A = 气体 H（GLO 布局：A + 表面 + ghost）
+NLINA = 1                   # 单原子片段（线型标志形式值）
+NATOMB = 0                  # GLO 布局无 B 片段
+# NLINB 不需要（NATOMB=0）
 # 电子方法：绝热经典
 ELEC_METHOD = ADIABATIC
 
@@ -31,19 +38,20 @@ ELEC_METHOD = ADIABATIC
 INTEGRATOR = VERLET
 ISEED = 20260834            # 随机种子
 NT = 20                     # 轨迹数
-NS = 20000                    # 每轨迹 MD 步数
+NS = 20000                  # 每轨迹 MD 步数（2 ps）
 DT = 0.01                   # 时间步 [10 fs]
 # 片段 A 初始采样：MB（束流链，NSURF=2 共享 NSURF=1 入射链）
 INIT_SAMPLING_A = MB
+NACTA = 0                   # MB 原子采样（振子热初条件由 GLOSELECT 负责）
 # 片段 B 初始采样：MB（NSURF=2 跳过 B 采样，见说明 D2）
-INIT_SAMPLING_B = MB
+# INIT_SAMPLING_B 不需要（NATOMB=0）
 EREL = 5.0, 8.0             # 初始相对平动能 Erel [kcal/mol]（取首值 5.0）
 NREL = 1                    # 相对能量采样方式：1 = 固定 Erel
 THTA = 30.0                 # 束流入射角 θ [度]
 NCHI = 1                    # 取向角标志：1 = 固定 χ
 CHI = 0.0                   # 取向角 χ [度]
-QZA_EQ = 0.0, 0.0, 8.0      # A 片段平衡构型 [Å]（气体高度 8.0 Å）
-QZB_EQ = 0.0, 0.0, 0.0, 5.0, 0.0, 0.0, 5.0, 5.0, 0.0, 0.0, 5.0, 0.0   # B 片段平衡构型（表面 4 原子，12 个坐标；NSURF=2 被忽略）
+QZA_EQ = 0.0, 0.0, 0.0      # H 平衡位（入射位置由 SURF 组装）
+# QZB_EQ 不需要（NATOMB=0）
 
 # ===== &OUTPUT =====     输出控制
 NCOOR = 1                   # 坐标输出参数
