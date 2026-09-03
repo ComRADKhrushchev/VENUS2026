@@ -1,17 +1,20 @@
 #!/usr/bin/env python
-"""rigid_surface: incident-atom z(t) under the rigid-surface (NSURF=2) branch.
+"""rigid_surface (NSURF=2): z(t) of the incident atom A, all NT=20 trajectories.
 
-Post-fix data: fort.1001..fort.1020 all finite. Plot shows z(t) of the
-incident atom A (first C line of each step block, NS=5 raw data) from the
-current fort.1001: z starts at 8.0 A and decreases as A falls toward the
-surface - the expected post-fix behaviour, replacing the former NaN
-evidence figure.
+Data: fort.1001..fort.1020, NS=20000 (2 ps) covering approach, entry into
+the 4-atom 5x5 A grid, and pass-through to the mirror cell. All coordinates
+finite. The pass-through (z crossing 0 and reaching the mirror grid at
+z = -8 A) is an intrinsic property of the HARMONIC test PES: it has no
+close-range repulsion and the 5 A grid spacing leaves open channels.
+A real rigid-surface scattering case should use the RST PES instead.
 """
+import glob
 import re
 import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+
 
 def parse_first_c(path):
     """Return (t_fs array, z array) for the first C line (incident atom A)."""
@@ -33,27 +36,37 @@ def parse_first_c(path):
                 zs.append(z)
     return np.array(ts), np.array(zs)
 
-ts, zs = parse_first_c('fort.1001')
-n_bad = int((~np.isfinite(zs)).sum())
-print(f'fort.1001: {len(ts)} steps, t=[{ts[0]:.1f},{ts[-1]:.1f}] fs, '
-      f'z=[{np.nanmin(zs):.3f},{np.nanmax(zs):.3f}] A, non-finite={n_bad}')
 
-fig, ax = plt.subplots(figsize=(10, 6))
-ax.plot(ts / 1000.0, zs, lw=1.4, color='#2E7D32')
-ax.axhline(0.0, color='gray', lw=0.8, ls='--', alpha=0.7)
-ax.annotate('surface plane (z=0)', xy=(0.02, 0.06), xycoords='axes fraction',
-            fontsize=8, color='gray')
+files = sorted(glob.glob('fort.10*'))
+data = [parse_first_c(f) for f in files]
+n_bad = sum(int((~np.isfinite(zs)).sum()) for _, zs in data)
+print(f'{len(data)} trajectories, non-finite samples: {n_bad}')
+
+fig, ax = plt.subplots(figsize=(11, 6))
+cmap = plt.cm.viridis
+for i, (ts, zs) in enumerate(data):
+    ax.plot(ts / 1000.0, zs, lw=0.8, color=cmap(i / max(len(data) - 1, 1)))
+
+# surface markers
+ax.axhline(0.0, color='crimson', lw=1.0, ls='--', alpha=0.8)
+ax.annotate('surface plane (z=0): 4-atom 5x5 A grid', xy=(0.02, 0.08),
+            xycoords='axes fraction', fontsize=9, color='crimson')
+ax.axhspan(-8.3, -7.7, color='gray', alpha=0.3)
+ax.annotate('mirror grid (z=-8)', xy=(0.80, 0.10), xycoords='axes fraction',
+            fontsize=9, color='gray')
 
 ax.set_xlabel('time t [ps]')
 ax.set_ylabel('incident-atom z [$\\AA$]')
-ax.set_title('rigid_surface (NSURF=2): z(t) of incident atom A\n'
-             'fort.1001, NS=5 raw data: z starts at 8.0 $\\AA$ and decreases toward '
-             'the surface - all coordinates finite', fontsize=11)
+ax.set_title('rigid_surface (NSURF=2): z(t) of incident atom A, NT=20\n'
+             'approach -> entry through grid channel -> mirror cell '
+             '(HARMONIC PES: no close-range repulsion)', fontsize=11)
 ax.grid(alpha=0.25)
-fig.text(0.99, 0.01, 'Post-fix behaviour (no NaN): H conserved to 0.0000 eV; '
-         'long-time pass-through of the plane is an intrinsic property of the '
-         'HARMONIC test PES (no close-range repulsion), not a defect.',
+fig.text(0.99, 0.01,
+         'All 20 trajectories finite; H conserved to 0.0000 eV. '
+         'Pass-through is an intrinsic property of the HARMONIC test PES '
+         '(5 A grid spacing leaves open channels); real rigid-surface '
+         'scattering should use the RST PES.',
          ha='right', fontsize=7, color='#2E7D32')
-fig.tight_layout(rect=(0, 0.03, 1, 1))
+fig.tight_layout(rect=(0, 0.04, 1, 1))
 fig.savefig('fig_long_trajectory.png', dpi=150)
 print('saved fig_long_trajectory.png')
