@@ -68,7 +68,7 @@ PES 接口层的换算责任划分：
 **坐标语义由你的势定义**。TEST 势把 Q 的数值按 bohr 解释（`m_re=1.401` bohr 等
 参数与 `QZA_EQ` 输入自洽）；换成别的构建时同样只需保持"势参数、几何输入、梯度
 量纲"三者自洽。判断标准：`cases/` 任一 case 的 fort 输出回读能量应与 stdout
-打印一致（对照法见 `cases/morse_bootstrap/results.txt` 的首末步摘录）。
+打印一致（对照法见 `cases/leps_potential/results.txt` 的首末步摘录）。
 
 ### 2.3 实现步骤（照抄 TEST 势样板）
 
@@ -83,7 +83,7 @@ PES 接口层的换算责任划分：
 3. **登记 Makefile**：`SRC` 列表按模块依赖顺序单次编译——你的势模块放在
    `venus_input.f90` **之前**（POTPRE 要被它调用），interface 文件放它**之后**。
 4. **重建并验证**：`make && cd cases/<name> && ../../venus_test.e`。
-   建议先复制 `cases/morse_bootstrap` 做最小冒烟（2 原子、5000 步、秒级）。
+   建议先复制 `cases/leps_potential` 做最小冒烟（2 原子、5000 步、秒级）。
 
 ### 2.4 PES 验证建议
 
@@ -160,7 +160,7 @@ PES 接口层的换算责任划分：
 - fort 头部的 `E0/T/H(eV)` 与 stdout 的逐行 `KINETIC/POTENTIAL/TOTAL ENERGY`
   在整个轨迹期**恒为采样末次 `ENERGY_1` 的值**；
 - 打印恒定**不构成能量守恒的证据**（直接证据：
-  `cases/morse_bootstrap/results.txt` 首末步摘录——坐标已演化、H(eV) 纹丝不动）；
+  `cases/leps_potential/results.txt` 首末步摘录——坐标已演化、H(eV) 纹丝不动）；
 - 守恒验证一律从 fort 相空间重算（方法与门限先例：
   `cases/integrator_matrix`）。
 

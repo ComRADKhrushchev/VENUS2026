@@ -115,7 +115,7 @@ Bin Jiang fork（2016）的泛化工程，本仓库只保留**体系无关的 TE
 make            # 单次 ifx 调用，产出 venus_test.e
 make clean
 
-cd cases/morse_bootstrap
+cd cases/leps_potential
 ../../venus_test.e
 ```
 
@@ -201,7 +201,7 @@ cd cases/morse_bootstrap
 
 | 值 | NSURF | NACTA | NACTB | 适用场景 | 示例 |
 |---|---|---|---|---|---|
-| `GAS-PHASE` | 0 | 0 | 0 | 气相碰撞/孤立分子 | `cases/morse_bootstrap`、`cases/twobody_collision` |
+| `GAS-PHASE` | 0 | 0 | 0 | 气相碰撞/孤立分子 | `cases/leps_potential`、`cases/twobody_collision` |
 | `RELAXED-SURFACE` | 1 | 5 | 0 | 松弛表面束流散射 | `cases/rst_beam_scattering`（RST 势 Au） |
 | `RIGID-SURFACE` | 2 | 0 | 0 | 刚性表面束流散射 | `cases/rigid_surface` |
 | `FULL-SURFACE` | 1 | 0 | 7 | 多原子表面板块 + MD 均衡 | `cases/rst_surface_md`（RST 势 Au） |

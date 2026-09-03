@@ -1,8 +1,6 @@
 # VENUS 现代化改进对照
 
-以旧版 `VENUS_TSH_HO2/src_VENUS/0VENUS.f`（VENUS10 谱系，固定格式
-Fortran 77）为参照，展示本仓库的现代化成果。每个主题给出"旧 → 新"
-的实际代码摘录。
+以旧版 VENUS 为参照，展示本仓库的现代化改进结果；
 
 ## 1. COMMON 块 → 模块
 

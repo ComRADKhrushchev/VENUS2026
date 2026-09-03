@@ -1,0 +1,33 @@
+# =====================================================================
+# LEPS 势能面验证 —— 等边极小起始单轨迹
+# 说明: 本 case 验证 TEST 势 LEPS 分支；势能面切片图（fig_leps_surfaces.png）
+#       由 plot_fig.py 按源码同式解析式绘制。轨迹用等边极小构型起始。
+# =====================================================================
+
+# ===== &SYSTEM =====   系统定义 + 电子结构
+MODEL = GAS-PHASE
+TITLE1 = LEPS H3 equilateral-minimum single trajectory
+TEST_PES = LEPS
+LEPS_DE = 4.746             # LEPS 离解能 De [eV]
+LEPS_RE = 1.401             # LEPS 平衡键长 re [Å]
+LEPS_A = 1.028              # LEPS Morse 指数 a [Å⁻¹]
+LEPS_DELTA = 0.164          # LEPS Sato 参数 Δ
+NATOMS = 3                  # 原子总数（三原子）
+ATOM_MASSES = 1.008, 1.008, 1.008   # 原子质量 [u]（H₃）
+NATOMA = 3                  # 片段 A 原子数（全部原子）
+NLINA = 0                   # 片段 A 线型标志：0 = 非线性
+NATOMB = 0                  # 片段 B 原子数（无）
+ELEC_METHOD = ADIABATIC
+QZA_EQ = 0.0, 1.016102, 0.0, -0.879955, -0.508051, 0.0, 0.879955, -0.508051, 0.0   # 等边三角形平衡构型（LEPS 全局极小，边长 1.759910 Å）
+
+# ===== &DYNAMICS =====   动力学方法 + 初始条件
+TASK = TRAJECTORY
+INTEGRATOR = VERLET
+ISEED = 12345               # 随机种子
+NT = 1                      # 轨迹数
+NS = 5000                   # 每轨迹 MD 步数
+DT = 0.01                   # 时间步 [10 fs]
+NCOOR = 1                   # 坐标输出参数
+
+# ===== &OUTPUT =====     输出控制
+NIP = 50                    # 输出间隔步数
