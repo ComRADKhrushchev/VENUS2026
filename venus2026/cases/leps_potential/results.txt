@@ -1,0 +1,22 @@
+# LEPS 势能面验证 —— 程序实际输出摘录
+# 来源: 本仓库 venus_test.e 实跑（cases/leps_potential/input_qct.txt）
+# ============================================================
+
+【程序横幅与初始条件回显】
+
+ TEST PES : LEPS
+ NUMBER OF ATOMS=    3
+
+【VZERO（等边极小势能，fort.666）】
+
+  -147.14718944            （kcal/mol；换算 -6.3809 eV）
+
+【轨迹首步（fort.1001）】
+
+  --- step       0 t(fs)=     0.000 ---
+  E0(eV)      -6.38092 T(eV)       0.00000 H(eV)      -6.38092
+
+（E0 与 VZERO 一致：等边极小零动能起始。解析对照：V(等边 r=1.7599)
+= -6.3809 eV，五位一致。）
+
+【说明】势能面切片图（fig_leps_surfaces.png）与解析锚点见 README.md。

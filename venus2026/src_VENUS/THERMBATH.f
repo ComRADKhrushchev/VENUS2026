@@ -1,0 +1,66 @@
+      SUBROUTINE THERMBATH
+      use venus_params
+      use venus_data
+      IMPLICIT DOUBLE PRECISION (A-H,O-Z)
+C      COMMON/VRSCAL/NSEL,NSCALE,NEQUAL,THERMOTEMP,NRGD
+C
+      SVELSQ=0.00D0
+      N=NTHERMB
+C	
+C    CALCULATE VELSQ.  RECALL VNEW = VOLD *SQRT(AHEAT/VELSQ)
+C
+	DO I=1,N
+	  J3 = 3 * NTHMID(I)
+	  J2 = J3 - 1
+	  J1 = J2 - 1
+	  J = NTHMID(I)
+          SVELSQ =SVELSQ+(P(J1)**2+P(J2)**2+P(J3)**2)/W(J)
+	END DO
+C
+C   REFERENCE:  "MOLECULAR DYNAMICS SIMULATION" BY JIM HAILE  P.458
+C   K = 1.38066 * 10(-23) J/K = 0.00198624 KCAL/MOL K
+C   FACTEMP IS AHEAT ABOVE
+C
+	FACTEMP =3.0D0*DBLE(N)*0.00198717D0*THERMOTEMP*C1
+	FACTOR = SQRT( FACTEMP / SVELSQ )
+        TEMPINITS=SVELSQ/(3.0 * DBLE(N) * 0.00198717D0 * C1)
+        IF (NSEL.EQ.1 .AND. MOD(NC,1000).EQ.0) THEN
+           WRITE(6,'(1X,A,F12.6)')'INITIAL THERMO-BATH TEMP',
+     *             TEMPINITS
+        ENDIF
+C
+C	RESCALE THERMO-BATH TEMPERATURE
+C
+	DO I=1,N
+	  J3 = 3 * NTHMID(I)
+	  J2 = J3 - 1
+	  J1 = J2 - 1
+	  P( J1 ) = P( J1 ) * FACTOR
+	  P( J2 ) = P( J2 ) * FACTOR
+	  P( J3 ) = P( J3 ) * FACTOR
+	END DO
+C
+C     CALCULATE THE TEMPERATURE
+C
+      SVELSQ=0.00
+      DO I=1,N
+         J3 = 3 * NTHMID(I)
+         J2 = J3 - 1
+         J1 = J2 - 1                                                                                       
+	 J = NTHMID(I)
+	 SVELSQ = SVELSQ+(P(J1)**2+P(J2)**2+P(J3)**2)/W(J)
+      END DO
+C
+C  COMPUT THE TEMPERATURE AFTER THE RESCALING. 
+C
+      TEMPINITS=SVELSQ/(3.0 * DBLE(N) * 0.00198717D0 * C1)
+      IF (NSEL.EQ.1 .AND. MOD(NC,1000).EQ.0) THEN
+         WRITE(6,'(1X,A,F12.6)')'THERMO-BATH TEMP AFTER RESCALING',
+     *        TEMPINITS
+      ENDIF
+ 999  RETURN
+      END
+
+
+
+

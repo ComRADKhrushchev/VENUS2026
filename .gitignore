@@ -1,0 +1,13 @@
+# venus2026 构建产物
+venus_test.e
+*.mod
+*.obj
+*.pdb
+*.ilk
+
+# cases 运行产物
+fort.*
+stdout*
+
+# SDD 草稿区
+.superpowers/

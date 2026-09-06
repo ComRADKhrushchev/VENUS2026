@@ -1,0 +1,86 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "hermes-agent",
+  "elements": [
+    {"type": "text", "id": "title", "x": 340, "y": 20, "text": "VENUS 主程序工作流程（VENUS.f90）", "fontSize": 28, "fontFamily": 1, "strokeColor": "#1e1e1e", "originalText": "VENUS 主程序工作流程（VENUS.f90）", "autoResize": true},
+
+    {"type": "rectangle", "id": "start", "x": 330, "y": 70, "width": 260, "height": 60, "roundness": {"type": 3}, "backgroundColor": "#a5d8ff", "fillStyle": "solid", "boundElements": [{"id": "t_start", "type": "text"}]},
+    {"type": "text", "id": "t_start", "x": 340, "y": 90, "text": "程序启动", "fontSize": 20, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "start", "originalText": "程序启动", "autoResize": true},
+
+    {"type": "rectangle", "id": "input", "x": 260, "y": 170, "width": 400, "height": 80, "roundness": {"type": 3}, "backgroundColor": "#a5d8ff", "fillStyle": "solid", "boundElements": [{"id": "t_input", "type": "text"}]},
+    {"type": "text", "id": "t_input", "x": 270, "y": 182, "text": "venus_input（读 input_qct.txt）\n关键字解析 → 参数/预设 → 初始几何\n:479 调 POTPRE（PES 初始化）", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "input", "originalText": "venus_input（读 input_qct.txt）\n关键字解析 → 参数/预设 → 初始几何\n:479 调 POTPRE（PES 初始化）", "autoResize": true},
+
+    {"type": "diamond", "id": "chkp", "x": 300, "y": 290, "width": 320, "height": 110, "backgroundColor": "#fff3bf", "fillStyle": "solid", "boundElements": [{"id": "t_chkp", "type": "text"}]},
+    {"type": "text", "id": "t_chkp", "x": 330, "y": 325, "text": "NCHKP / NSELT 分派\n（checkpoint 重启 / 读入 Q/P？）", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "chkp", "originalText": "NCHKP / NSELT 分派\n（checkpoint 重启 / 读入 Q/P？）", "autoResize": true},
+
+    {"type": "rectangle", "id": "randst", "x": 700, "y": 300, "width": 280, "height": 70, "roundness": {"type": 3}, "backgroundColor": "#d0bfff", "fillStyle": "solid", "boundElements": [{"id": "t_randst", "type": "text"}]},
+    {"type": "text", "id": "t_randst", "x": 710, "y": 315, "text": "RANDST(ISEED)\n随机数初始化（:184/:231）", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "randst", "originalText": "RANDST(ISEED)\n随机数初始化（:184/:231）", "autoResize": true},
+
+    {"type": "rectangle", "id": "trajloop", "x": 300, "y": 450, "width": 320, "height": 80, "roundness": {"type": 3}, "backgroundColor": "#d0bfff", "fillStyle": "solid", "boundElements": [{"id": "t_trajloop", "type": "text"}]},
+    {"type": "text", "id": "t_trajloop", "x": 310, "y": 465, "text": "轨迹循环 NTZ = 1..NT\n（每条轨迹）", "fontSize": 20, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "trajloop", "originalText": "轨迹循环 NTZ = 1..NT\n（每条轨迹）", "autoResize": true},
+
+    {"type": "rectangle", "id": "select", "x": 240, "y": 580, "width": 440, "height": 100, "roundness": {"type": 3}, "backgroundColor": "#a5d8ff", "fillStyle": "solid", "boundElements": [{"id": "t_select", "type": "text"}]},
+    {"type": "text", "id": "t_select", "x": 250, "y": 592, "text": "SELECT（:347）初条件总分派\nNACTA/NACTB → INITEBK / INITQP / ORTHAN /\nBAREXC / THRMAN / QMMICRO / SURF / MB …", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "select", "originalText": "SELECT（:347）初条件总分派\nNACTA/NACTB → INITEBK / INITQP / ORTHAN /\nBAREXC / THRMAN / QMMICRO / SURF / MB …", "autoResize": true},
+
+    {"type": "rectangle", "id": "init_e", "x": 740, "y": 590, "width": 300, "height": 80, "roundness": {"type": 3}, "backgroundColor": "#c3fae8", "fillStyle": "solid", "boundElements": [{"id": "t_init_e", "type": "text"}]},
+    {"type": "text", "id": "t_init_e", "x": 750, "y": 605, "text": "ENERGY_1 / DVDQ_1（:400-401）\n初势能与梯度（调 POT0/DPESHON）", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "init_e", "originalText": "ENERGY_1 / DVDQ_1（:400-401）\n初势能与梯度（调 POT0/DPESHON）", "autoResize": true},
+
+    {"type": "rectangle", "id": "gwrite0", "x": 740, "y": 700, "width": 300, "height": 70, "roundness": {"type": 3}, "backgroundColor": "#b2f2bb", "fillStyle": "solid", "boundElements": [{"id": "t_gwrite0", "type": "text"}]},
+    {"type": "text", "id": "t_gwrite0", "x": 750, "y": 715, "text": "GWRITE（:403）\nstep-0 相空间写出 fort.1NNN", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "gwrite0", "originalText": "GWRITE（:403）\nstep-0 相空间写出 fort.1NNN", "autoResize": true},
+
+    {"type": "rectangle", "id": "intloop", "x": 300, "y": 730, "width": 320, "height": 80, "roundness": {"type": 3}, "backgroundColor": "#d0bfff", "fillStyle": "solid", "boundElements": [{"id": "t_intloop", "type": "text"}]},
+    {"type": "text", "id": "t_intloop", "x": 310, "y": 745, "text": "积分循环 NC = 1..NS\n（每动力学步）", "fontSize": 20, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "intloop", "originalText": "积分循环 NC = 1..NS\n（每动力学步）", "autoResize": true},
+
+    {"type": "diamond", "id": "intsel", "x": 290, "y": 860, "width": 340, "height": 130, "backgroundColor": "#fff3bf", "fillStyle": "solid", "boundElements": [{"id": "t_intsel", "type": "text"}]},
+    {"type": "text", "id": "t_intsel", "x": 300, "y": 895, "text": "INTEGRATOR 分派\n1=RADAU（:431/:444）\n2=SYMPLE（:447）\n3=VERLET/BEEMAN（:453）", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "intsel", "originalText": "INTEGRATOR 分派\n1=RADAU（:431/:444）\n2=SYMPLE（:447）\n3=VERLET/BEEMAN（:453）", "autoResize": true},
+
+    {"type": "rectangle", "id": "pes", "x": 700, "y": 880, "width": 340, "height": 90, "roundness": {"type": 3}, "backgroundColor": "#c3fae8", "fillStyle": "solid", "boundElements": [{"id": "t_pes", "type": "text"}]},
+    {"type": "text", "id": "t_pes", "x": 710, "y": 892, "text": "DVDQ_1（积分器内每步调用）\n→ PES 的 DPESHON（梯度）\nTEST_PES: HARMONIC/MORSE/LEPS/RST", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "pes", "originalText": "DVDQ_1（积分器内每步调用）\n→ PES 的 DPESHON（梯度）\nTEST_PES: HARMONIC/MORSE/LEPS/RST", "autoResize": true},
+
+    {"type": "rectangle", "id": "test", "x": 290, "y": 1060, "width": 340, "height": 80, "roundness": {"type": 3}, "backgroundColor": "#ffd8a8", "fillStyle": "solid", "boundElements": [{"id": "t_test", "type": "text"}]},
+    {"type": "text", "id": "t_test", "x": 300, "y": 1075, "text": "TEST（:577）事件检测\n散射/反应判据 → NTEST", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "test", "originalText": "TEST（:577）事件检测\n散射/反应判据 → NTEST", "autoResize": true},
+
+    {"type": "rectangle", "id": "gwrite", "x": 700, "y": 1060, "width": 340, "height": 80, "roundness": {"type": 3}, "backgroundColor": "#b2f2bb", "fillStyle": "solid", "boundElements": [{"id": "t_gwrite", "type": "text"}]},
+    {"type": "text", "id": "t_gwrite", "x": 710, "y": 1075, "text": "GWRITE（每 NIP 步，:448/:457）\nfort.1NNN 相空间逐步写出", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "gwrite", "originalText": "GWRITE（每 NIP 步，:448/:457）\nfort.1NNN 相空间逐步写出", "autoResize": true},
+
+    {"type": "diamond", "id": "done", "x": 300, "y": 1200, "width": 320, "height": 120, "backgroundColor": "#fff3bf", "fillStyle": "solid", "boundElements": [{"id": "t_done", "type": "text"}]},
+    {"type": "text", "id": "t_done", "x": 310, "y": 1235, "text": "轨迹终止？\nNTEST=2（散射/反应完成）\n或 NC=NS（跑满）", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "done", "originalText": "轨迹终止？\nNTEST=2（散射/反应完成）\n或 NC=NS（跑满）", "autoResize": true},
+
+    {"type": "rectangle", "id": "final", "x": 240, "y": 1390, "width": 440, "height": 100, "roundness": {"type": 3}, "backgroundColor": "#b2f2bb", "fillStyle": "solid", "boundElements": [{"id": "t_final", "type": "text"}]},
+    {"type": "text", "id": "t_final", "x": 250, "y": 1402, "text": "终态分析：FINAL（:506/:594 产物能量/散射角）\n+ GFINAL（:541/:628 统计汇总 fort.999）\n+ POT0 终势能（:547/:634）", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "final", "originalText": "终态分析：FINAL（:506/:594 产物能量/散射角）\n+ GFINAL（:541/:628 统计汇总 fort.999）\n+ POT0 终势能（:547/:634）", "autoResize": true},
+
+    {"type": "diamond", "id": "next", "x": 300, "y": 1540, "width": 320, "height": 110, "backgroundColor": "#fff3bf", "fillStyle": "solid", "boundElements": [{"id": "t_next", "type": "text"}]},
+    {"type": "text", "id": "t_next", "x": 310, "y": 1572, "text": "NTZ < NT？\n（还有轨迹）", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "next", "originalText": "NTZ < NT？\n（还有轨迹）", "autoResize": true},
+
+    {"type": "rectangle", "id": "endstat", "x": 240, "y": 1720, "width": 440, "height": 90, "roundness": {"type": 3}, "backgroundColor": "#b2f2bb", "fillStyle": "solid", "boundElements": [{"id": "t_endstat", "type": "text"}]},
+    {"type": "text", "id": "t_endstat", "x": 250, "y": 1735, "text": "全局统计输出\n截面/反应概率（NON-REACTIVE/REACTIVE 计数）\nfort.999 + stdout 汇总", "fontSize": 16, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "endstat", "originalText": "全局统计输出\n截面/反应概率（NON-REACTIVE/REACTIVE 计数）\nfort.999 + stdout 汇总", "autoResize": true},
+
+    {"type": "rectangle", "id": "end", "x": 330, "y": 1870, "width": 260, "height": 60, "roundness": {"type": 3}, "backgroundColor": "#ffc9c9", "fillStyle": "solid", "boundElements": [{"id": "t_end", "type": "text"}]},
+    {"type": "text", "id": "t_end", "x": 340, "y": 1890, "text": "结束", "fontSize": 20, "fontFamily": 1, "strokeColor": "#1e1e1e", "textAlign": "center", "verticalAlign": "middle", "containerId": "end", "originalText": "结束", "autoResize": true},
+
+    {"type": "arrow", "id": "a1", "x": 460, "y": 130, "width": 0, "height": 40, "points": [[0,0],[0,40]], "endArrowhead": "arrow", "startBinding": {"elementId": "start", "fixedPoint": [0.5, 1]}, "endBinding": {"elementId": "input", "fixedPoint": [0.5, 0]}},
+    {"type": "arrow", "id": "a2", "x": 460, "y": 250, "width": 0, "height": 40, "points": [[0,0],[0,40]], "endArrowhead": "arrow", "startBinding": {"elementId": "input", "fixedPoint": [0.5, 1]}, "endBinding": {"elementId": "chkp", "fixedPoint": [0.5, 0]}},
+    {"type": "arrow", "id": "a3", "x": 620, "y": 345, "width": 80, "height": 0, "points": [[0,0],[80,0]], "endArrowhead": "arrow", "startBinding": {"elementId": "chkp", "fixedPoint": [1, 0.5]}, "endBinding": {"elementId": "randst", "fixedPoint": [0, 0.5]}},
+    {"type": "arrow", "id": "a4", "x": 460, "y": 400, "width": 0, "height": 50, "points": [[0,0],[0,50]], "endArrowhead": "arrow", "startBinding": {"elementId": "chkp", "fixedPoint": [0.5, 1]}, "endBinding": {"elementId": "trajloop", "fixedPoint": [0.5, 0]}},
+    {"type": "arrow", "id": "a5", "x": 460, "y": 530, "width": 0, "height": 50, "points": [[0,0],[0,50]], "endArrowhead": "arrow", "startBinding": {"elementId": "trajloop", "fixedPoint": [0.5, 1]}, "endBinding": {"elementId": "select", "fixedPoint": [0.5, 0]}},
+    {"type": "arrow", "id": "a6", "x": 680, "y": 630, "width": 60, "height": 0, "points": [[0,0],[60,0]], "endArrowhead": "arrow", "startBinding": {"elementId": "select", "fixedPoint": [1, 0.5]}, "endBinding": {"elementId": "init_e", "fixedPoint": [0, 0.5]}},
+    {"type": "arrow", "id": "a7", "x": 890, "y": 670, "width": 0, "height": 30, "points": [[0,0],[0,30]], "endArrowhead": "arrow", "startBinding": {"elementId": "init_e", "fixedPoint": [0.5, 1]}, "endBinding": {"elementId": "gwrite0", "fixedPoint": [0.5, 0]}},
+    {"type": "arrow", "id": "a8", "x": 460, "y": 680, "width": 0, "height": 50, "points": [[0,0],[0,50]], "endArrowhead": "arrow", "startBinding": {"elementId": "select", "fixedPoint": [0.5, 1]}, "endBinding": {"elementId": "intloop", "fixedPoint": [0.5, 0]}},
+    {"type": "arrow", "id": "a9", "x": 460, "y": 810, "width": 0, "height": 50, "points": [[0,0],[0,50]], "endArrowhead": "arrow", "startBinding": {"elementId": "intloop", "fixedPoint": [0.5, 1]}, "endBinding": {"elementId": "intsel", "fixedPoint": [0.5, 0]}},
+    {"type": "arrow", "id": "a10", "x": 630, "y": 925, "width": 70, "height": 0, "points": [[0,0],[70,0]], "endArrowhead": "arrow", "startBinding": {"elementId": "intsel", "fixedPoint": [1, 0.5]}, "endBinding": {"elementId": "pes", "fixedPoint": [0, 0.5]}},
+    {"type": "arrow", "id": "a11", "x": 460, "y": 990, "width": 0, "height": 70, "points": [[0,0],[0,70]], "endArrowhead": "arrow", "startBinding": {"elementId": "intsel", "fixedPoint": [0.5, 1]}, "endBinding": {"elementId": "test", "fixedPoint": [0.5, 0]}},
+    {"type": "arrow", "id": "a12", "x": 630, "y": 1100, "width": 70, "height": 0, "points": [[0,0],[70,0]], "endArrowhead": "arrow", "startBinding": {"elementId": "test", "fixedPoint": [1, 0.5]}, "endBinding": {"elementId": "gwrite", "fixedPoint": [0, 0.5]}},
+    {"type": "arrow", "id": "a13", "x": 460, "y": 1140, "width": 0, "height": 60, "points": [[0,0],[0,60]], "endArrowhead": "arrow", "startBinding": {"elementId": "test", "fixedPoint": [0.5, 1]}, "endBinding": {"elementId": "done", "fixedPoint": [0.5, 0]}},
+    {"type": "arrow", "id": "a14", "x": 460, "y": 1320, "width": 0, "height": 70, "points": [[0,0],[0,70]], "endArrowhead": "arrow", "startBinding": {"elementId": "done", "fixedPoint": [0.5, 1]}, "endBinding": {"elementId": "final", "fixedPoint": [0.5, 0]}},
+    {"type": "arrow", "id": "a15", "x": 200, "y": 1260, "width": -140, "height": -500, "points": [[0,0],[-140,-500]], "endArrowhead": "arrow", "strokeStyle": "dashed", "startBinding": {"elementId": "done", "fixedPoint": [0, 0.5]}},
+    {"type": "text", "id": "t_loopback", "x": 80, "y": 990, "text": "否（下一积分步）", "fontSize": 16, "fontFamily": 1, "strokeColor": "#757575", "originalText": "否（下一积分步）", "autoResize": true},
+    {"type": "arrow", "id": "a16", "x": 460, "y": 1490, "width": 0, "height": 50, "points": [[0,0],[0,50]], "endArrowhead": "arrow", "startBinding": {"elementId": "final", "fixedPoint": [0.5, 1]}, "endBinding": {"elementId": "next", "fixedPoint": [0.5, 0]}},
+    {"type": "arrow", "id": "a17", "x": 180, "y": 1595, "width": -160, "height": -1085, "points": [[0,0],[-160,-1085]], "endArrowhead": "arrow", "strokeStyle": "dashed", "startBinding": {"elementId": "next", "fixedPoint": [0, 0.5]}},
+    {"type": "text", "id": "t_loopback2", "x": 60, "y": 1050, "text": "是（下一轨迹）", "fontSize": 16, "fontFamily": 1, "strokeColor": "#757575", "originalText": "是（下一轨迹）", "autoResize": true},
+    {"type": "arrow", "id": "a18", "x": 460, "y": 1650, "width": 0, "height": 70, "points": [[0,0],[0,70]], "endArrowhead": "arrow", "startBinding": {"elementId": "next", "fixedPoint": [0.5, 1]}, "endBinding": {"elementId": "endstat", "fixedPoint": [0.5, 0]}},
+    {"type": "arrow", "id": "a19", "x": 460, "y": 1810, "width": 0, "height": 60, "points": [[0,0],[0,60]], "endArrowhead": "arrow", "startBinding": {"elementId": "endstat", "fixedPoint": [0.5, 1]}, "endBinding": {"elementId": "end", "fixedPoint": [0.5, 0]}},
+    {"type": "text", "id": "legend", "x": 700, "y": 1400, "text": "图例\n蓝=输入/初始化  紫=循环结构\n青=PES 求值  绿=输出\n黄=分支判定  橙=事件检测", "fontSize": 16, "fontFamily": 1, "strokeColor": "#757575", "originalText": "图例\n蓝=输入/初始化  紫=循环结构\n青=PES 求值  绿=输出\n黄=分支判定  橙=事件检测", "autoResize": true}
+  ],
+  "appState": {"viewBackgroundColor": "#ffffff"}
+}
