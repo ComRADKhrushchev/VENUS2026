@@ -50,7 +50,7 @@ cd cases/<name> && ../../venus_test.e
 ├── src_TEST/    test_potentials.f90（HARMONIC/MORSE/LEPS 解析势+梯度）
 │   + interface_TEST.f90（POTPRE 接口，运行时 PES 由 TEST_PES 关键字选择）
 ├── docs/        EXTENDING.md（接入自定义 PES/采样/积分器/电子方法的扩展指南）
-└── cases/       16 个示例 case（README.md + input_qct.txt + results.txt + 验证图）
+└── cases/       10 个示例 case（README.md + input_qct.txt + results.txt + 验证图）
 ```
 
 ## Architecture
