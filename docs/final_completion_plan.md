@@ -198,14 +198,14 @@ P-A…P-G+收尾；本文沿用 P-X 编号并新增 N-X/X-X/S-X。
 **Files:** 工作区根 `.git`（新建）、`docs/plans/`（分阶段计划文件目录）、
 新程序树 `src/`（命名已在 P0 计划文件定案）。
 
-- [ ] **0.1 git 初始化**：工作区根 `git init && git add -A && git commit`（docs/、
+- [x] **0.1 git 初始化**：工作区根 `git init && git add -A && git commit`（docs/、
   venus2026/ 参考、README 入管；旧库自此只读）。可选接远程（push 前征得用户同意）。
-- [ ] **0.2 新程序树立项**：`src/Makefile`（ifx，flags 同旧库约定，Windows
+- [x] **0.2 新程序树立项**：`src/Makefile`（ifx，flags 同旧库约定，Windows
   链接器遮蔽处理段移植旧库平台段）+ `src/README.md`（L0-L5 一览，占位说明
   K 阶段生成）+ `src/analysis/README.md`（L4 用途）。
-- [ ] **0.3 旧库文档数字修正**：venus2026/CLAUDE.md"16 个示例 case"→10（避免
+- [x] **0.3 旧库文档数字修正**：venus2026/CLAUDE.md"16 个示例 case"→10（避免
   参考误导；此为旧库唯一允许的改动）。
-- [ ] 提交 `P0: 版本控制与新程序树立项`。执行细则见 docs/plans/P0.md（v2）。
+- [x] 提交 `P0: 版本控制与新程序树立项`。执行细则见 docs/plans/P0.md（v2）。
 
 ## 5. 骨架接口规格：facade / predicate / recorder+roster（原乙轨 N1-N3）
 
