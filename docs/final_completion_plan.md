@@ -228,7 +228,11 @@ module force_facade
   public :: facade_force(Q, P, s, F, E)              ! (Q,P,s)→(F,E)；F=Σ成员贡献；E=T(P)+ΣV
   public :: facade_info                             ! 成员清单/能力级（诊断输出）
 end module
-! 甲类成员签名：Q,W → F_add(code 单位), E_add；随机律成员内部调 rng（签名承认随机律）
+! 甲类成员签名：Q,W → F_add, E_add；随机律成员内部调 rng（签名承认随机律）
+! 【单位契约修订（2026-09-06 K2 批2 裁决，总审查确认）】成员交付 eV 力核
+! （g_add[eV/Å], v_add[eV]）；×23.0605×C1 换算集中于门面（ev_kcal 为全库
+! 唯一出现点，累加式与 DPESHON 同形）——N1 原"code 单位"注解按"经门面
+! 换算后"理解，T4 由此成立。C2 实现者以此为准。
 ! 乙类成员签名(退化点)：elec_adiabatic: ds/dt≡0，力规则恒等——显式存在约 20 行
 ```
 能力级协商表（facade_init 内数据）：合法三元组当前仅
