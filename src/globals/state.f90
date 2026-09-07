@@ -1,5 +1,6 @@
 ! state.f90 —— 物理态变量（Q/P/s/F）容器：driver 持有、参数传递（K1 最小集；
-!              E9 多面升级：elec_t 扩电子振幅与跃迁计数——非绝热通道的数据位）
+!              E9 多面升级：elec_t 扩电子振幅与跃迁计数——非绝热通道的数据位；
+!              E10 表象立法：amp 索引语义由乙类方法成员定义，表象构件不入 state）
 module state
   implicit none
   private
@@ -7,6 +8,11 @@ module state
   type :: elec_t          ! 电子态 s（运行时）：绝热 = 退化点（单面）
      integer :: n_surf = 1   ! 势能面数
      integer :: i_surf = 1   ! 当前面索引
+     ! E10 表象立法（注释立法，字段名不动）：amp 只承诺"复数组 + |·|² 可读作
+     ! 布居"，索引语义由乙类方法成员定义——面表象 i=面号；单电子表象
+     ! i=电子×态张量积展平（费米子反称化随成员自理）；组态表象 i=组态编号。
+     ! 表象构件（H_ij/d_ij/V_i 等）不具物自体地位，不入 state_t（E10 公理 C
+     ! ——只留门面工作区 ws，见 facade/elec_ws.f90；一步生命周期）
      complex(8), allocatable :: amp(:) ! 电子振幅 c_i(t)（|c_i|²=布居；
                                        ! 绝热退化点=单元素恒 1——退化点良定义保持）
      integer :: n_hop = 0    ! 累计跃迁次数 [次]（非绝热观测量；绝热恒 0）

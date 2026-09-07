@@ -91,10 +91,10 @@ program venus
    !    prop_reg(1, verlet_step)、prop_reg(2, symple_step)、
    !    prop_reg(3, radau_step)（封闭三成员——X4，统一旧 :423-465 三分支）；
    !    facade_reg_elec('adiabatic', …)——乙类退化成员（ad_dsdt/ad_force_rule
-   !    到槽的适配接线 C2）；facade_reg_pes(主势名, …)——pes_* 成员 C2 填充；
-   !    多面主势成员（E9 双签名）：facade_reg_pes_diab(名, …)/
-   !    facade_reg_pes_adiab(名, …)——随 elec_tsh/iesh 消费者引入（注册行
-   !    同为一行，T2 不变）；samp_reg(分布成员名, …)——dist_* 成员 C5 接线
+   !    到槽的适配接线 C2）；facade_reg_pes(主势名, …)——pes_* 成员 C2 填充
+   !    （单面六成员缺省 r_scalar 注册行零触及；多面主势同入口带可选
+   !    repr=r_diab/r_adiab——E10 归一单签名，随 elec_tsh/iesh 消费者引入，
+   !    注册行同为一行，T2 不变）；samp_reg(分布成员名, …)——dist_* 成员 C5 接线
    !    （boltzmann/ebk/incident 批 3 骨架 + 余 9 个）
    ! 6. facade_init()——成员装配 + 能力级三元组校验（非法组合 loud-stop）
    ! 7. rec_select(observables%rec_level)（或 rec_select(observables%obs_list)

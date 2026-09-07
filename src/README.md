@@ -15,7 +15,8 @@ src/
   driver.f90  input.f90                          入口：主控编排（装配→演化→统计）+ 输入文法
   globals/     consts  state  control  config  config_roster
                                                   变量与规定（全体 use 的根基）
-  facade/      force_facade  sampler             物理总入口：力门面 + 抽样框架
+  facade/      force_facade  elec_ws  sampler     物理总入口：力门面 + 电子工作区
+                                                  契约（ws 容器，E10）+ 抽样框架
   dynamics/    predicate  propagator             封闭族（谓词文法、三积分器；成员固定）
   interface_electronic/    elec_adiabatic        电子层面两轴成员家（乙类先行；
                                                   甲类 pes_* C2 落此——见该目录 README）
@@ -31,7 +32,7 @@ src/
 |---|---|---|
 | L0 控制核 | 根 driver.f90 | 装配→演化→统计的调用序列，无物理 |
 | L1 变量与规定 | globals/（input 留根） | 物理态容器、控制流、固化导出规定、原子清单 |
-| L2 门面与框架 | facade/ | (Q,P,s)→(F,E) 门面（E9 甲类三签名：单面标量/多面透热/多面绝热；协商表 triad_tbl 数据化）；抽样框架 |
+| L2 门面与框架 | facade/ | (Q,P,s)→(F,E) 门面（E10 甲类单签名 pes_proc_i(q,mass,ws)——表象降为 ws 填充模式；协商表 triad_tbl 数据化）+ 电子工作区契约 elec_ws（ws_t 容器）；抽样框架 |
 | L3 封闭族 | dynamics/ | 谓词文法、传播子（固定选择，非扩展点） |
 | L3 注册族成员 | interface_*/ | 两目录三族：electronic（甲类 pes_* H 场提供方 + 乙类 elec_* 电子传播律——规范 §3.2-2 电子层面两轴同家）/ distributions（B′ 初态分布）——新文件 + 一行注册即接入 |
 | L4 记录与后处理 | output/ | 轨迹序列化（列注册）、终态/结局/态密度/绘图（可离线） |
