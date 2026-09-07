@@ -14,6 +14,11 @@
 !       :130-148（GLO/LDFA 内嵌力）、:179-270（FRICFORCE/DIAG2 链）——随机律一律经
 !       force_facade 成员汇总（P-D1/D4）；'CALLING RADOUT' 调试打印（RADAU.f:112/
 !       :380/:428）与 PRINFO 注释残留不迁（G4）
+! dt 通道注记（E9）：facade_force(sta, e, dt) 第三参可选——定步长成员
+!       （verlet/symple）传 prop_cfg%dt（跃迁概率 g_ij(dt) 语义在此良定义）；
+!       radau 序列内子步调用不传 dt（缺省回落 prop_cfg%dt，仅作占位）——非绝热
+!       × radau 组合已被协商表 triad_tbl 排除（多面行 ok_radau=.false.），本注记
+!       只约束绝热路径行为不变
 !=====================================================================
 module propagator
    use state,         only: state_t

@@ -84,14 +84,18 @@ program venus
    !    control%i_seed 8 字→i_seed 折算映射 C4——input 步 5）
    ! 3. roster_load()——原子清单装配（质量表/片段 A 表/平衡几何/晶胞；
    !    旧 :316-335 初值装载位的名册化）
-   ! 4. state_create(sta, size(roster%mass))——物理态分配（natoms 由名册定）
+   ! 4. state_create(sta, size(roster%mass), electronic%n_surf)——物理态分配
+   !    （natoms 由名册定；n_surf 传 config 值——电子振幅按面数分配，缺省 1
+   !    绝热退化点；E9）
    ! 5. 成员注册（各一行——注册族装配期约定）：
    !    prop_reg(1, verlet_step)、prop_reg(2, symple_step)、
    !    prop_reg(3, radau_step)（封闭三成员——X4，统一旧 :423-465 三分支）；
    !    facade_reg_elec('adiabatic', …)——乙类退化成员（ad_dsdt/ad_force_rule
    !    到槽的适配接线 C2）；facade_reg_pes(主势名, …)——pes_* 成员 C2 填充；
-   !    samp_reg(分布成员名, …)——dist_* 成员 C5 接线（boltzmann/ebk/
-   !    incident 批 3 骨架 + 余 9 个）
+   !    多面主势成员（E9 双签名）：facade_reg_pes_diab(名, …)/
+   !    facade_reg_pes_adiab(名, …)——随 elec_tsh/iesh 消费者引入（注册行
+   !    同为一行，T2 不变）；samp_reg(分布成员名, …)——dist_* 成员 C5 接线
+   !    （boltzmann/ebk/incident 批 3 骨架 + 余 9 个）
    ! 6. facade_init()——成员装配 + 能力级三元组校验（非法组合 loud-stop）
    ! 7. rec_select(observables%rec_level)（或 rec_select(observables%obs_list)
    !    名单入口）——记录列组选择（注册先于选列）

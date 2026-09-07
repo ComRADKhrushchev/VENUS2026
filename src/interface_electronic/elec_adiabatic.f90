@@ -5,7 +5,8 @@
 !       绝热：F=−∇V_α——消费单面表示时复合塌缩为纯 PES）；
 !       docs/final_completion_plan.md §5 N1（乙类成员退化点——显式存在约 20 行）
 ! 注册：facade_reg_elec(name, proc) 由装配相位执行（driver）；本退化成员两
-! 例程到乙类接口槽的适配接线 C2 定形
+! 例程到乙类接口槽的适配接线 C2 定形（E9 后乙类签名 elec_proc_i(s, f, dt)
+! 带步长——适配器忽略 dt，绝热律无跃迁判定）
 !=====================================================================
 module elec_adiabatic
    use state, only: elec_t
