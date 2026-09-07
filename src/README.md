@@ -17,8 +17,8 @@ src/
                                                   变量与规定（全体 use 的根基）
   facade/      force_facade  sampler             物理总入口：力门面 + 抽样框架
   dynamics/    predicate  propagator             封闭族（谓词文法、三积分器；成员固定）
-  interface_potentials/                           势能面成员（甲类扩展；pes_* C2 落此）
-  interface_electronic/    elec_adiabatic        电子方法成员（乙类扩展；IESH 将来同住）
+  interface_electronic/    elec_adiabatic        电子层面两轴成员家（乙类先行；
+                                                  甲类 pes_* C2 落此——见该目录 README）
   interface_distributions/ dist_boltzmann  dist_ebk  dist_incident
                                                   初态分布成员（B′ 扩展；示例 3 个，余者 C5）
   output/      recorder  final_state  outcome  density  plot_hist
@@ -33,7 +33,7 @@ src/
 | L1 变量与规定 | globals/（input 留根） | 物理态容器、控制流、固化导出规定、原子清单 |
 | L2 门面与框架 | facade/ | (Q,P,s)→(F,E) 门面；抽样框架 |
 | L3 封闭族 | dynamics/ | 谓词文法、传播子（固定选择，非扩展点） |
-| L3 注册族成员 | interface_*/ | 三类可换成员：potentials（甲类力）/ electronic（乙类电子律）/ distributions（B′ 初态）——新文件 + 一行注册即接入 |
+| L3 注册族成员 | interface_*/ | 两目录三族：electronic（甲类 pes_* H 场提供方 + 乙类 elec_* 电子传播律——规范 §3.2-2 电子层面两轴同家）/ distributions（B′ 初态分布）——新文件 + 一行注册即接入 |
 | L4 记录与后处理 | output/ | 轨迹序列化（列注册）、终态/结局/态密度/绘图（可离线） |
 | L5 仪器 | utils/ | 随机流（单一）、对角化、旋转 |
 
