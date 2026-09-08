@@ -52,8 +52,11 @@ make clean      # remove venus.e and .mod/.obj/.pdb/.ilk
 ```
 
 - Compiler: Intel `ifx` (validated on oneAPI 2025.2); flags `-r8 -double-size=64 -i8 -O2 -w`.
-- `SRC` is an empty list for now; phase K3 (independent build of the new tree) fills it in dependency order
-  (utils -> globals -> facade -> dynamics -> interface_* -> output -> input -> driver).
+- `SRC` is an empty list for now; phase K3 (independent build of the new tree) fills in the fixed
+  skeleton list in dependency order (utils -> globals -> facade -> dynamics -> interface_* -> output ->
+  input -> driver) plus a wildcard pickup of systems/ (E11 "drag-in" ruling: each system blackbox sits
+  in its own folder with a reg_<system>_all module; a prebuild step generates registry_gen.f90 from
+  them, so dragging a folder in is enough - zero edits to Makefile or driver).
 - The new program has no MKL dependency; the Windows linker-shadowing handling (`-Qlocation,link`, `LIB` export,
   `MSVC_BASE`/`WINKIT_LIB`/`INTEL_BASE` override mechanism) is ported from the old library's Makefile platform block,
   see the Build section of venus2026/CLAUDE.md for usage.

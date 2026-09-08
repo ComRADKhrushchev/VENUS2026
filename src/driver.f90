@@ -90,7 +90,11 @@ program venus
    !    (natoms from the roster; n_surf passes the config value - electronic amplitudes are sized by the
    !    number of surfaces, default 1, the adiabatic degenerate point; E9)
    !    (see previous line)
-   ! 5. member registration (one line each - the registry-family assembly-time convention):
+   ! 5. member registration (one line each - the registry-family assembly-time convention; once
+   !    E11 is legislated this step is replaced by the build artifact registry_gen_all(): each
+   !    system-blackbox folder carries its own reg_<system>_all module and a prebuild step
+   !    aggregates them - the driver's final form has zero registration lines; effective at
+   !    K3, this pseudocode is the transitional form):
    !    prop_reg(1, verlet_step), prop_reg(2, symple_step),
    !    prop_reg(3, radau_step) (the closed three-member set - X4, unifying the old :423-465 three branches);
    !    facade_reg_elec('adiabatic', ...) - the class-B degenerate member (the adapter wiring from

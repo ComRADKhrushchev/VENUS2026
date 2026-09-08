@@ -27,7 +27,11 @@ endif
 
 # Source files are listed in module dependency order (L5->L1->L2->L3->L0).
 # P0 skeleton: SRC is an empty list for now; phase K3 (independent build of the new tree)
-# fills in the L0-L5 files. Until then `make venus.e` only checks that the Makefile parses; it does not produce a usable executable.
+# fills in the fixed skeleton list PLUS a wildcard pickup of systems/ (E11 "drag-in"
+# ruling: each system blackbox sits in its own folder with a reg_<system>_all module;
+# a prebuild step scans systems/*/reg_*.f90 and generates registry_gen.f90, so dragging
+# a folder in is enough - zero edits to Makefile or driver; .mod dependencies let make
+# sort the compile order). Until then `make venus.e` only checks that the Makefile parses.
 SRC :=
 
 $(EXE): $(SRC)

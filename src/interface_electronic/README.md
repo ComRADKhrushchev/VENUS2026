@@ -34,7 +34,10 @@ sequence boundaries have no well-defined "one step", the hop probability g_ij(dt
 basis, so nonadiabatic only pairs with fixed-step integrators).
 
 Plugging in = a new file + one registration line in the assembly phase, zero touch to existing
-code (the T2 criterion exercise point).
+code (the T2 criterion exercise point). E11 upgrade (2026-09-08): once K3 lands, a new system = a
+new folder under systems/ carrying its own reg_<system>_all module - the prebuild-generated
+registry_gen.f90 aggregates the registration and the driver keeps zero registration lines
+("drag in and it works": registration demoted from hand-written code to a build artifact).
 
 Reference material (old library, read-only): interface_TEST.f90 / EMT-NN / RST / VERLET.f90
 inlined forces.
