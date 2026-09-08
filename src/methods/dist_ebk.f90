@@ -21,6 +21,9 @@
 !       (the fixed-quantum-number / moment-of-inertia input slots)
 ! Registration: this member enters the sampler distribution member table (one samp_reg line -
 ! executed in the assembly phase; C5 wiring)
+! Library home: methods/ (E14) — a dist_* member is a pre-stored generic distribution method;
+! its samp_reg registration line lands at C5 together with its sample routine (K2 E3 slimming
+! ruling); see methods/README.md
 !=====================================================================
 module dist_ebk
    implicit none

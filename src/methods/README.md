@@ -15,7 +15,7 @@ code).
 | Prefix | Family | Registered by | Present / planned |
 |---|---|---|---|
 | `elec_*` | MQC method packages — {prop member, match member [, sync member]}, one `method_reg` row each | its thin `reg_<package>.f90` (assembly phase) | `elec_adiabatic` (present — the all-no-op degenerate seed); `elec_tsh` / `elec_iesh` / `elec_ehrenfest` phase C |
-| `dist_*` | initial-state distribution members (the B' sampler family; parameters via config — E12 wording carried, zero embedded system data) | thin `reg_dist_*.f90` at C5 together with the sample routines (K2 E3 slimming ruling) | boltzmann / ebk / incident — migrating from interface_distributions/ in this same rebuild; the remaining 9 arrive C5 |
+| `dist_*` | initial-state distribution members (the B' sampler family; parameters via config — E12 wording carried, zero embedded system data) | thin `reg_dist_*.f90` at C5 together with the sample routines (K2 E3 slimming ruling) | boltzmann / ebk / incident (present — migrated from the former interface_distributions/, E14); the remaining 9 arrive C5 |
 | `amp_*` | shared amplitude integrators — library modules, not packages (Corollary 1: FSSH and Ehrenfest share the same prop code; the method count drops multiplicatively) | none (components, consumed via use — level 2) | `amp_rk` / `amp_expm` phase C |
 | `reg_*` | thin registration modules — build material, not methods | (they are the registration) | `reg_adiabatic` (present — the sole reg file of the K2 seed) |
 
@@ -59,9 +59,28 @@ registering author's own knowledge, not the facade's. A member loud-stops at run
 on a ws%repr it does not support (E10 contract) and on dt semantics it cannot live
 with (E13 open point — fixed-step-only laws, shape landed in phase C with elec_tsh).
 
-(dist_* family section: lands with the interface_distributions/ migration — same
-rebuild, next task; their thin reg files land at C5 together with their sample
-routines, per the K2 E3 slimming ruling.)
+## The dist_* family (initial-state distributions — the B' sampler registry)
+
+`dist_*` members are pre-stored generic initial-state distribution methods: each
+draws one fragment of the trajectory's initial state per its prescription
+(Boltzmann normal-mode quantum numbers, fixed (n,J) EBK levels, incident-channel
+collision energy / impact parameter / orientation). E12 wording carried: the
+members are physics-generic code with zero embedded system data — temperatures,
+frequencies, quantum numbers, and mode switches all arrive as member params
+filled from config at runtime; system material lives in systems/<system>/.
+
+Registration timing (K2 E3 slimming ruling): `samp_reg` registers a
+`dist_proc_i(sta)` sample routine, and the K2 skeletons carry only `*_init` —
+the sample routines land at C5 — so each member's thin `reg_dist_*.f90` and its
+`samp_reg` line land at C5 together with the sample routine (drag-in rule
+unchanged). `reg_adiabatic.f90` remains the sole reg file of the K2 library
+seed.
+
+Present (migrated from the former interface_distributions/ in this same rebuild,
+E14): `dist_boltzmann` ('boltzmann'), `dist_ebk` ('ebk'), `dist_incident`
+('incident'). The remaining 9 members arrive at C5: surface_oscillator,
+rotation, j (rotational-J temperature), barrier_excitation, thermostat,
+glo_target, thermalize, normalmode, qmmicro.
 
 Reference material (old library, read-only): the MQC propagation sites in
 venus2026/src_VENUS/*.f — citation pass during C-phase implementation, no
