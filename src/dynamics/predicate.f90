@@ -1,12 +1,14 @@
 !=====================================================================
-! predicate.f90 - L3 closed family: termination-predicate grammar interpreter (expression-tree parsing +
-!                  evaluation; four primitives + three boolean combinators - system criteria demoted to data)
-!                  four primitives + three boolean combinators - system criteria demoted to data)
+! predicate.f90 - L3 grammar interpreter: termination-predicate expression-tree parsing + evaluation
+!                  (leaves: four built-in primitives + the open registered primitive set, E14 track 1;
+!                  interior nodes: three boolean combinators, a closed set, E14 track 2 - system
+!                  criteria demoted to data)
 ! Reference: src_VENUS/TEST.f:88-94 (prototype of the hardwired Z_HEIGHT criterion: rd=Q(3) height above the
 !       surface + P(3)>0 outward velocity, topmost surface layer at z=0); src_VENUS/TEST.f:106-146
 !       (COM_DISTANCE prototype: mass-weighted center-of-mass accumulation :107-130, center-of-mass distance
 !       and receding-velocity dot product :133-143, RBAR/RMAX two-threshold test :144-145);
-!       docs/final_completion_plan.md §5 N2 (grammar and interface spec - directly in force); §3 B2
+!       docs/final_completion_plan.md §5 N2 (grammar and interface spec - in force as amended by E14:
+!       its closed-primitive-set wording is superseded, see the E14 note below); §3 B2
 !       (the TEST general criteria registered -> grammar members of this module)
 ! Input grammar (TERMINATE= expression, a new keyword registered in param_mapping - N2 spec):
 !   expression := primitive | AND(e1,e2) | OR(e1,e2) | NOT(e)
@@ -14,7 +16,20 @@
 !           | Z_HEIGHT(fragment, threshold-Ang[, OUTWARD])     <- replaces the TEST.f:88-94 hardwired criterion
 !           | MAX_STEPS(steps)                                 <- replaces the step-count magic number (always a safety net)
 !           | BOUND(fragmentA, fragmentB, lower, upper)        <- bounded window (constrained scattering)
+!           | PRIM('name')                                     <- registered system primitive (E14 track 1: 'name' must
+!                                                                match a pred_reg_prim row; both-track composition e.g.
+!                                                                AND(PRIM('desorb_z'), MAX_STEPS(500000)))
 !   fragment := roster fragment name (A/B/...) or ATOM(i)
+!
+! -- E14 two-track composition (user ruling 2026-09-08; docs/superpowers/specs/2026-09-08-facade-e14-design.md §7) --
+!   Track 1 (system material): each blackbox registers its termination primitives via
+!   pred_reg_prim(name, proc) - e.g. "adsorbate height above surface" written by the system author;
+!   system knowledge lives in the blackbox (the leaf set OPENS). Track 2 (program-side grammar):
+!   boolean composition (AND/OR/NOT, closed set) and the MAX_STEPS safety net stay in predicate -
+!   composition logic is program knowledge (pure Boolean algebra - the §3 closure argument survives
+!   verbatim; the old N2 wording that read the whole grammar as closed is hereby revised).
+!   pred_parse: the PRIM leaf matches the registered table at parse time (unknown name -> grammar
+!   error naming it); pred_eval: k_prim nodes look up the table and call the member proc with sta.
 !=====================================================================
 module predicate
    use state,         only: state_t
@@ -25,16 +40,21 @@ module predicate
    public :: pred_parse, pred_eval
    public :: com_dist, z_height, bound, steps
    public :: pred_and, pred_or, pred_not
-   public :: k_com_dist, k_z_height, k_bound, k_steps, k_and, k_or, k_not
+   public :: pred_reg_prim
+   public :: k_com_dist, k_z_height, k_bound, k_steps, k_and, k_or, k_not, k_prim
 
-   ! Node-kind codes (values of expr_t%node_kind; a closed set - new primitives are a grammar-versioning matter)
-   integer, parameter :: k_com_dist = 1  ! primitive: COM_DISTANCE (fragment-pair center-of-mass distance)
-   integer, parameter :: k_z_height = 2  ! primitive: Z_HEIGHT (fragment height above the surface)
-   integer, parameter :: k_bound    = 3  ! primitive: BOUND (bounded-window escape)
-   integer, parameter :: k_steps    = 4  ! primitive: MAX_STEPS (step-count safety net)
+   ! Node-kind codes (values of expr_t%node_kind; E14 two-track: the boolean combinator codes are a
+   ! closed set - a new combinator is a grammar-versioning matter; the primitive leaf side is open -
+   ! registered system primitives enter as the k_prim leaf without touching this enumeration)
+   integer, parameter :: k_com_dist = 1  ! built-in primitive: COM_DISTANCE (fragment-pair center-of-mass distance)
+   integer, parameter :: k_z_height = 2  ! built-in primitive: Z_HEIGHT (fragment height above the surface)
+   integer, parameter :: k_bound    = 3  ! built-in primitive: BOUND (bounded-window escape)
+   integer, parameter :: k_steps    = 4  ! built-in primitive: MAX_STEPS (step-count safety net)
    integer, parameter :: k_and      = 5  ! boolean combinator: AND(e1,e2)
    integer, parameter :: k_or       = 6  ! boolean combinator: OR(e1,e2)
    integer, parameter :: k_not      = 7  ! boolean combinator: NOT(e)
+   integer, parameter :: k_prim     = 8  ! registered primitive leaf: PRIM('name') (system termination
+                                         ! primitive dispatched through the prim_tbl registry - E14 track 1)
 
    ! Fragment reference (in-tree representation of the grammar's "fragment": roster fragment name or single atom)
    type :: frag_ref_t
@@ -43,9 +63,10 @@ module predicate
                               ! a single-atom criterion, generalizing the old TEST.f:89 hardwired atom 1)
    end type frag_ref_t
 
-   ! Predicate expression node (recursive tree: primitives are leaves, boolean combinators are interior nodes)
+   ! Predicate expression node (recursive tree: primitives are leaves - built-in four plus the
+   ! registered PRIM leaf (E14); boolean combinators are interior nodes)
    type :: expr_t
-      integer :: node_kind = 0      ! node kind (k_com_dist...k_not; 0 = empty / not assembled)
+      integer :: node_kind = 0      ! node kind (k_com_dist...k_not, k_prim; 0 = empty / not assembled)
       type(frag_ref_t) :: frag_a   ! fragment reference A (used by com_dist/z_height/bound)
       type(frag_ref_t) :: frag_b   ! fragment reference B (used by com_dist/bound)
       real(8) :: th_lo    = 0.0d0   ! main/lower threshold [Å] (com_dist distance; z_height height; bound lower)
@@ -54,12 +75,62 @@ module predicate
       logical :: has_v_rec = .false. ! flag: receding-velocity threshold present (grammar optional part)
       logical :: outward  = .false.  ! off-surface velocity flag (z_height optional OUTWARD: requires p_z>0)
       integer :: n_max    = 0       ! step limit [step] (for steps)
+      character(len=32) :: prim_name = ''  ! registered primitive name [-] (the PRIM('name') leaf key; read
+                                           ! only when node_kind == k_prim - the prim_tbl lookup key)
       type(expr_t), allocatable :: sub(:)  ! subexpressions (and/or: 2; not: 1; primitives: none)
    end type expr_t
+
+   ! Registered system-primitive member interface (E14 track 1): the whole system criterion lives
+   ! behind this signature - the state in, a boolean out; the grammar conveys nothing else to it
+   ! (parameters, if any, ride the member's own closure, not the expression)
+   abstract interface
+      logical function prim_proc_i(sta)
+         import :: state_t
+         type(state_t), intent(in) :: sta   ! physical state (read-only: the system criterion's own inputs)
+      end function prim_proc_i
+   end interface
+
+   ! System-primitive registry (E14 track 1: the leaf set opens - system knowledge registers through
+   ! pred_reg_prim, the same drag-in shape as pes_reg/method_reg; filled in the assembly phase by the
+   ! system's reg_*.f90, read-only at parse/eval time)
+   integer, parameter :: max_prim = 16     ! system-primitive table capacity [row] (registered leaves;
+                                           ! the four built-ins are not rows of this table)
+   type :: prim_entry_t
+      character(len=32) :: name = ''      ! primitive name (the PRIM('name') grammar leaf key)
+      procedure(prim_proc_i), pointer, nopass :: proc => null() ! system-criterion evaluation routine
+   end type prim_entry_t
+   type(prim_entry_t) :: prim_tbl(max_prim)  ! system-primitive registry (module-private)
+   integer :: n_prim = 0                     ! registered primitive row count [row]
 contains
    !------------------------------------------------------------------
+   ! pred_reg_prim(name, proc) - register a SYSTEM termination primitive (spec §7 track 1:
+   !                            system knowledge lives in the blackbox; the leaf set opens, the
+   !                            boolean combinator set stays closed - N2 revision). Duplicate name
+   !                            or full table -> loud-stop.
+   ! Reference: docs/superpowers/specs/2026-09-08-facade-e14-design.md §7 (two-track composition:
+   !       track 1 - each blackbox registers its termination primitives, e.g. "adsorbate height
+   !       above surface" written by the system author; TERMINATE= composes leaves of both tracks
+   !       on equal footing); docs/final_completion_plan.md §5 N2 (the superseded closed-grammar
+   !       wording); E11 drag-in shape (systems/<system>/reg_<system>_all carries the pred_reg_prim
+   !       lines - a new system primitive is a new file, zero edits here)
+   ! pred_parse: grammar gains primitive := ... | PRIM('name') - the leaf matches the registered
+   !   table at parse time (unknown name -> grammar error naming it)
+   ! pred_eval: k_prim nodes look up the table and call the member proc with sta
+   subroutine pred_reg_prim(name, proc)
+      character(len=*), intent(in) :: name  ! primitive name (the PRIM('name') grammar leaf key; the
+                                            ! expr_t%prim_name spelling it must match)
+      procedure(prim_proc_i) :: proc         ! system-criterion evaluation routine (logical function of
+                                            ! the state alone - the whole criterion lives behind it)
+      ! Pseudocode:
+      ! 1. Duplicate name or full table -> loud-stop
+      ! 2. Register the row {name, proc} into prim_tbl / n_prim (executed in the assembly phase; the
+      !    four built-in primitives stay built-in leaves alongside the table - not rows of it)
+   end subroutine pred_reg_prim
+
+   !------------------------------------------------------------------
    ! pred_parse(str, expr, ios, errmsg) - parse a TERMINATE expression string -> expression tree
-   ! Reference: docs/final_completion_plan.md §5 N2 (grammar); TEST.f:106-146/:88-94 (primitive semantics)
+   ! Reference: docs/final_completion_plan.md §5 N2 (grammar, as amended by E14 - PRIM leaf, see the
+   !       module head); TEST.f:106-146/:88-94 (primitive semantics)
    subroutine pred_parse(str, expr, ios, errmsg)
       character(len=*), intent(in) :: str          ! expression string (the value section of TERMINATE=)
       type(expr_t), intent(out) :: expr            ! parsed expression tree (root node)
@@ -68,16 +139,20 @@ contains
       character(len=*), intent(out), optional :: errmsg ! error description (paired with ios)
       ! Pseudocode:
       ! 1. Recursive-descent expansion per the grammar: expression := primitive | AND(e1,e2) | OR(e1,e2) | NOT(e)
-      !    (paren matching and comma splitting; keywords COM_DISTANCE/Z_HEIGHT/MAX_STEPS/BOUND/
+      !    (paren matching and comma splitting; keywords COM_DISTANCE/Z_HEIGHT/MAX_STEPS/BOUND/PRIM/
       !    AND/OR/NOT/ATOM matched in uppercase)
       ! 2. Load primitive parameters into node fields: fragment references (roster names A/B/... -> i_frag;
       !    ATOM(i) -> i_atom), th_lo/th_hi [Å], optional receding-velocity threshold -> v_rec with
       !    has_v_rec=.true.,
       !    OUTWARD -> outward=.true., step count -> n_max
-      ! 3. Boolean combinators attach their subexpressions recursively to sub(:) (and/or binary, not unary)
-      ! 4. Grammar error (unknown primitive / wrong argument count / illegal fragment reference) -> set the
-      !    ios error bit + an errmsg description (or loud-stop); on success ios=0
-      ! 5. The default expression used when no TERMINATE keyword is present (same-parameter version of the
+      ! 3. Registered leaf (E14 track 1): PRIM('name') -> node_kind=k_prim with the quoted name stored in
+      !    prim_name; the leaf matches the registered table prim_tbl AT PARSE TIME - an unknown name is a
+      !    grammar error naming it (quoting / argument-passing conventions are the C7 grammar deliverable)
+      ! 4. Boolean combinators attach their subexpressions recursively to sub(:) (and/or binary, not unary)
+      ! 5. Grammar error (unknown primitive / wrong argument count / illegal fragment reference /
+      !    unregistered PRIM name) -> set the ios error bit + an errmsg description (or loud-stop); on
+      !    success ios=0
+      ! 6. The default expression used when no TERMINATE keyword is present (same-parameter version of the
       !    current TEST general criterion - N2.2, preserving pre-B2 behavior) is not assembled in this
       !    routine: the assembly layer (input/driver, C3) builds the same-parameter tree from the existing
       !    parameters (old RCRIT-style thresholds)
@@ -95,16 +170,20 @@ contains
       ! Result: the truth value of the expression in the current state (.true. = termination/event triggered)
       ! Pseudocode:
       ! 1. Empty tree (node_kind=0) -> false (nothing assembled, nothing blocked; default-expression
-      !    assembly see pred_parse note 5)
+      !    assembly see pred_parse note 6)
       ! 2. Boolean-combinator nodes evaluate their subexpressions recursively, then call the combinator:
       !    k_and -> pred_and(eval(sub(1)), eval(sub(2)));
       !    k_or  -> pred_or(eval(sub(1)), eval(sub(2)));
       !    k_not -> pred_not(eval(sub(1))) (left-to-right recursion order = short-circuit evaluation order)
-      ! 3. Primitive nodes call one of the four primitives by kind (node fields are the dummy arguments):
+      ! 3. Built-in primitive nodes call one of the four primitives by kind (node fields are the dummy
+      !    arguments):
       !    k_com_dist -> com_dist(sta, frag_a, frag_b, th_lo, v_rec [passed when has_v_rec])
       !    k_z_height -> z_height(sta, frag_a, th_lo, outward)
       !    k_bound    -> bound(sta, frag_a, frag_b, th_lo, th_hi)
       !    k_steps    -> steps(i_step, n_max)
+      ! 4. Registered leaf (E14 track 1): k_prim nodes look up prim_name in prim_tbl -> call the member
+      !    proc with sta -> the node value is the function result (not found -> loud-stop naming it - the
+      !    parse-time check of pred_parse step 3 makes this a belt-and-suspenders formal stop)
    end function pred_eval
 
    !------------------------------------------------------------------
