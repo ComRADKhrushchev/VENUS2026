@@ -197,6 +197,26 @@ Architecture rationale:
    + the system PES. The system author writes PES members and system-definition files;
    the method is a config key.
 
+### Degree of system-independence of a mature MQC method (FSSH worked example)
+
+Per-component analysis of FSSH: amplitude propagation (dc/dt = -iHc along the trajectory —
+a matrix ODE integration) — 100% generic; hop probability g_ij = 2·dt·Re[c_i* c_j (d_ij·v)]/|c_j|^2
+— 100% generic formula; hop acceptance + momentum-projection energy budget — 100% generic;
+momentum rescaling p' = p - beta·d_ij — 100% generic; frustrated-hop policy and decoherence
+corrections — generic formulas with method parameters (sub-options, not system knowledge).
+All system dependence is pushed to the input side and isolated by three contractual layers:
+(1) the ws container — the sole channel through which the system delivers H/d_ij (the method
+imports no system module, it only eats the container); (2) the representation-support
+declaration — standard FSSH eats r_adiab (v_surf/g_surf/d_ij); diabatic input goes through the
+facade diagonalization view (branch 4'a ruling); unsupported repr -> loud-stop (E10 contract);
+(3) method parameters ride config. Tully 1990 itself is presented this way — models (systems)
+and algorithms (methods) separated, the algorithm written purely in H_ij/d_ij notation; the
+R8-5 benchmark series validates the same algorithm against different models, per layer.
+IESH is isomorphic (independent-electron n_e × n_s matrix algebra, still container-only).
+Honest boundary: numerical-stability knowledge (amplitude sub-stepping policy etc.) is
+generic-side-lawful; system authors' parameter tuning rides config and does not break the
+single-copy property of the algorithm.
+
 Registration data flow (two levels):
 
 ```
