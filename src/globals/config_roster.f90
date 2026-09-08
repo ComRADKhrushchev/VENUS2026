@@ -22,7 +22,8 @@ module config_roster
                                                ! fixed with a huge mass ~1d30 - venus_input.f90:752)
       character(len=4), allocatable :: symb(:) ! per-atom element symbols [-] (new field; the old
                                                ! library stored masses only, symbols read straight
-      ! from input - grammar finalized in C4)
+      ! from input - E14: the symbols arrive from the system-definition files, the sysdef
+      ! facade products (spec §6))
       real(8) :: mass_a = 0.0d0                ! fragment-A total mass [amu] (old WTA(1) = sum W(LA))
       integer, allocatable :: list_a(:)        ! fragment-A atom index list [global atom index] (old LA(1,:))
       real(8), allocatable :: qz_a(:)          ! fragment-A equilibrium geometry (principal-axis coordinates) [Å]
@@ -52,24 +53,34 @@ module config_roster
                                ! state%natoms = size(roster%mass) - wiring in phase C driver/input)
 contains
    !------------------------------------------------------------------
-   ! roster_load() - assemble and validate the roster (parsed input data -> mass table / fragment
-   ! table / equilibrium geometry / unit cell)
-   ! Reference: venus_input.f90:248-256, 508-518, 743-766, 996-1000;
-   !       src_VENUS/SURF.f:58-83; src_VENUS/SELECT.f90:713-715, 1028-1030
+   ! roster_load() - assemble and validate the roster (E14 spec §6/§9: data source = the sysdef
+   !                 facade products - the system-definition files parsed by sysdef_load
+   !                 (files -> sysdef products -> roster); was the input keywords
+   !                 (ATOM_MASSES / fragment table / SKEW/BOXLX/BOXLY), which no longer carry
+   !                 system composition. roster_load shrinks to allocation + algebra +
+   !                 validation: per-field fill from the sysdef products, fragment mass sums,
+   !                 equilibrium-geometry placement, unit-cell derivation. Ordering statute:
+   !                 sysdef_load runs FIRST - the driver assembly choreography (Task 12); a
+   !                 roster_load ahead of the sysdef products is an assembly-order error)
+   ! Reference: venus_input.f90:248-256, 508-518, 743-766, 996-1000 (the OLD input-keyword
+   !       source - superseded as source by spec §6; kept as citation for the assembly
+   !       algebra); src_VENUS/SURF.f:58-83; src_VENUS/SELECT.f90:713-715, 1028-1030;
+   !       src/facade/sysdef_facade.f90 (sysdef_load - the data source; its step-4 fill notes)
    subroutine roster_load()
       ! Pseudocode:
-      ! 1. Mass table: allocate mass/symb by atom count; default broadcast rule (if only 2
-      !    values are given the 2nd
-      !    broadcasts to the remaining atoms, old :248-256); symbol filling deferred to C4
+      ! 1. Mass table: allocate mass/symb by atom count; fill from the sysdef products (per-atom
+      !    element symbols + masses, the symbol->mass lookup done in sysdef_load; the old input-
+      !    keyword two-value broadcast rule :248-256 is superseded as data source)
       ! 2. Fragment-A table: list_a = 1..nat_a in order, mass_a = sum(mass(list_a)),
-      !    qz_a reads the equilibrium geometry (old :508-518)
+      !    qz_a reads the equilibrium geometry (a sysdef product; old :508-518 for the algebra)
       ! 3. Rigid-surface paradigm: surface atoms fixed with a huge mass ~1d30 (old :752);
       !    fragment-B table left blank (phase C; old :743-766 for reference only)
       ! 4. q0 assembly: place each fragment's equilibrium geometry into the whole-system
       !    geometry by atom index
       !    (old SELECT.f90:713-715 filled by A, :1028-1030 by B)
       ! 5. Unit cell: the periodic-box paradigm reads skew (degrees -> radians) / box_lx /
-      !    box_ly directly (old :996-1000);
+      !    box_ly from the sysdef products (the cell-carrying system-definition files; the old
+      !    input keys :996-1000 superseded as source);
       !    the rigid-surface paradigm derives box_lx/box_ly/skew from the four surface-atom
       !    coordinates (law of cosines,
       !    old SURF.f:58-83; a degenerate unit cell reports an error and stops, old :74-79)

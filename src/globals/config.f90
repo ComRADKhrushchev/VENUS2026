@@ -19,10 +19,16 @@ module config
   ! Electronic layer (spec §3.2-2: two independent axes - H representation capability x
   ! electron propagation law)
   type :: electronic_t
-     character(len=32) :: method = 'adiabatic'  ! electron propagation law member name (assembly key,
-                                                ! same form as pes_main - E13; 'adiabatic' = degenerate
-                                                ! point; nonadiabatic 'tsh'/'iesh' arrive with their
-                                                ! consumers)
+     character(len=32) :: method = 'adiabatic'  ! electron propagation law PACKAGE name (assembly key,
+                                                ! same form as pes_main - E13; E14: a name-string
+                                                ! lookup into the methods/ library registry - the
+                                                ! method_tbl of elec_facade, filled by the thin
+                                                ! reg_*.f90 files (spec §5); 'adiabatic' = the
+                                                ! all-no-op degenerate seed package (K2);
+                                                ! 'ehrenfest'/'fssh'/'iesh' = phase-C arrivals;
+                                                ! two exposure levels (spec §5): the whole package
+                                                ! binds by this config key (level 1), reusable
+                                                ! components are consumed by use (level 2))
      integer :: n_surf  = 1      ! H representation capability (single surface; multi-surface/coupling waits for nonadiabatic)
      character(len=32) :: pes_main = ''  ! main-PES member name (H-field provider, interface A)
      ! Left blank: additive force member table (GLO springs / Langevin ghost / LDFA -
@@ -34,7 +40,14 @@ module config
   ! distributions, both as input data)
   type :: reactants_t
      integer :: n_frag = 1           ! number of fragments
-     integer :: surface_model = 0    ! configuration paradigm (0 = gas phase; 1/2 = the two surface paradigms)
+     character(len=128) :: system_dir = '' ! blackbox folder path scanned by sysdef_load (E14 spec §6;
+                                           ! grammar + default value finalized in C4)
+     integer :: surface_model = 0    ! configuration paradigm (0 = gas phase / molecular; 1/2 = the two
+                                     ! surface paradigms). E14: DERIVED, not an input key - sysdef_load
+                                     ! writes it by the spec §6 cell-presence rule (any system-
+                                     ! definition file carries a cell -> surface paradigm (1/2); none
+                                     ! -> 0); the 1-vs-2 surface-paradigm selection is not derivable
+                                     ! from cell presence alone and arrives with further input (C4)
      integer :: dist_scheme(2) = 0   ! per-fragment sampling scheme (pointing to dist_* members)
      real(8) :: e_rel  = 0.0d0       ! collision energy (relative-motion distribution) [kcal/mol]
      real(8) :: b_max  = 0.0d0       ! maximum impact parameter [Å]

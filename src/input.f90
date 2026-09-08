@@ -9,7 +9,8 @@
 !       count_keyword_values/get_*_element getters), :489-502 (set_default -
 !       default keys are injected only when the user has not set them);
 !       venus2026/param_mapping.f90:34-160 (enumeration mapping-table family: map_elec_method
-!       :34-55, map_surface_model :60-75, map_task :80-101, map_integrator
+!       :34-55, map_surface_model :60-75 (its key withdrawn by E14 - surface_model is derived,
+!       spec §6), map_task :80-101, map_integrator
 !       :106-121+, map_init_sampling, map_old_nsurf - string enumerations -> integer codes,
 !       illegal values stop with the name printed);
 !       venus2026/presets.f90:33-100 (apply_preset: MODEL key -> five-preset dispatch,
@@ -62,10 +63,16 @@ contains
       !    user-set keys - set_default semantics, input_parser.f90:489-502; old presets.f90:33-100)
       ! 4. Enumeration mapping (mapping-table family idea - param_mapping.f90): string enumeration ->
       !    internal key, illegal values stop with the name printed - electron law -> electronic%method
-      !    (a member-name string, E13; old map_elec_method), configuration paradigm ->
-      !    reactants%surface_model, task -> task, integrator + order -> propagator%id/order (old
+      !    (a package-name string, E13; E14: the assembly key into the methods/ library registry -
+      !    the method_tbl of elec_facade, filled by the thin reg_*.f90 files, spec §5; old
+      !    map_elec_method), task -> task, integrator + order ->
+      !    propagator%id/order (old
       !    map_integrator), sampling scheme ->
-      !    reactants%dist_scheme (old map_init_sampling); when no new enumeration key matches, the old
+      !    reactants%dist_scheme (old map_init_sampling); the configuration-paradigm enumeration is
+      !    WITHDRAWN (E14 spec §6: reactants%surface_model is DERIVED by sysdef_load from cell
+      !    presence, no longer an input key - old map_surface_model and the old integer-key role
+      !    retired; the surfacing policy for a stray old key is a C4 grammar decision); when no new
+      !    enumeration key matches, the old
       !    integer keys are read directly for compatibility (CALTYP/NSURF/INTEGRATOR/NACTA.NACTB - old
       !    venus_input.f90:214-222/:403-413 dual-track fallback sites)
       ! 5. Control slot mapping: task, n_traj (old NT), title(2) (old TITLE1/2),
@@ -73,18 +80,28 @@ contains
       !    by rng_init)
       ! 6. config slot mapping:
       !    propagator <- id/order/dt (old INTEGRATOR/LLL/HTMIN family);
-      !    electronic <- method/n_surf/pes_main (old CALTYP/NSURF/TEST_PES);
-      !    reactants <- n_frag/surface_model/dist_scheme(2)/e_rel/b_max/r_sep
-      !    (old NACTA.B/NSURF/SEREL/BMAX/S);
+      !    electronic <- method/n_surf/pes_main (old CALTYP/NSURF/TEST_PES; method/pes_main remain
+      !    NAME STRINGS - E14: method is the name-string lookup into the methods/ library registry
+      !    (method_tbl in elec_facade, spec §5), pes_main the class-A assembly key, E13 form);
+      !    reactants <- n_frag/dist_scheme(2)/e_rel/b_max/r_sep
+      !    (old NACTA.B/SEREL/BMAX/S) + system_dir (blackbox folder path - grammar finalized in
+      !    C4, spec §6); surface_model is NOT mapped here (E14: derived by sysdef_load, see
+      !    step 4);
       !    event <- term_expr/outcome_tbl (TERMINATE=/OUTCOME= new grammar keys -
-      !    the predicate module-header grammar; wired in C3/C7);
+      !    the predicate module-header grammar; wired in C3/C7; E14: TERMINATE gains the
+      !    PRIM('name') leaf - registered system primitives compose with the built-in four on
+      !    equal footing (two-track, spec §7); exact surface form per predicate.f90: uppercase
+      !    keyword, single-quoted name, stored verbatim into character(len=32) prim_name,
+      !    parse-time unknown-name errors riding the existing ios/errmsg channel (pred_parse
+      !    step 3); both-track example AND(PRIM('desorb_z'), MAX_STEPS(500000)));
       !    observables <- rec_level/obs_list/e_kin/e_pot/e_tot (old
       !    GWRITE_LEVEL -> rec_level)
-      ! 7. Raw roster-section staging: ATOM_MASSES mass table + two-value broadcast rule (if only 2 values
-      !    are given they broadcast to the remaining atoms - old venus_input.f90:248-256), fragment-A table
-      !    and equilibrium geometry (old :508-518), unit-cell parameters SKEW/BOXLX/BOXLY (old :996-1000);
-      !    the staged data is consumed by roster_load (consumption interface finalized in C4 - roster does
-      !    not use this module; the dependency is one-way)
+      ! 7. Roster-section staging WITHDRAWN (E14 spec §6): system composition (mass table / element
+      !    symbols / fragment tables / equilibrium geometries / unit cell) no longer rides the input
+      !    grammar - it arrives from the blackbox folder through sysdef_load (the sysdef facade
+      !    products, roster_load's data source; old ATOM_MASSES broadcast :248-256 / fragment table
+      !    :508-518 / SKEW/BOXLX/BOXLY :996-1000 superseded as grammar); a_lat-class system
+      !    parameters with no generic default arrive via input or blackbox - decided in C4
       ! 8. Member-parameter dispatch: parameter keys owned by dist_*/pes_* members -> dispatched to each
       !    member's init (member = code + its own data; old TRV_A/TROT_A/AI_A etc. were scattered over the
       !    NACTA branches in venus_input.f90:607-681 - the new version has one central dispatch table,

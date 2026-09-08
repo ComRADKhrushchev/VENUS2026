@@ -12,6 +12,18 @@
 !       :1337-1404 (setup_gas_collision - the two routes merge into the incident-channel member),
 !       :1407-1491 (finalize_and_report - reporting to the recorder, excised);
 !       distribution member roster (X2/X3): boltzmann/ebk/incident (batch-3 skeleton) + 9 more -> C5
+!
+! -- E14 sysdef hand-off (user ruling 2026-09-08; spec §6 data-flow tail / §9: sampler KEPT,
+!    comment only - mechanism unchanged) --
+!   Initial geometries and fragment data arrive from the sysdef hand-off: sysdef_load parses
+!   the blackbox folder's system-definition files and hands the equilibrium geometries /
+!   fragment masses over BY POPULATING THE ROSTER (spec §6: "hand equilibrium geometries to
+!   sampler (B' placement)"). The B' members (dist_boltzmann / dist_ebk / dist_incident)
+!   read equilibrium geometries and fragment masses THROUGH THE ROSTER - the data itself is
+!   the hand-off ("geometry through the roster" in samp_run step 4 already read this way).
+!   Layering statute: NO module dependency on sysdef_facade - this module carries no use
+!   statement on it and never calls it (the sampler never uses sysdef_facade; the roster is
+!   the one and only geometry-knowledge channel into the B' family)
 !=====================================================================
 module sampler
    use state, only: state_t
