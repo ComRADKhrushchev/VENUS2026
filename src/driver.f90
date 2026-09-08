@@ -39,7 +39,9 @@ program venus
    use propagator,     only: hooks_t, prop_reg, prop_step, &
                              verlet_step, symple_step, radau_step
    use force_facade,   only: pes_reg, blackbox_init, force_eval
-   use elec_adiabatic, only: ad_dsdt, ad_force_rule
+   use reg_adiabatic,  only: reg_adiabatic_all   ! E14 T5: the thin reg module replaces the raw
+                                   ! member use line (ad_dsdt/ad_force_rule withdrawn - one
+                                   ! method_reg call fills the whole 'adiabatic' package)
    use sampler,        only: samp_reg, samp_run
    use recorder,       only: rec_select, rec_frame, rec_final
    use final_state,    only: fin_t, fin_eval
@@ -96,8 +98,9 @@ program venus
    !    K3, this pseudocode is the transitional form):
    !    prop_reg(1, verlet_step), prop_reg(2, symple_step),
    !    prop_reg(3, radau_step) (the closed three-member set - X4, unifying the old :423-465 three branches);
-   !    facade_reg_elec('adiabatic', ...) - the class-B degenerate member (the adapter wiring from
-   !    ad_dsdt/ad_force_rule to the slot is finalized in C2); facade_reg_pes(main-PES name, ...) - pes_*
+   !    reg_adiabatic_all() - the 'adiabatic' degenerate method package (E14: the thin reg file's one
+   !    method_reg(ad_prop, ad_match) call fills the whole package row - the member-signature freeze
+   !    lands in C2); pes_reg(main-PES name, ...) - pes_*
    !    members are system material (E12: each systems/<system>/ folder carries self-contained functional
    !    form + parameters; single-surface members register with the default r_scalar, multi-surface main
    !    PES with optional repr=r_diab/r_adiab - the E10 unified single signature, still one registration

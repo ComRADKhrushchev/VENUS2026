@@ -65,6 +65,9 @@ module elec_facade
    public :: elec_prop, mqc_statistic            ! evolution-phase entries (spec §3, entries 2-3)
    public :: method_reg, method_bind             ! package registration + assembly lookup (spec §5)
    public :: ws_get, ws_reset                    ! ws-holder accessor pair (spec §3 ws holding)
+   public :: elec_prop_i, mqc_match_i, sync_proc_i  ! member contract interfaces (E14 T5: made
+   ! explicit for method-package authors - the members/ files use them as contract
+   ! documentation; conformance is machine-checked at the method_reg call site)
 
    ! Method-package member interfaces (spec §5 — one registration fills the whole package;
    ! the registering author knows the pairing is legal — no combination table, E13 carried).
