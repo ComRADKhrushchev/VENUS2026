@@ -60,7 +60,7 @@ contains
       ! Pseudocode:
       ! 1. Read the comment line -> title
       ! 2. Read the universal scaling factor s (a negative value means the target cell
-      !    VOLUME per the format definition: s <- -(|s|/det(lattice vectors))^(1/3))
+      !    VOLUME per the format definition: s <- (|s|/|det(lattice vectors)|)^(1/3))
       ! 3. Read three lattice-vector rows -> cell = s * vectors (row-wise scaling)
       ! 4. Read the element-symbols line, then the per-species counts line; expand
       !    names(:) block-wise by the counts (concatenation order preserved); allocate
