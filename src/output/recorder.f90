@@ -16,7 +16,8 @@
 !       :19 - lattice parameterized into the plot_hist module);
 !       src_VENUS/VENUS.f90:405/:450/:459 (GWRITE call sites - the old orchestration of the
 !       NIP checkpoint interval,
-!       new version via propagator checkpoint callbacks), :572 (the CLOSE(1000+NTZ) unit
+!       new version: the driver four-phase loop calls rec_frame directly after mqc_statistic,
+!       spec §8 - hooks withdrawn), :572 (the CLOSE(1000+NTZ) unit
 !       close-out - orchestration belongs to the driver);
 !       src_TEST/interface_TEST.f90:18-30 (POT0 energy convention - the energy-column
 !       extractor convention)
@@ -39,6 +40,14 @@
 !   (the single force_facade ev_kcal point, same source as T4); the old random-number echo
 !   section (:30) and
 !   the old temperature echo section (:33-45) belong to old task branches - not carried over
+! Observable-source statute (E14, spec §4 - the electronic observable column groups):
+!   population columns read the sta%s%rho DIAGONALS, coherence columns the OFF-diagonals -
+!   the recorder NEVER touches the semantics of a (its row/column index semantics are
+!   method knowledge, E11/E12 route; rho is the observable face of the electronic state,
+!   refreshed to the method's declared deliverable state by sync_proc). The occupation / hop
+!   columns read the classical-side statistical fields sta%occ / sta%n_hop (spec §4:
+!   occ(k) = state of electron k - a hop = one component change of the occupation vector;
+!   n_hop is a recorder-only read)
 !=====================================================================
 module recorder
    use state,         only: state_t
@@ -101,9 +110,18 @@ contains
       !    the old T convention ENERGY.f:58-66), v_pot/e_tot (via force_eval(sta, e)
       !    - the observables%e_kin/e_pot/e_tot switches each map to a column, the old
       !    GWRITE.f90:31
-      !    T/V/H line); member/analysis-quantity columns (e_rel, z_min, n_bnc etc.) are
-      !    registered by their own
-      !    members and analysis - C8 wiring
+      !    T/V/H line); electronic observable columns (E14, spec §4 - the module-header
+      !    observable-source statute): pop_i reads the diagonal sta%s%rho(i,i) (population),
+      !    coh_ij the off-diagonal sta%s%rho(i,j) (coherence, reduced to a real scalar -
+      !    modulus or real part, a display convention), occ_k the component sta%occ(k)
+      !    (occupation vector - classical-side statistical field; a hop = one component
+      !    change), n_hop the counter sta%n_hop (recorder-only read) - these columns never
+      !    touch the semantics of a and form the demand side of the blackbox_init
+      !    observable-vs-container formal check (spec §4: a column demanding a container no
+      !    assembled package member delivers -> loud-stop); preset-group membership in the
+      !    rec_level table deferred - selectable via obs_list, finalized in C4;
+      !    member/analysis-quantity columns (e_rel, z_min, n_bnc etc.) are registered by
+      !    their own members and analysis - C8 wiring
    end subroutine rec_reg_col
 
    !------------------------------------------------------------------
@@ -161,8 +179,11 @@ contains
    ! sections),
    !       :106-127 (the two flattened sections), :145 (flush)
    subroutine rec_frame(sta, unit)
-      type(state_t), intent(in) :: sta   ! physical state (read-only snapshot - passed in by
-      ! the checkpoint callback)
+      type(state_t), intent(in) :: sta   ! physical state (read-only snapshot - the post-mqc
+      ! self-consistent state: the driver four-phase loop calls rec_frame AFTER
+      ! mqc_statistic (spec §8 ordering - sta%occ already updated for the step and rho
+      ! refreshed to the declared deliverable state, repairing the one-step occupation lag
+      ! of the old checkpoint-timed frames)
       integer, intent(in) :: unit        ! output unit number [-] (driver orchestration - the
       ! old 6/8/1000+NTZ family, unit assignment finalized
       ! in C4)

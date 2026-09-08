@@ -92,7 +92,10 @@ contains
       !    internal potential = v from force_eval at the fragment's equilibrium-arrangement
       !    coordinates (the old :49-62 QZB+QCMB
       !    staging-evaluation trick - the new version evaluates via the facade on a locally
-      !    staged state, never writing back to sta) minus the reference
+      !    staged state carrying the trajectory-final sta%occ - the adiab-mode delivery
+      !    request source of force_eval, spec §4 (the old scalar surface request generalized
+      !    to the occupation vector; length 1 = the degenerate form), never writing back to
+      !    sta) minus the reference
       !    dissociation energy (old V-DELH; the DELH energy reference belongs to the assembly
       !    phase - finalized in phase C);
       !    e_int_a(3) = (1)+(2)
