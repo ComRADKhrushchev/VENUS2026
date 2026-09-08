@@ -10,13 +10,15 @@
 | Prior ruling | Revision |
 |---|---|
 | E13 "facade_force is the orchestration of the three" | Withdrawn. The blackbox contract becomes four entries; orchestration belongs to the driver. |
-| E10 axiom B "outside the box only (Q,P,s[,dt])->(F,E) is visible" | Outside the box four signatures are visible: `facade_force` / `facade_elec_prop` / `facade_mqc` / termination primitives (composed through predicate). ws still never leaves the box. |
-| E10 axiom C "ws lifetime = one evaluation, declared and dying inside facade_force" | ws lifetime extends to one integration step: filled at force evaluation, consumed by elec_prop/mqc, reset at step end. Holder: a module-private instance in elec_facade (still invisible outside the box). |
-| E9 "class-B dt channel = third argument of facade_force" | dt is removed from the facade_force signature; it becomes the argument of `facade_elec_prop(sta, dt)` — hop probability g_ij(dt) belongs to the electronic phases. |
+| E10 axiom B "outside the box only (Q,P,s[,dt])->(F,E) is visible" | Outside the box four signatures are visible: `force_eval` / `elec_prop` / `mqc_statistic` / termination primitives (composed through predicate). ws still never leaves the box. |
+| E10 axiom C "ws lifetime = one evaluation, declared and dying inside facade_force" | ws lifetime extends to one integration step: filled at force evaluation, consumed by elec_prop / mqc_statistic, reset at step end. Holder: a module-private instance in elec_facade (still invisible outside the box). |
+| E9 "class-B dt channel = third argument of facade_force" | dt is removed from the facade_force signature; it becomes the argument of `elec_prop(sta, dt)` — hop probability g_ij(dt) belongs to the electronic phases. |
 | E7 "inside the integration loop the only direct call is prop_step" | Revised: the loop body directly calls prop_step and the facade phase entries, plus rec_frame/pred_eval — the four-phase orchestration is explicit in the driver. |
 | N2 "the predicate primitive set is closed (four primitives)" | The primitive set becomes an open registered set (system termination primitives as grammar leaves); the boolean combinators remain a closed set. |
 | E12 "interface_electronic/ remains the class-B home" | Role upgraded: the two interface_* directories are rebuilt as the flat built-in method library `methods/` (pre-stored generic methods, library-level registration, config-key dispatch). |
 | E11 "prebuild scans systems/*/reg_*.f90" | Scan rule generalized: prebuild aggregates every reg_*.f90 under methods/ and systems/ into registry_gen.f90. The reg file is the atomic unit of registration (drag in a new file = drag in a new method or system; zero edits to existing files). |
+| E12 "state.f90 n_surf/i_surf representation semantics" | i_surf is ruled a statistical variable, not an electronic one (the discrete output of mqc's stochastic sampling of the populations — an irreversible classical-side projection). i_surf and n_hop relocate from elec_t to state_t top level (classical-side statistical fields); elec_t becomes purely the quantum-state ontic layer {n_surf, a, rho}. |
+| (naming) facade_-prefixed entry names | Withdrawn. Entry names state the physical role: force_eval / elec_prop / mqc_statistic (evolution), blackbox_init / blackbox_info / sysdef_load (assembly), pes_reg / method_reg / pred_reg_prim (registration, noun_reg per the prop_reg/samp_reg convention). Module names keep *_facade (architectural position). |
 
 ## 1. Background and motivation
 
@@ -35,7 +37,8 @@ E14 therefore rebuilds the facade layer as a four-entry contract with driver-sid
 src/
   facade/
     force_facade.f90    REWRITTEN  — force entry + class-A pes registry + unit contract
-    elec_facade.f90     NEW        — elec_prop/mqc entries + method-package registry + ws holder
+    elec_facade.f90     NEW        — elec_prop / mqc_statistic entries + method-package
+                                     registry + ws holder
     sysdef_facade.f90   NEW        — system-definition-file contract: discovery, parsing dispatch,
                                      roster fill, paradigm derivation, hand-off to sampler
     elec_ws.f90         REVISED    — ws_t container contract (comments: one-step lifetime, holder)
@@ -56,27 +59,32 @@ Termination-primitive registration lives in predicate.f90 (leaf-node types and e
 
 ## 3. The four-entry contract
 
+Naming statute: module names keep the *_facade suffix (architectural position — residents of
+facade/); entry names state the physical role (force_eval / elec_prop / mqc_statistic). The
+module names the place, the entry names the action.
+
 ```fortran
 ! ---- force_facade.f90 — entry 1: force phase (force supply for nuclear propagation) ----
-subroutine facade_force(sta, e_tot)
+subroutine force_eval(sta, e_tot)
    ! (Q,P,s) -> (F,E): class-A members deliver via ws -> facade composes -> converts (the
    ! unique unit-contract point, ev_kcal) -> writes sta%f, e_tot. As a side effect the ws of the
    ! current geometry is left in place for the later electronic phases (one-step lifetime).
    ! The dt argument is removed (E9 channel withdrawn — dt now belongs to elec_prop).
 
 ! ---- elec_facade.f90 — entry 2: electronic propagation (§4.1 layer 2) ----
-subroutine facade_elec_prop(sta, dt)
+subroutine elec_prop(sta, dt)
    ! Reads the held ws + sta%q; writes the propagation container (sta%s%a or sta%s%rho,
    ! whichever the method declares as its ontic container). Forms: amplitude ODE
    ! (TSH/IESH/Ehrenfest), mapping flow (SQC), analytic elimination (MDEF: no-op),
    ! no-op (LZSH, adiabatic). Pure-form tail call: sync_proc if registered.
 
 ! ---- elec_facade.f90 — entry 3: state-statistics matching (§4.1 layer 3) ----
-subroutine facade_mqc(sta)
-   ! Input: the electronic state (+ ws statistics). Output: the state — writes sta%s%i_surf
-   ! (discrete reassignment), sta%p (momentum projection), optionally sta%f (post-hop force
-   ! refresh — the member decides and may call facade_force itself; intra-box calls are legal),
-   ! optionally the propagation container (decay-of-mixing amplitude resets).
+subroutine mqc_statistic(sta)
+   ! Input: the electronic state (+ ws statistics). Output: the state — writes sta%i_surf
+   ! (discrete reassignment — a classical-side statistical field, see §4), sta%p (momentum
+   ! projection), optionally sta%f (post-hop force refresh — the member decides and may call
+   ! force_eval itself; intra-box calls are legal), optionally the propagation container
+   ! (decay-of-mixing amplitude resets).
    ! The sole consumption point of the random stream during the evolution phase (§4.1 ruling).
    ! Pure-form tail call: sync_proc if registered.
 
@@ -91,23 +99,26 @@ subroutine facade_mqc(sta)
 ### Assembly-phase entries (not part of the evolution loop)
 
 ```fortran
-! force_facade.f90: facade_reg_pes(name, proc [, repr])   — class-A registration (E10 single
-!                    signature, unchanged); facade_init() — assembly + purely formal validation,
-!                    now spanning both facades (names resolve, main-PES slot filled, method slot
-!                    filled, additive members r_scalar, n_surf>=2 vs r_scalar contradiction);
-!                    facade_info() — diagnostics (member lists, assembly state).
-! elec_facade.f90:  facade_reg_method(name, prop_proc, match_proc [, sync_proc]) — the method
+! force_facade.f90: pes_reg(name, proc [, repr])   — class-A registration (E10 single
+!                    signature, unchanged; noun_reg per the prop_reg/samp_reg convention);
+!                    blackbox_init() — assembly + purely formal validation, now spanning both
+!                    facades (names resolve, main-PES slot filled, method slot filled, additive
+!                    members r_scalar, n_surf>=2 vs r_scalar contradiction, observable-vs-
+!                    container delivery contradiction);
+!                    blackbox_info() — diagnostics (member lists, assembly state).
+! elec_facade.f90:  method_reg(name, prop_proc, match_proc [, sync_proc]) — the method
 !                    package registration (one call fills the whole package).
 ! predicate.f90:    pred_reg_prim(name, proc) — termination primitives.
-! sysdef:           consumed by the driver assembly phase (roster fill + paradigm derivation);
-!                    no evolution-loop presence.
+! sysdef_facade.f90: sysdef_load() — consumed by the driver assembly phase (discovery, parsing
+!                    dispatch, roster fill, paradigm derivation, sampler hand-off); no
+!                    evolution-loop presence.
 ```
 
 ### ws holding and the endpoint-force contract
 
 - The ws instance is a module-private variable of elec_facade (saved, not a dummy); it never
   appears in any public signature. force_facade fills it (use elec_facade to obtain the
-  instance); elec_prop/mqc consume it; reset to r_empty at each step end.
+  instance); elec_prop / mqc_statistic consume it; reset to r_empty at each step end.
 - Dependency direction: force_facade → elec_facade → elec_ws; members (pes_*/elec_*/dist_*)
   → elec_ws (type visibility only).
 - Propagator member obligation (legislated in propagator.f90 header): prop_step returns only
@@ -115,13 +126,11 @@ subroutine facade_mqc(sta)
   the velocity-Verlet right-end force cannot be folded into the next step's left end — the
   amplitude propagation of phase 2 needs the endpoint H.
 
-## 4. state_t revision: symmetric dual electronic containers
+## 4. state_t revision: symmetric dual electronic containers + statistical fields on the classical side
 
 ```fortran
 type :: elec_t
    integer  :: n_surf = 1                  ! unchanged (E12 semantics statute retained)
-   integer  :: i_surf = 1                  ! unchanged (one of mqc's write targets)
-   integer  :: n_hop  = 0                  ! unchanged (observable counter)
    complex(8), allocatable :: a(:,:)       ! UPGRADED from complex vector amp(:): coefficient
                                            ! matrix. Row/column index semantics defined by the
                                            ! class-B method member (E11/E12 route: surface number /
@@ -129,7 +138,27 @@ type :: elec_t
                                            ! z = x + ip encoding).
    complex(8), allocatable :: rho(:,:)     ! NEW: density matrix.
 end type
+! elec_t is now purely the quantum-state ontic layer (state + dimension label).
+
+type :: state_t
+   ! ... q/p/f/t unchanged ...
+   type(elec_t) :: s                       ! electronic state (ontic: a / rho)
+   integer :: i_surf = 1                   ! RELOCATED from elec_t: active-surface index — a
+                                           ! CLASSICAL-SIDE STATISTICAL field, not an electronic
+                                           ! variable: the discrete output of mqc_statistic's
+                                           ! stochastic sampling of the populations (irreversible
+                                           ! projection of quantum statistics onto the classical
+                                           ! side). Read by force_eval (adiab-mode i_want
+                                           ! request source); written by mqc_statistic.
+   integer :: n_hop  = 0                   ! RELOCATED from elec_t: hop counter — same statistical
+                                           ! nature (pure observable; read by recorder only).
+end type
 ```
+
+Conceptual gain: "mqc_statistic takes the electronic state as input and returns the state"
+now reads literally true — its outputs are classical-side fields of state_t (i_surf, p),
+while the electronic ontic state (a/rho) is touched only when a method lawfully resets it
+(decay-of-mixing).
 
 - The two containers are **symmetric ontic candidates**: a method declares which one it
   propagates (amplitude ODE methods work on a; density-matrix-dynamics methods work on rho;
@@ -141,13 +170,14 @@ end type
 - Synchronization contract (digesting the dual-container risk with a formal guarantee): the
   method-package third slot `sync_proc(s)` — "bring the containers the method declares as
   deliverables up to date". Refresh direction and form (a→rho, rho→a, or none) are entirely
-  the method's knowledge; facade calls it as a pure-form tail of elec_prop/mqc when registered.
+  the method's knowledge; facade calls it as a pure-form tail of elec_prop / mqc_statistic
+  when registered.
   The assembly-time check is purely formal: an observable column demanding a container that no
   assembled package member delivers -> loud-stop naming the conflict (derivable from the
   container contract alone).
 - Allocation timing: state_create allocates the degenerate shape (single surface / 1×1);
   a method package whose ontic container is larger (e.g. IESH n_e × n_s) reallocates in its
-  member-init hook (the facade_init step — POTPRE-type, per the existing assembly spec).
+  member-init hook (the blackbox_init step — POTPRE-type, per the existing assembly spec).
 - recorder reads rho diagonals (populations) / off-diagonals (coherences) as observable
   columns — never touching the semantics of a.
 
@@ -171,7 +201,7 @@ Registration data flow (two levels):
 
 ```
 Library level:  each method file is registered through its own thin reg_*.f90 in methods/
-                (e.g. reg_fssh.f90 calling facade_reg_method('fssh', prop, match [, sync])).
+                (e.g. reg_fssh.f90 calling method_reg('fssh', prop, match [, sync])).
                 Built-in set: 'adiabatic' (all no-ops — the degenerate package), 'ehrenfest',
                 'fssh', 'iesh' (the latter three land in phase C; the K2 skeleton carries
                 elec_adiabatic + the three batch-3 dist members as the library seed).
@@ -224,11 +254,11 @@ is a data-material contract consumed in the assembly phase.
 ```fortran
 do while (.not. term_flag)
    step_i = step_i + 1
-   call prop_step(sta)                  ! phase 1: nuclear propagation (multiple facade_force
+   call prop_step(sta)                  ! phase 1: nuclear propagation (multiple force_eval
                                         ! calls inside; endpoint-force contract obliges the
                                         ! final ws to match the returned sta%q)
-   call facade_elec_prop(sta, dt)       ! phase 2: electronic propagation
-   call facade_mqc(sta)                 ! phase 3: matching (hop / momentum rescaling /
+   call elec_prop(sta, dt)              ! phase 2: electronic propagation
+   call mqc_statistic(sta)              ! phase 3: matching (hop / momentum rescaling /
                                         ! optional force refresh)
    call rec_frame(sta, u_out)           ! frame output (post-mqc self-consistent state —
                                         ! repairs the prior one-step i_surf lag in frames)
@@ -249,12 +279,12 @@ end do
 
 | File | Change |
 |---|---|
-| src/facade/force_facade.f90 | deleted and rewritten (force entry + pes registry; all class-B content excised) |
-| src/facade/elec_facade.f90 | new (elec_prop/mqc entries, method-package registry, ws holder, sync tail calls) |
+| src/facade/force_facade.f90 | deleted and rewritten (force_eval entry + pes registry; all class-B content excised) |
+| src/facade/elec_facade.f90 | new (elec_prop / mqc_statistic entries, method-package registry, ws holder, sync tail calls) |
 | src/facade/sysdef_facade.f90 | new (system-definition contract: discovery/dispatch/roster fill/derivation/hand-off) |
 | src/facade/elec_ws.f90 | comments revised (one-step lifetime, holder wording) |
 | src/facade/sampler.f90 | kept (comment: initial geometries arrive from sysdef hand-off) |
-| src/globals/state.f90 | amp(:) -> a(:,:); rho(:,:) added; comment statutes (symmetric ontic containers, member-defined semantics) |
+| src/globals/state.f90 | amp(:) -> a(:,:); rho(:,:) added; i_surf/n_hop relocated from elec_t to state_t top level (classical-side statistical fields); comment statutes (symmetric ontic containers, member-defined semantics, statistical vs ontic distinction) |
 | src/dynamics/propagator.f90 | hooks withdrawn; endpoint-force contract in header; dt-channel note rewritten |
 | src/dynamics/predicate.f90 | primitive registry (pred_reg_prim + k_prim leaf + PRIM grammar leaf) |
 | src/driver.f90 | four-phase orchestration pseudocode; hooks wiring removed; assembly phase gains sysdef step |
@@ -280,8 +310,8 @@ standard as the E13 closure).
 - dt-rejection mechanism for fixed-step-only laws (member-declared prerequisite flag vs
   runtime first-step comparison) — phase C with elec_tsh (E13 open point, unchanged).
 - U-delivery tension (ws adiab-view cache field vs re-diagonalization inside the class-B
-  member at double O(n_surf^3) cost) — phase C; the consumer is now elec_prop/mqc rather
-  than an in-facade_force call (E12 open point, re-anchored).
+  member at double O(n_surf^3) cost) — phase C; the consumer is now elec_prop /
+  mqc_statistic rather than an in-force_eval call (E12 open point, re-anchored).
 - PRIM leaf grammar details (quoting, argument passing into system primitives) — the C7
   grammar deliverable window.
 - The sysdef parser set grows per format (POSCAR/.xyz first); CIF/gro etc. are grammar-
