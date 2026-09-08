@@ -99,10 +99,10 @@ program venus
    !    prop_reg(3, radau_step) (the closed three-member set - X4, unifying the old :423-465 three branches);
    !    facade_reg_elec('adiabatic', ...) - the class-B degenerate member (the adapter wiring from
    !    ad_dsdt/ad_force_rule to the slot is finalized in C2); facade_reg_pes(main-PES name, ...) - pes_*
-   !    members filled in C2 (the six single-surface members keep the default r_scalar with zero registration-line
-   !    changes; multi-surface main PES uses the same entry with optional repr=r_diab/r_adiab - the E10 unified
-   !    single signature, introduced with the elec_tsh/iesh consumers, still one registration line, T2
-   !    unchanged); samp_reg(distribution member name, ...) - dist_* member wiring in C5
+   !    members are system material (E12: each systems/<system>/ folder carries self-contained functional
+   !    form + parameters; single-surface members register with the default r_scalar, multi-surface main
+   !    PES with optional repr=r_diab/r_adiab - the E10 unified single signature, still one registration
+   !    line per member, T2 unchanged); samp_reg(distribution member name, ...) - dist_* member wiring in C5
    !    (batch-3 skeleton boltzmann/ebk/incident + the remaining 9)
    ! 6. facade_init() - member assembly + capability-triple validation (illegal combinations loud-stop)
    ! 7. rec_select(observables%rec_level) (or rec_select(observables%obs_list)

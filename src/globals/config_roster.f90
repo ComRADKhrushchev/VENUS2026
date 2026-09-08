@@ -36,8 +36,10 @@ module config_roster
       real(8) :: box_ly = 0.0d0                ! unit-cell y edge length [Å] (old BOXLY)
       real(8) :: box_pad = 2.0d0               ! half-width of the random cluster drop box [Å]
       ! (old RND_BOX, venus_input.f90:307)
-      real(8) :: a_lat = 2.94998d0             ! surface lattice constant [Å] (old auro,
-      ! the venus_data.f90:585 default)
+      real(8) :: a_lat = 0.0d0                ! surface lattice constant [Å] (system parameter - no
+      ! generic default: the old-library Au value 2.94998 from venus_data.f90:585 is a system bias and
+      ! is not carried over; surface paradigms must supply it via input/blackbox - roster_load
+      ! validation intercepts a missing value)
       ! Left blank: fragment-B table (nat_b/list_b/mass_b/qz_b - old NATOMB/LB/WTB/QZB,
       ! including the surface
       ! four unit-cell atoms) and multi-fragment extension (K1 risk note: max_frag array
@@ -73,7 +75,9 @@ contains
       !    old SURF.f:58-83; a degenerate unit cell reports an error and stops, old :74-79)
       !    - B table wired in phase C
       ! 6. Validation: nat_a <= atom count, list_a indices in range, all masses positive
-      !    (illegal -> loud-stop)
+      !    (illegal -> loud-stop); surface paradigm (config%reactants%surface_model) with a_lat <= 0
+      !    -> loud-stop naming the missing lattice constant (a system parameter with no generic
+      !    default - the 2026-09-08 audit removed the old-library Au bias 2.94998)
    end subroutine roster_load
 
    !------------------------------------------------------------------
@@ -84,6 +88,7 @@ contains
       ! Pseudocode:
       ! 1. Deallocate mass/symb/list_a/qz_a/q0
       ! 2. Reset scalars: mass_a=0, nat_a=0, skew=0, box_lx=0, box_ly=0,
-      !    box_pad=2.0, a_lat=2.94998 (old defaults, venus_data.f90:585-586)
+      !    box_pad=2.0, a_lat=0 (generic defaults; a_lat has no system default - see the
+      !    field statute above)
    end subroutine roster_clear
 end module config_roster

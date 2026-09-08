@@ -35,7 +35,7 @@ module elec_ws
 
    ! ws fill-mode values (the repr tag - representation demoted from an interface fork to a data tag, E10)
    integer, parameter :: r_empty  = 0  ! empty / not assembled (facade resets before each evaluation)
-   integer, parameter :: r_scalar = 1  ! single-surface scalar mode (g_add/v_add - the six single-surface members)
+   integer, parameter :: r_scalar = 1  ! single-surface scalar mode (g_add/v_add - plain additive members)
    integer, parameter :: r_diab   = 2  ! multi-surface diabatic mode (h_ij/dh_ij; natural for IESH)
    integer, parameter :: r_adiab  = 3  ! multi-surface adiabatic mode (v_surf/g_surf/d_ij)
 

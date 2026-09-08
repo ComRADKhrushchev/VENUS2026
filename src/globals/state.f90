@@ -9,8 +9,13 @@ module state
   private
   public :: elec_t, state_t, state_create, state_destroy
   type :: elec_t          ! electronic state s (runtime): adiabatic = degenerate point (single surface)
-     integer :: n_surf = 1   ! number of potential-energy surfaces
-     integer :: i_surf = 1   ! current surface index
+     integer :: n_surf = 1   ! number of potential-energy surfaces (representation-statute extension:
+                             ! under the single-electron representation read as the configuration-space
+                             ! cardinality - semantics defined by the class-B method member, field
+                             ! name unchanged)
+     integer :: i_surf = 1   ! current surface index (same statute extension: under the single-electron
+                             ! representation read as the current electron-configuration/state index -
+                             ! semantics defined by the class-B method member, field name unchanged)
      ! E10 representation statute (enacted in comments, field names untouched): amp only
      ! promises "a complex array whose |.|^2 can be read as
      ! populations"; the index semantics are defined by the class-B method member - surface

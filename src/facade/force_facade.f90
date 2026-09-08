@@ -15,7 +15,10 @@
 ! in the N1 member-signature spec reads as "after facade conversion")
 ! (see previous line)
 ! (see previous line)
-! Member tables are filled in C2 (the six pes_* files deferred - K2 plan E3; main PES + additive stochastic-law members)
+! Member tables are filled in C2 (main PES + additive stochastic-law members; E12 ruling: pes members
+! are system material - each systems/<system>/ folder carries self-contained functional form + parameters,
+! the "six pes_* files land in interface_electronic/" plan of K2 E3 is superseded; the facade itself is
+! untouched)
 !
 ! -- E10 workspace revision (user adjudication 2026-09-07, three axioms enacted - amending E9) --
 !   A Interface invariance: the abstract interfaces are invariant across systems - signatures carry only
@@ -164,7 +167,7 @@ contains
       procedure(pes_proc_i) :: proc         ! member evaluation routine (single signature - scalar/diab/
                                             ! adiab unified, delivered via the ws container)
       integer, intent(in), optional :: repr ! ws fill mode r_* (default r_scalar -
-                                            ! the six single-surface members need zero registration-line
+                                            ! single-surface members need zero registration-line
                                             ! changes; multi-surface main PES registers with
       ! r_diab/r_adiab)
       ! (see previous line)
@@ -291,7 +294,12 @@ contains
       !       adiabatic view on the spot (eigenvalues = per-surface V, eigenvectors = representation
       !       transform U); the current-surface adiabatic force kernel takes the transformed current row;
       !       the dh_ij.U product needed for the hop probability g_ij(dt) is fetched by the class-B member
-      !       itself (the facade does not pre-build it); r_adiab -> g = ws%g_surf(:, sta%s%i_surf) (the
+      !       itself (the facade does not pre-build it; the diagonalization itself is system-independent
+      !       generic physics and lawfully stays in the facade - not system-specific code. Delivery of U:
+      !       an adiab-view cache field in ws, written by the facade and read-only to the class-B member
+      !       (one-step lifetime, axiom C intact), or a re-diagonalization inside the class-B member -
+      !       fixed in phase C with the elec_tsh consumer, noting the double O(n_surf^3) cost of the
+      !       latter); r_adiab -> g = ws%g_surf(:, sta%s%i_surf) (the
       !       current-surface row - after a hop the class-B member updates i_surf, and recomputing with
       !       the new row belongs to the next evaluation)
       !       (see previous line)
