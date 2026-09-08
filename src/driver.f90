@@ -98,7 +98,8 @@ program venus
    !
    ! ===== Phase 1: assembly =====
    ! 1. read_input('input_qct.txt') - input framework (KEYWORD=VALUE -> control/config
-   !    slots / roster staging / member parameters; grammar finalized in C4; old VENUS.f90:115 read_venus_input site)
+   !    slots / member parameters + the a_lat-class residual keys; grammar finalized in C4;
+   !    old VENUS.f90:115 read_venus_input site)
    ! 2. rng_init(converted i_seed) - establish the random stream (old :184/:231 RANDST(ISEED);
    !    the control%i_seed 8-word -> i_seed conversion is finalized in C4 - input step 5)
    ! 3. sysdef_load(reactants%system_dir) - system-definition materialization (E14 spec §6: folder
