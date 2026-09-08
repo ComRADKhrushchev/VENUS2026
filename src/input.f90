@@ -61,9 +61,10 @@ contains
       !    surface / full surface / GLO surface); the preset body injects default keys (never overriding
       !    user-set keys - set_default semantics, input_parser.f90:489-502; old presets.f90:33-100)
       ! 4. Enumeration mapping (mapping-table family idea - param_mapping.f90): string enumeration ->
-      !    integer code, illegal values stop with the name printed - electron law -> electronic%method (old
-      !    map_elec_method), configuration paradigm -> reactants%surface_model, task -> task,
-      !    integrator + order -> propagator%id/order (old map_integrator), sampling scheme ->
+      !    internal key, illegal values stop with the name printed - electron law -> electronic%method
+      !    (a member-name string, E13; old map_elec_method), configuration paradigm ->
+      !    reactants%surface_model, task -> task, integrator + order -> propagator%id/order (old
+      !    map_integrator), sampling scheme ->
       !    reactants%dist_scheme (old map_init_sampling); when no new enumeration key matches, the old
       !    integer keys are read directly for compatibility (CALTYP/NSURF/INTEGRATOR/NACTA.NACTB - old
       !    venus_input.f90:214-222/:403-413 dual-track fallback sites)

@@ -244,7 +244,7 @@ definitions in this section take direct effect for K.)
 module force_facade
   public :: facade_register_pes(name, pes_proc)      ! class-A member registration (additive)
   public :: facade_register_elec(name, elec_proc)    ! class-B member registration (single choice)
-  public :: facade_init(config)                      ! assemble the member table + capability-level negotiation; illegal combinations loud-stop
+  public :: facade_init(config)                      ! assemble the member table + formal validation (E13: names resolve, slots filled, container-contract contradictions caught; physical-combination legality is the members' own affair)
   public :: facade_force(Q, P, s, F, E)              ! (Q,P,s)→(F,E); F=Σ member contributions; E=T(P)+ΣV
   public :: facade_info                             ! member list / capability levels (diagnostic output)
 end module
@@ -256,11 +256,18 @@ end module
 ! this as authoritative.
 ! Class-B member signature (degenerate point): elec_adiabatic: ds/dt≡0, identity force rule — explicitly present, ~20 lines
 ```
-Capability-level negotiation table (data inside facade_init): the only legal triple at present is
-`(single_surface, adiabatic, {verlet,symple,radau})`; illegal combinations print both conflicting axes and STOP.
+[E13 revision 2026-09-08 — supersedes the capability-level negotiation table] The facade is a purely
+formal authority: name->pointer dispatch plus checks derivable from the container contract alone. There is
+no legal-combination table inside facade_init — physical-combination legality is the members' own knowledge
+(the class-B member loud-stops on a ws%repr it does not support and on dt semantics it cannot live with;
+fixed-step-only laws such as TSH/IESH exclude radau this way). Blackbox authors are assumed to know their
+system, not this program; a facade-side table would also break E11 drag-in (a new combination would require
+editing force_facade). config%electronic%method is a name string ('adiabatic'/'tsh'/'iesh'), same form as
+pes_main.
 
 - [ ] **N1.1** Write force_facade.f90: the member registry (name→procedure array), the additive composition
-  loop, capability-level negotiation. The conversion expression exactly matches DPESHON in form
+  loop, formal validation (E13 — no capability-negotiation table; physical-combination legality is checked
+  by the members themselves). The conversion expression exactly matches DPESHON in form
   (`-grad×23.0605×C1` accumulated), guaranteeing bit-level comparability.
 - [ ] **N1.2** Write elec_adiabatic.f90 (degenerate member: ds/dt≡0, identity force rule).
 - [ ] **N1.3** Write the five class-A member files: pes_reference (the system-independent reference potentials

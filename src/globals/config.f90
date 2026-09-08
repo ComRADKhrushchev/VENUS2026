@@ -19,7 +19,10 @@ module config
   ! Electronic layer (spec §3.2-2: two independent axes - H representation capability x
   ! electron propagation law)
   type :: electronic_t
-     integer :: method = 1       ! electron propagation law (1 = adiabatic degenerate point; nonadiabatic reserved)
+     character(len=32) :: method = 'adiabatic'  ! electron propagation law member name (assembly key,
+                                                ! same form as pes_main - E13; 'adiabatic' = degenerate
+                                                ! point; nonadiabatic 'tsh'/'iesh' arrive with their
+                                                ! consumers)
      integer :: n_surf  = 1      ! H representation capability (single surface; multi-surface/coupling waits for nonadiabatic)
      character(len=32) :: pes_main = ''  ! main-PES member name (H-field provider, interface A)
      ! Left blank: additive force member table (GLO springs / Langevin ghost / LDFA -

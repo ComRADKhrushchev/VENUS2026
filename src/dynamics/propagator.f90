@@ -18,9 +18,9 @@
 ! dt channel note (E9): the third argument of facade_force(sta, e, dt) is optional - fixed-step members
 !       (verlet/symple) pass prop_cfg%dt (the hop probability g_ij(dt) semantics are well-defined here);
 !       radau substep calls inside a sequence pass no dt (the default falls back to prop_cfg%dt, a
-!       placeholder only) - the nonadiabatic x radau combination is already excluded by the negotiation
-!       table triad_tbl (ok_radau=.false. on multi-surface rows); this note only pins adiabatic-path
-!       behavior to stay unchanged
+!       placeholder only) - the nonadiabatic x radau conflict is caught by the class-B member itself
+!       (E13: a fixed-step-only law loud-stops on dt semantics it cannot live with; no facade table);
+!       this note only pins adiabatic-path behavior to stay unchanged
 !=====================================================================
 module propagator
    use state,         only: state_t

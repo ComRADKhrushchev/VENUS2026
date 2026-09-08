@@ -34,7 +34,7 @@ src/
 |---|---|---|
 | L0 control kernel | root driver.f90 | assembly -> evolution -> statistics call sequence, no physics |
 | L1 variables & provisions | globals/ (input stays at root) | physical-state container, control flow, freezing-derived provisions, roster |
-| L2 facades & frameworks | facade/ | (Q,P,s)->(F,E) facade (E10 single class-A signature pes_proc_i(q,mass,ws) - representation demoted to a ws fill mode; negotiation table triad_tbl as data) + electronic workspace contract elec_ws (ws_t container); sampling framework |
+| L2 facades & frameworks | facade/ | (Q,P,s)->(F,E) facade (E10 single class-A signature pes_proc_i(q,mass,ws) - representation demoted to a ws fill mode; E13 purely formal authority - name->pointer dispatch, physical-combination legality left to the members) + electronic workspace contract elec_ws (ws_t container); sampling framework |
 | L3 closed families | dynamics/ | predicate grammar, propagators (fixed choices, not extension points) |
 | L3 registry-family members | interface_*/ | two families: electronic (class-B elec_* electron propagation laws - parameter-free generic algorithms; the class-A pes_* axis registers through the same facade but its members are system material, self-contained under systems/ - E12) / distributions (B' initial-state distributions) - a new file plus a one-line registration plugs a member in |
 | L4 recording & post-processing | output/ | trajectory serialization (column registry), final state/outcome/density of states/plotting (offline-capable) |

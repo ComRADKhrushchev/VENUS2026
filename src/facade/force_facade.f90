@@ -8,7 +8,8 @@
 !       (POT0 energy conversion x23.0605), :32-44 (DPESHON gradient accumulation
 !       PDOT(i)=PDOT(i)-g(i)*23.0605*C1 - the new facade conversion is character-for-character identical,
 !       N1.1 bit-comparable); ENERGY.f:54-68 (T=sum p^2/2m/C1, V=POT0 convention, H=T+V);
-!       docs/final_completion_plan.md §5 N1 (registration/assembly/capability negotiation-table spec - directly in force)
+!       docs/final_completion_plan.md §5 N1 (registration/assembly spec - directly in force; its
+!       negotiation-table clause superseded by E13, see the E13 note below the registries)
 ! Member unit contract: class-A members deliver force kernels/energies in eV (eV is the exchange unit -
 ! following the old interface_TEST v/g chain); eV -> internal-unit conversion is centralized in this
 ! facade (the T4 grep requirement that 23.0605 appear only in this file - hence the "F_add code units" note
@@ -38,12 +39,22 @@
 !     status - they do not enter state_t, do not leave the box, and live for one step (reset and rebuilt
 !     at every evaluation).
 !     (see previous line)
-! E9 retained assets: elec_t amplitudes/hop counter, the class-B dt channel, the negotiation table as
-! data (triad_tbl)
-! (the pes_kind column now means the ws fill mode repr; the radau-false-on-multi-surface-rows constraint
-!   stays - at an adaptive sequence boundary "one step" is ill-defined, so the hop probability g_ij(dt)
-!   loses its basis)
-!   (see previous line)
+! E9 retained assets: elec_t amplitudes/hop counter, the class-B dt channel (the negotiation table
+! triad_tbl is withdrawn by E13 below)
+!
+! -- E13 formal-facade revision (user ruling 2026-09-08) --
+!   The facade is a purely FORMAL authority: signature/unit/container contracts and name->pointer
+!   dispatch - nothing more. Physical-combination legality (which electron law tolerates which
+!   representation or integrator - e.g. the hop probability g_ij(dt) losing its basis at adaptive
+!   sequence boundaries) is the members' own knowledge: the class-B member loud-stops on a ws%repr
+!   it does not support (E10 contract, unchanged) and on dt semantics it cannot live with (shape
+!   fixed in phase C with elec_tsh). Rationale: blackbox authors are assumed to know their system,
+!   not this program - a facade-side legal-combination table is knowledge displaced from its owners,
+!   and it collides with E11 drag-in (a new combination would require editing this file to add a
+!   row). The blackbox machine does three things (legislated wording): compute forces from the
+!   state (class A), evolve the electronic state (class B), and feed the electronic state back
+!   into the state to enforce quantum statistics (class B - surface switching, momentum rescaling);
+!   facade_force is the orchestration of the three.
 !=====================================================================
 module force_facade
    use consts,        only: e_conv
@@ -114,46 +125,19 @@ module force_facade
    procedure(elec_proc_i), pointer :: elec_proc ! class-B routine (module-private; attached by
                                                 ! facade_init in the assembly phase; nopass is a component attribute only)
 
-   ! Legal capability-combination table (E9 as data; E10: the pes_kind column now means the ws fill mode -
-   ! adding a row = adding data, not code). Four axes: H-capability n_surf interval x main-PES repr mode
-   ! x electron law x integrator (the integrator axis is carried by three booleans). The radau column is
-   ! permanently false on multi-surface rows: "one step" is ill-defined at an adaptive sequence boundary,
-   ! so the hop probability g_ij(dt) loses its basis - nonadiabatic only pairs with fixed-step integrators
-   ! (verlet/symple).
-   ! (see previous line)
-   ! (see previous line)
-   ! (see previous line)
-   ! (see previous line)
-   integer, parameter :: m_adiabatic = 1  ! electron-law code: adiabatic degenerate point (config%electronic%method key)
-   integer, parameter :: m_tsh      = 2   ! electron-law code: TSH/FSSH (future elec_tsh registration key)
-   integer, parameter :: m_iesh     = 3   ! electron-law code: IESH (future elec_iesh registration key)
-   integer, parameter :: max_triad = 4    ! legal-combination table capacity [row]
-   integer, parameter :: n_surf_unbounded = huge(1) ! capability upper bound on multi-surface rows (meaning unbounded)
-   type :: triad_row_t
-      integer :: n_surf_lo = 1            ! H-capability lower bound (n_surf >= this)
-      integer :: n_surf_hi = 1            ! H-capability upper bound (single-surface rows 1..1; multi-surface rows .. unbounded)
-      integer :: pes_kind  = r_scalar     ! main-PES ws fill mode (r_* - the E10 repr semantics)
-      integer :: method    = m_adiabatic  ! electron-law code (m_*)
-      logical :: ok_verlet = .true.       ! integrator 1 (verlet/beeman) allow bit
-      logical :: ok_symple = .true.       ! integrator 2 (symple) allow bit
-      logical :: ok_radau  = .true.       ! integrator 3 (radau) allow bit (false on multi-surface rows)
-   end type triad_row_t
-   type(triad_row_t), parameter :: triad_tbl(max_triad) = (/ &
-      ! Row 1 (current): single-surface scalar mode x adiabatic x all three integrators allowed
-      triad_row_t(1, 1, r_scalar, m_adiabatic, .true., .true., .true.), &
-      ! Row 2: multi-surface diabatic mode x TSH x fixed-step integrators
-      triad_row_t(2, n_surf_unbounded, r_diab,  m_tsh, .true., .true., .false.), &
-      ! Row 3: multi-surface adiabatic mode x TSH x fixed-step integrators
-      triad_row_t(2, n_surf_unbounded, r_adiab, m_tsh, .true., .true., .false.), &
-      ! Row 4: multi-surface diabatic mode x IESH x fixed-step integrators (IESH naturally consumes the
-      ! diabatic container - model Hamiltonians; adiabatic x IESH is not allowed)
-      ! (see previous line)
-      triad_row_t(2, n_surf_unbounded, r_diab,  m_iesh, .true., .true., .false.) &
-      /)
-   ! Note: the method of rows 2-4 (tsh/iesh) currently has no class-B member registered - the negotiation
-   ! table allows first, and facade_init's class-B assembly (slot lookup by method) loud-stops as the
-   ! backstop: a double gate (see the triad_tbl note)
-   ! (see previous line)
+   ! E13 (user ruling 2026-09-08): no capability-combination table lives here - triad_tbl and the
+   ! m_* electron-law codes are withdrawn. The facade is a purely formal authority;
+   ! physical-combination legality belongs to the members: the class-B member loud-stops on a
+   ! ws%repr it does not support (E10 contract) and on dt semantics it cannot live with
+   ! (fixed-step-only laws - e.g. hop probabilities g_ij(dt) losing their basis at adaptive
+   ! sequence boundaries; shape fixed in phase C with elec_tsh). A facade-side enumeration of
+   ! legal combinations would also collide with E11 drag-in: a blackbox author bringing a new
+   ! combination would have to edit this file to add a row - exactly what "drag in and it works"
+   ! forbids. The assembly-time checks kept in facade_init are purely formal: names resolve, the
+   ! main-PES slot is filled, additive members are r_scalar (the additive channel of the container
+   ! is scalar by construction), and contradictions derivable from the container contract alone
+   ! (n_surf >= 2 with an r_scalar main PES) still loud-stop.
+
 contains
    !------------------------------------------------------------------
    ! facade_reg_pes(name, proc[, repr]) - register a class-A force member (additive: main PES + stochastic
@@ -191,10 +175,11 @@ contains
    end subroutine facade_reg_elec
 
    !------------------------------------------------------------------
-   ! facade_init() - member assembly + capability-combination validation (illegal combinations loud-stop)
-   ! Reference: docs/final_completion_plan.md §5 N1 (negotiation-table spec); E9 (table as data -
-   !       triad_tbl four rows: current single-surface adiabatic + multi-surface tsh/iesh pre-allowed);
-   !       src_TEST/interface_TEST.f90:12-16 (POTPRE-type member-init hook - the D3
+   ! facade_init() - member assembly + formal validation (E13: purely formal - names resolve, slots
+   !                 filled, container-contract contradictions caught; physical-combination legality
+   !                 is the members' own affair)
+   ! Reference: docs/final_completion_plan.md §5 N1 (assembly spec; the negotiation-table clause is
+   !       superseded by E13); src_TEST/interface_TEST.f90:12-16 (POTPRE-type member-init hook - the D3
    !       ghost parameter assembly site); docs/design_spec_completeness.md §3.2-2
    !       (type-checking of capability and method legality; illegal combinations rejected
    !        explicitly with both conflicting axes named)
@@ -211,21 +196,19 @@ contains
       !    only the nuclear-force channel; the multi-surface construct channel is carried by the main PES
       !    alone, see facade_force step 4')
       !    (see previous line)
-      ! 2. Class-B assembly: select the law member per config%electronic%method (1 = adiabatic ->
-      !    the elec_adiabatic degenerate member; 2/3 = tsh/iesh registered later); unregistered -> loud-stop
-      !    (negotiation table allows first, empty registration slot blocks after - a double gate, see the
-      !    triad_tbl note)
+      ! 2. Class-B assembly: select the law member per config%electronic%method (a name string,
+      !    same form as pes_main - E13; 'adiabatic' -> the elec_adiabatic degenerate member,
+      !    'tsh'/'iesh' arrive with their consumers); name not found in the slot -> loud-stop
+      !    (a formal check only)
       ! 3. Member-init hooks (POTPRE type): call each assembled member's init (parameters arrive through
       !    the member's own params - D3; the hook-slot wiring shape is finalized in C2)
       !    (see previous line)
-      ! 4. Capability-combination validation (E9 table lookup): match the 4-tuple
-      !    (n_surf in row interval) x (main-PES ws mode = row pes_kind) x (method = row method)
-      !    x (integrator id allow bits - config%propagator%id mapped to ok_verlet/ok_symple/
-      !    ok_radau) against triad_tbl row by row; no matching row -> print the current values of the
-      !    conflicting axes and STOP
-      !    (see previous line)
-      !    (spec §3.2-2 type check - both axes named; typical interception: multi-surface x radau -
-      !    the hop probability g_ij(dt) loses its basis at adaptive sequence boundaries)
+      ! 4. Formal validation (E13 - physical-combination checks withdrawn to the members):
+      !    n_surf >= 2 with an r_scalar main-PES row -> loud-stop naming the conflict (derivable
+      !    from the container contract alone - r_scalar by definition delivers no multi-surface
+      !    constructs); integrator x electron-law legality is NOT checked here (a law's own
+      !    prerequisites are its author's knowledge - the member loud-stops at runtime, e.g. hop
+      !    probabilities g_ij(dt) losing their basis at adaptive sequence boundaries)
    end subroutine facade_init
 
    !------------------------------------------------------------------
@@ -311,7 +294,8 @@ contains
       !       contributions fold in as usual;
       !       (see previous line)
       !       e_tot = t_kin + v_pot
-      !    c. radau note: permanently false on multi-surface rows (triad_tbl) - adaptive substeps have no
+      !    c. radau note: fixed-step only on multi-surface paths (E13: enforced inside the class-B
+      !       member - not by a facade table) - adaptive substeps have no
       !       well-defined "one step" dt semantics; this path only ever sees fixed steps (same source as
       !       the propagator header note)
       !       (see previous line)
@@ -326,8 +310,8 @@ contains
       !    mode r_*) and the class-B member name
       !    (see previous line)
       ! 2. Print the current capability combination: H-capability n_surf x main-PES ws mode x electron
-      !    law x integrator (from the three config sources) + the matched triad_tbl row number (shown
-      !    empty if not assembled)
+      !    law x integrator (from the three config sources - descriptive output only; legality is
+      !    the members' own affair, E13)
       !    (see previous line)
       ! 3. Print the unit-contract constants (ev_kcal/e_conv) and the assembly state - for debugging
       !    assembly errors
