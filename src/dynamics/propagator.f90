@@ -1,6 +1,7 @@
 !=====================================================================
 ! propagator.f90 - L3 closed family: nuclear propagators (verlet/symple/radau three-member registration +
-!                   unified callback stepping - the integrator body holds no system knowledge)
+!                   unified dispatch stepping - the integrator body holds no system knowledge;
+!                   a pure integrator: frame output and termination are the driver's affair, E14)
 ! Reference: src_VENUS/VERLET.f90:31-79 (velocity Verlet: force first :34-41, full position step
 !       :52-56, force re-evaluation + half step :60-67); :90-170 (third-order Beeman: position predictor
 !       :98-103, velocity predictor :105-109, force staging and re-evaluation :111-125, velocity
@@ -9,56 +10,58 @@
 !       drift-kick main loop); src_VENUS/RADAU.f:90-94 (Radau nodes hh), :138-175
 !       (w/u weights and triangle coefficients c/d/ra), :183-195 (6 iterations for the first sequence),
 !       :197-311 (substep predictor-corrector), :313-336 (restart test and sequence advance), :390-396
-!       (adaptive step tp=dir*tcorr*(ss/hv)^(1/9)); RADOUT :438-498 (inlined orchestration - excised into
-!       hooks callbacks, G4);
+!       (adaptive step tp=dir*tcorr*(ss/hv)^(1/9)); RADOUT :438-498 (inlined orchestration - not carried
+!       into this module; the GWRITE/TEST call sites become the driver's four-phase loop, E14 spec §8);
 !       Excision list (do not carry over when referencing): VERLET.f90:44-50/:71-79/:151-161 (ghost Langevin),
 !       :130-148 (GLO/LDFA inlined forces), :179-270 (FRICFORCE/DIAG2 chain) - stochastic laws always go
 !       through force_facade member aggregation (P-D1/D4); the 'CALLING RADOUT' debug prints (RADAU.f:112/
 !       :380/:428) and the PRINFO comment remnants are not carried over (G4)
-! dt channel note (E9): the third argument of force_eval(sta, e, dt) is optional - fixed-step members
-!       (verlet/symple) pass prop_cfg%dt (the hop probability g_ij(dt) semantics are well-defined here);
-!       radau substep calls inside a sequence pass no dt (the default falls back to prop_cfg%dt, a
-!       placeholder only) - the nonadiabatic x radau conflict is caught by the class-B member itself
-!       (E13: a fixed-step-only law loud-stops on dt semantics it cannot live with; no facade table);
-!       this note only pins adiabatic-path behavior to stay unchanged
+!
+! -- E14 hooks withdrawal (user rulings 2026-09-08; spec §8) --
+!   hooks_t / hook_out_i / hook_term_i / the second prop_step argument are deleted: the propagator
+!   reverts to a pure integrator. The E7 clause "inside the integration loop the only direct call is
+!   prop_step" is withdrawn - the loop body directly calls prop_step and the facade phase entries
+!   (elec_prop / mqc_statistic) plus rec_frame / pred_eval, the four-phase orchestration being explicit
+!   in the driver (prop_step -> elec_prop -> mqc_statistic -> rec_frame -> pred_eval). Frame output
+!   and termination move to the driver; this also repairs the latent timing defect of the hooks form -
+!   a hooks%term checkpoint fired after nuclear propagation but before the electronic phases, so a
+!   termination there skipped the step's electronic evolution and left an inconsistent state.
+!
+! -- endpoint-force contract (spec §3 - the propagator member obligation, legislated here) --
+!   prop_step returns only after the endpoint force has been evaluated: the ws held by elec_facade
+!   corresponds to the returned sta%q. Under MQC the velocity-Verlet right-end force cannot be folded
+!   into the next step's left end - the amplitude propagation of phase 2 (elec_prop) needs the endpoint
+!   H - and between the two force sites the electronic phases run (a hop may change sta%occ), so each
+!   step evaluates its own left-end force afresh.
+!
+! -- dt channel note (E9, re-anchored by E14; spec §3) --
+!   dt is no longer a force_eval argument - force_eval(sta, e_tot) is the pure force entry (two
+!   dummies; the E9 g_ij(dt) channel belongs to elec_prop's dt dummy, the electronic phase). The
+!   member's step is the fixed dt from config (prop_cfg%dt): verlet/symple take it directly; radau
+!   seeds its adaptive sequence from it (substep sites are interior - moot now that the force entry
+!   carries no dt). The multi-surface x radau conflict stays caught by the method-package member
+!   itself (E13, carried: a fixed-step-only law loud-stops on dt semantics it cannot live with -
+!   adaptive sequence boundaries have no well-defined "one step" dt; no facade table; same source as
+!   the force_facade 4'c note), so the multi-surface path only ever sees fixed steps; this note pins
+!   the adiabatic-path behavior to stay unchanged
 !=====================================================================
 module propagator
    use state,         only: state_t
    use config,        only: prop_cfg => propagator   ! alias to avoid clashing with the module name
                                                       ! (prop_cfg is the config instance 'propagator')
    use config_roster, only: roster
-   use force_facade,  only: force_eval
+   use force_facade,  only: force_eval               ! T4 rename carried: the pure force entry
+                                                      ! (sta, e_tot) - no dt dummy, see the header note
    implicit none
    private
-   public :: hooks_t, prop_reg, prop_step
+   public :: prop_reg, prop_step
    public :: verlet_step, symple_step, radau_step
 
-   ! Checkpoint callback interfaces (the excised RADOUT orchestration site - G4: output -> recorder,
-   ! termination -> predicate)
+   ! Integrator member interface: advance one fixed step (verlet/symple) or one adaptive sequence (radau)
    abstract interface
-      subroutine hook_out_i(sta)             ! output hook: write the frame of one checkpoint
+      subroutine integ_proc_i(sta)
          import :: state_t
-         type(state_t), intent(in) :: sta    ! physical state (read-only snapshot)
-      end subroutine hook_out_i
-      logical function hook_term_i(sta)      ! termination-predicate evaluation point: true = terminate this trajectory
-         import :: state_t
-         type(state_t), intent(in) :: sta    ! physical state (read-only snapshot)
-      end function hook_term_i
-   end interface
-
-   ! Evolution callback bundle (assembled by the driver; a null pointer = that callback class is not
-   ! attached - the old RADOUT's two callback sites turned into data)
-   type :: hooks_t
-      procedure(hook_out_i),  pointer, nopass :: out  => null() ! output hook (old RADOUT -> GWRITE site)
-      procedure(hook_term_i), pointer, nopass :: term => null() ! termination-predicate point (old RADOUT -> TEST site)
-   end type hooks_t
-
-   ! Integrator member interface: advance one step (verlet/symple) or one adaptive sequence (radau)
-   abstract interface
-      subroutine integ_proc_i(sta, hooks)
-         import :: state_t, hooks_t
          type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
-         type(hooks_t), intent(in)    :: hooks ! checkpoint callback bundle (sequence members call it at boundaries)
       end subroutine integ_proc_i
    end interface
 
@@ -85,29 +88,24 @@ contains
    end subroutine prop_reg
 
    !------------------------------------------------------------------
-   ! prop_step(sta, hooks) - step dispatch: call the registered member per config%propagator%id
-   ! Reference: src_VENUS/RADAU.f:438-498 (the old form before RADOUT orchestration was excised into hooks callbacks)
-   subroutine prop_step(sta, hooks)
+   ! prop_step(sta) - step dispatch: call the registered member per config%propagator%id
+   ! Reference: src_VENUS/RADAU.f:438-498 (the old inline orchestration - now the driver's four-phase
+   !       loop, E14 spec §8; this module keeps only the stepping)
+   subroutine prop_step(sta)
       type(state_t), intent(inout) :: sta   ! physical state (advanced one step/sequence by the member)
-      type(hooks_t), intent(in)    :: hooks ! checkpoint callback bundle (passed through to the member)
       ! Pseudocode:
       ! 1. Look up reg_tbl by prop_cfg%id (unregistered id -> loud-stop naming the id)
-      ! 2. Call the member proc(sta, hooks): advance sta by prop_cfg%dt
-      !    (radau = one adaptive sequence; the member calls force_eval as often as needed)
-      ! 3. Checkpoint protocol (honored inside the member, out before term):
-      !    call hooks%out only if attached - one frame written (recorder wiring);
-      !    call hooks%term only if attached - true = terminate this trajectory (the termination flag is
-      !    set by the driver-side closure: hooks are nopass pointers, the closure host in the driver holds
-      !    the flag - the termination channel of the E7 evolution loop)
-      !    (see previous line)
+      ! 2. Call the member proc(sta): advance sta by prop_cfg%dt (verlet/symple one fixed step, radau
+      !    one adaptive sequence; the member calls force_eval as often as it needs) - the member
+      !    returns only after the endpoint force has been evaluated (the header contract: the held ws
+      !    corresponds to the returned sta%q)
    end subroutine prop_step
 
    !------------------------------------------------------------------
-   ! verlet_step(sta, hooks) - velocity Verlet (order=1) / third-order Beeman (order=2) single step
+   ! verlet_step(sta) - velocity Verlet (order=1) / third-order Beeman (order=2) single step
    ! Reference: src_VENUS/VERLET.f90:31-79 (VV); :90-170 (Beeman)
-   subroutine verlet_step(sta, hooks)
+   subroutine verlet_step(sta)
       type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
-      type(hooks_t), intent(in)    :: hooks ! checkpoint callback bundle (called at step end)
       ! Local work arrays are declared in C6 (old FT2/QTP1 force and coordinate staging - force
       ! differencing is state of the Beeman branch)
       ! Pseudocode:
@@ -127,15 +125,15 @@ contains
       ! 4. The old ghost Langevin (:44-50/:71-79/:151-161) and GLO/LDFA inlined forces
       !    (:130-148, FRICFORCE :179-270) are not carried over - stochastic laws go through force_facade
       !    member aggregation (P-D1/D4); the integrator body holds no system knowledge
-      ! 5. sta%t += dt; checkpoint callbacks at step end (out before term)
+      ! 5. sta%t += dt (return: the last force site - 2d / 3c - is the endpoint, the header contract
+      !    holds with no extra evaluation)
    end subroutine verlet_step
 
    !------------------------------------------------------------------
-   ! symple_step(sta, hooks) - 4th/6th/8th-order symplectic single step (Schlier coefficients, alternating drift-kick)
+   ! symple_step(sta) - 4th/6th/8th-order symplectic single step (Schlier coefficients, alternating drift-kick)
    ! Reference: src_VENUS/SYMPLE.f:14-86 (coefficient loading), :88-100 (main loop)
-   subroutine symple_step(sta, hooks)
+   subroutine symple_step(sta)
       type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
-      type(hooks_t), intent(in)    :: hooks ! checkpoint callback bundle (called at step end)
       ! The coefficient cache is declared in C6 (old A(0:34) + FIRST flag - module-private statics)
       ! Pseudocode:
       ! 1. On first call load the Schlier coefficients per order (4/6/8, config%propagator%order)
@@ -145,19 +143,19 @@ contains
       ! 2b. p += dt*a(2i)*f (momentum kick, old :91)
       ! 2c. q += dt*a(2i+1)*p/m (position drift, old :92)
       ! 3. Final beat: force_eval(sta, e); p += dt*a(2N)*f (old :98-100)
-      ! 4. sta%t += dt; checkpoint callbacks at step end (out before term)
+      ! 4. sta%t += dt (return: the final beat's force site is the endpoint q after the last drift -
+      !    the header contract holds with no extra evaluation)
    end subroutine symple_step
 
    !------------------------------------------------------------------
-   ! radau_step(sta, hooks) - one Everhart RA15 Gauss-Radau sequence (adaptive step)
+   ! radau_step(sta) - one Everhart RA15 Gauss-Radau sequence (adaptive step)
    ! Reference: src_VENUS/RADAU.f:90-94 (nodes hh), :138-175 (w/u weights and c/d/ra),
    !       :183-195 (6 iterations for the first sequence + force at sequence start), :197-311 (substep
    !       predictor-difference corrector),
    !       :313-336 (restart test and sequence advance), :390-396 (next-sequence step);
-   !       RADOUT :438-498 (orchestration excised -> hooks, G4)
-   subroutine radau_step(sta, hooks)
+   !       RADOUT :438-498 (orchestration - now the driver's four-phase loop, E14 spec §8)
+   subroutine radau_step(sta)
       type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
-      type(hooks_t), intent(in)    :: hooks ! checkpoint callback bundle (called at sequence boundaries)
       ! Caches for the constants and B/G/E coefficient arrays are declared in C6 (module-private statics -
       ! carried across sequences)
       ! Pseudocode:
@@ -176,12 +174,11 @@ contains
       !    ss = 10^(-order) is the accuracy parameter, direction dir follows the sign of tf - old :133-135)
       ! 6. Step clamping dt_min/dt_max - deferred fields of prop_cfg, introduced in C6
       !    (K1 plan §1.3 deferred note; until then accuracy is controlled by ss alone)
-      ! 7. Checkpoint callbacks at sequence boundaries (out before term; the GWRITE/TEST call sites of old
-      !    RADOUT :449-478 - the ENERGY_1/FINAL/GFINAL statistics orchestration is not carried over, it
-      !    belongs to the statistics phase); the old NIP interval output (old :99-101 prtime) is borne by a
-      !    checkpoint-interval parameter - finalized in C6
-      !    (see previous line)
-      !    (see previous line)
-      ! 8. sta%t += sequence length tt; a true term ends this step and returns to the driver
+      ! 7. sta%t += sequence length tt
+      ! 8. Endpoint-force close-out: force_eval(sta, e) at the returned sta%q - the substep force sites
+      !    (3b) sit at interior node coordinates, not the sequence endpoint, so the member closes with
+      !    an explicit endpoint evaluation (the header contract: the held ws corresponds to the
+      !    returned q); the old NIP interval output (old :99-101 prtime) left with the hooks - frame
+      !    output timing is the driver/recorder affair (E14 spec §8)
    end subroutine radau_step
 end module propagator

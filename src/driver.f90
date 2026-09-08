@@ -36,7 +36,7 @@ program venus
    use state,          only: state_t, state_create, state_destroy
    use rng,            only: rng_init
    use predicate,      only: expr_t, pred_parse, pred_eval
-   use propagator,     only: hooks_t, prop_reg, prop_step, &
+   use propagator,     only: prop_reg, prop_step, &
                              verlet_step, symple_step, radau_step
    use force_facade,   only: pes_reg, blackbox_init, force_eval
    use reg_adiabatic,  only: reg_adiabatic_all   ! E14 T5: the thin reg module replaces the raw
@@ -67,7 +67,6 @@ program venus
                                              ! written exclusively in the evolution phase, read-only in statistics)
    type(state_t), allocatable :: sta_fin(:)  ! final-state snapshots per trajectory [count] (evolution -> statistics
                                              ! hand-off; same source as the old QSAVE/PSAVE staging)
-   type(hooks_t) :: hooks                    ! checkpoint callback bundle (wired to rec_frame/pred_eval)
    type(expr_t)  :: expr_term                ! termination-predicate tree (produced by pred_parse in the assembly phase)
    type(outc_tbl_t) :: outc_tbl              ! outcome-classification table (parsed from outcome_tbl - C7)
    type(fin_t) :: fin                        ! final-state quantities (taken over per trajectory in statistics)
