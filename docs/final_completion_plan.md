@@ -1,523 +1,591 @@
-# VENUS2026 程序完备化最终计划
+# VENUS2026 Program Completion — Final Plan
 
-> **执行者须知**：本计划按"阶段-任务-步骤"组织，步骤用复选框（`- [ ]`）跟踪。
-> 每任务以"验收命令通过 + git 提交"结束；提交 message 引用 audit 条目名（如
-> `P-B1: GWRITE 观测量退为配置（audit: GWRITE）`）。执行前先读
-> `docs/design_spec_completeness.md`（裁决标准）与 `venus2026/CLAUDE.md`（构建/单位约定）。
-> **展示协议**（用户裁决 2026-09-06）：一切方案/骨架/实现的展示一律"先大纲、
-> 经确认、再扩充"——每次只给当前层大纲，经用户确认后才展开下一层，禁止一次
-> 性倾倒全部具体内容。
-> **执行策略**（用户裁决同日）：骨架优先——Phase K 先生成全部占位文件（全局
-> 变量真实定义 + 每例程输入/输出签名与伪代码），结构审核确认后逐文件具体化。
-> **独立新程序**（用户裁决同日二次修订）：目标是交付一份独立的新程序；旧代码
-> （venus2026/）仅作纯参考（算法与公式出处），全程只读——不修改、不清理、
-> 不迁移、不退役。
-> **分阶段计划文件**（用户裁决同日）：每执行一个小 phase（如 K1、C2），先提交
-> 该 phase 的单独计划文件 `docs/plans/<phase>.md`（目标/交付物/文件清单/步骤/
-> 验收），经确认后再执行；本计划只保留序列、映射与量尺。
+> **Executor's note**: This plan is organized as "phase–task–step", with steps tracked by checkboxes (`- [ ]`).
+> Every task ends with "acceptance command passes + git commit"; commit messages reference the audit entry name
+> (e.g. `P-B1: GWRITE observables demoted to configuration (audit: GWRITE)`). Before executing, read
+> `docs/design_spec_completeness.md` (adjudication standard) and `venus2026/CLAUDE.md` (build/unit conventions).
+> **Presentation protocol** (user ruling 2026-09-06): every presentation of a design/skeleton/implementation follows
+> "outline first, confirm, then expand" — present only the current layer's outline at a time, and expand the next
+> layer only after user confirmation; dumping all concrete content at once is forbidden.
+> **Execution strategy** (user ruling, same day): skeleton-first — Phase K first generates all placeholder files
+> (real definitions of global variables + input/output signatures and pseudocode for every routine); after the
+> structure review confirms, concretize file by file.
+> **Standalone new program** (second revision of the user ruling, same day): the goal is to deliver a standalone
+> new program; the legacy code (venus2026/) serves purely as reference (provenance of algorithms and formulas)
+> and is read-only throughout — no modification, no cleanup, no migration, no retirement.
+> **Per-phase plan files** (user ruling, same day): before executing each small phase (e.g. K1, C2), first submit
+> a separate plan file for that phase, `docs/plans/<phase>.md` (goals/deliverables/file list/steps/acceptance),
+> and execute only after confirmation; this plan retains only the sequence, the mapping, and the yardsticks.
 
-状态：**执行基准**（本文档为唯一执行依据）
-日期：2026-09-06（同日删除 remediation_plan.md 与 audit_brief.md——前者的纯化步骤
-已全部并入本文，后者为已完成的审查委托书；避免双头执行与文档混乱）
-依据链：design_spec_completeness.md（规范）→ completeness_audit.md/.json（质料清单 99 条目）
-→ optimal_structure.md（目标结构与质料映射，**本计划基准**）
+Status: **execution baseline** (this document is the sole basis of execution)
+Date: 2026-09-06 (same day, remediation_plan.md and audit_brief.md were deleted — the former's purification steps
+have been fully merged into this document, the latter was a completed review brief; this avoids dual-track
+execution and document confusion)
+Dependency chain: design_spec_completeness.md (spec) → completeness_audit.md/.json (material inventory, 99 entries)
+→ optimal_structure.md (target structure and material mapping, **the baseline of this plan**)
 
-**目标：** 交付一份**独立的新程序**——目标结构即 optimal_structure.md §1 的
-L0-L5 分层，可变代码集中于接口 A/B′ 成员与封闭族注册行。旧代码（venus2026/）
-仅作纯参考。**验证体系重建**（用户裁决 2026-09-06）：旧 10 个 case 全部舍弃
-作基准；新验证 case 与判据在架构（K 骨架）落成后随 C 组件逐个拟定，V 阶段
-汇编成集并全量执行。
+**Goal:** deliver a **standalone new program** — the target structure is the L0-L5 layering of optimal_structure.md
+§1, with variable code concentrated in interface A/B′ members and closed-family registration lines. The legacy code
+(venus2026/) serves purely as reference. **Verification system rebuild** (user ruling 2026-09-06): all 10 old cases
+are discarded as baselines; new verification cases and acceptance criteria will be drafted one by one alongside the
+C components once the architecture (K skeleton) is in place, then assembled into a set and fully executed in Phase V.
 
-**架构：** 独立新程序 + 骨架优先（2026-09-06 用户裁决，两次修订）。新程序自成
-一棵源码树（含自己的构建）；旧库 venus2026/ 只读参考。Phase K 生成全部 L0-L5
-占位骨架（全局变量真实定义 + 每例程签名/伪代码，新树独立编译），经审核门后
-Phase C 逐文件具体化（按 §3 映射回旧库参考算法，组件级新旧对照验证），最后
-Phase V 执行重建的验证 case 体系（判据覆盖率检查 + 全量运行）。每小 phase
-执行前先出单独计划文件。
+**Architecture:** standalone new program + skeleton-first (user ruling 2026-09-06, twice revised). The new program
+is its own source tree (with its own build); the legacy codebase venus2026/ is a read-only reference. Phase K
+generates the full L0-L5 placeholder skeleton (real definitions of global variables + signature/pseudocode per
+routine; the new tree compiles independently), then — after the review gate — Phase C concretizes file by file
+(following the §3 mapping back to the legacy reference algorithms, with component-level old-vs-new cross-checks),
+and finally Phase V executes the rebuilt verification case system (criterion coverage check + full runs). Before
+each small phase executes, a separate plan file is produced first.
 
-**技术栈：** Fortran（ifx，oneAPI 2025.2 验证）、make（单入口 Makefile）、git。
-测试方法适配说明：本项目的"测试环"= 新验证 case（最小输入 + 解析/统计锚点 +
-守恒律判据，随 C 组件拟定）+ 临时同量参照（旧程序可算同一物理量时对照，非
-基准），不以单元测试框架为载体。
+**Tech stack:** Fortran (ifx, verified with oneAPI 2025.2), make (single-entry Makefile), git.
+Testing-method note: this project's "test loop" = new verification cases (minimal input + analytical/statistical
+anchors + conservation-law criteria, drafted alongside the C components) + ad-hoc same-quantity cross-checks
+(comparison against the old program when it can compute the same physical quantity; not a baseline), not carried
+by a unit-test framework.
 
-**Spec：** docs/design_spec_completeness.md；结构映射细则 docs/optimal_structure.md §2。
+**Spec:** docs/design_spec_completeness.md; structure mapping details in docs/optimal_structure.md §2.
 
-## 全局约束（每任务隐含遵守）
+## Global constraints (implicitly obeyed by every task)
 
-1. 内部单位制 Å/amu/(10 fs)，换算常数 C1=0.04184、C7=0.063508、23.0605（eV→kcal/mol）、
-   C8=1.987e-3；换算只发生在 force_facade 边界（单位契约履行点）。
-2. 编译 `make`（venus2026/ 下；Windows 在 Git Bash 执行，链接器路径变量覆盖见 CLAUDE.md）；
-   flags `-r8 -double-size=64 -i8 -O2 -w`。
-3. 输入只认 `KEYWORD=VALUE` 文法（input_parser）；新关键字一律走
-   param_mapping 注册表模式，旧整数关键字回退保留。
-4. 演化期不调用操作类（相位限制，规范 2.5）；制备成员内部调演化服务合法（边界 4）。
-5. 单一随机流：新程序自 C1 起即单流（rng.f90，Knuth RAND0 族，ISEED 状态），
-   全库无第二流。
-6. 改模块文件后删除陈旧 `.mod` 再编（CLAUDE.md 惯例）。
-7. 行号引用以 2026-09-04 audit 为准；执行时若行号漂移，以符号名 grep 重新定位。
-8. C 各步以"最小验证输入 + 解析/统计判据"收口（判据先行：先定判据再写实现）；
-   V/S 全链路执行新 case 集；旧程序仅作临时同量参照，不作门槛。
-
----
-
-## 0. 基线核实（2026-09-06，与 audit 的差异）
-
-执行前已核实，以下为既成事实，计划据此调整：
-
-| 核实项 | 现状 | 计划含义 |
-|---|---|---|
-| `src_VENUS/GLO.f`（未编译滞留副本） | **已不在树** | P-A1 对应条目自然完成 |
-| `ROTATEX_b/ROTATEZ_b` | **已不在树** | 同上 |
-| GASDEV.f/VFDATE.f/POTEN.f/EBOND.f/THERMBATH.f/WEBOND/WLBOND/WENMOD/MICROCI/VOLPSCONE/LMODE/LMEXCT | 仍在 | P-A1/A2 照删 |
-| gasdev 住 interface_TEST.f90:112（函数） | 仍在 | P-C1 照做 |
-| GWRITE :59/95-99/110-114、TEST :88-94、VERLET :47,74,137 ghost/GLO 内嵌 | 仍在，行号与 audit 一致 | P-B/P-D 照做 |
-| Makefile MKL 三库链接 | 仍在 | P-A5 照做 |
-| `venus2026/.git` | **不存在** | Phase 0 必须先建版本控制 |
-| cases/ 数量 | **10 个**（boltzmann_vib、ebk_fixed_nj、fixed_normalmode_qnums、integrator_matrix、leps_potential、mb_thermal、rigid_surface、rst_beam_scattering、rst_surface_md、twobody_collision） | **全部舍弃作验证基准**（用户裁决 2026-09-06：旧 case 是"旧行为保持"用例，判定依据参差且烙有 F15/双随机流等缺陷）；目录留旧库作历史参考；新 case 体系待 K 骨架后拟定。CLAUDE.md"16 个"过时，P0 修正 |
-| docs/completeness_audit.json | 在 | S2 复审对象 |
-
-## 1. 目标终态（验收态定义）
-
-结构（optimal_structure §1 摘录，文件名即归位目标）：
-
-```
-L0 控制核        driver.f90          装配→演化→统计的调用序列，无物理
-L1 物自体容器    state.f90           Q, P, s, F, t（可分配，维数=名册内容参数）
-L1 表象层        config.f90          场景、名册、分布、谓词、结局分类、观测量配置
-L2 接口 A 门面   force_facade.f90    (Q,P,s)→(F,E)；内部 Σ力贡献成员 × 单选电子传播律
-L2 接口 B′框架   sampler.f90         分布→(Q0,P0,s0) 通用抽样器
-L3 注册族成员    pes_*.f90 / dist_*.f90
-L3 封闭族        propagator.f90 / predicate.f90
-L4 测量          recorder.f90        轨迹序列化 + 谓词求值
-L4 后处理        analysis/           结局分类执行、统计、绘图（可离线）
-L5 仪器          rng.f90, linalg.f90, geometry.f90
-```
-
-终态判据（T1-T7，收尾 S 逐条核验）：
-
-- **T1 文件结构**：上表文件全部在场，Makefile SRC 按新依赖序排列；
-- **T2 可变代码位置**：新增一个 PES/分布成员 = 新文件 + 一行注册，既有代码零触及
-  （以"新增 pes_leps 变体试件"演练验证）；
-- **T3 双实现矩阵**：A 轴 HARMONIC+MORSE+LEPS+EMT-NN+RST（≥2 ✓）；B′ 轴
-  THRMAN+INITEBK+dist_surface_oscillator（≥3）；构型层面分子 vs 表面两范式
-  （新验证 case 各设代表）；
-- **T4 单位契约**：grep 全库，23.0605 与 C1 力换算只出现在 force_facade 边界；
-- **T5 单一随机流**：全库无 `RANDOM_NUMBER` 残留（rng.f90 独此一流）；
-- **T6 三相位**：driver 只含装配→演化→统计调用序列；演化环内只有
-  facade/propagator/recorder/predicate；
-- **T7 完备性复审**：对新程序全例程按规范三问复审，产出新 completeness 审计
-  （md+json）；除不变类/成员类外无残余。旧 audit 保留为历史参考。
-
-## 2. 执行序列（2026-09-06 用户裁决：独立新程序 + 骨架优先 + 分阶段计划文件）
-
-```
-Phase 0 准备（git + 新程序树立项）
-   0.1 git init（工作区根；旧库自此只读）
-   0.2 新程序树立项（src/：Makefile 骨架 + README + analysis/ 占位）
-   0.3 旧库 CLAUDE.md case 计数修正
-   ↓
-Phase K 骨架生成（新树内全部 L0-L5 文件占位）
-   K1 全局变量真实定义（state.f90 / config.f90 / 常数；
-       venus_data 约 40 表象块的逐块去向分配）
-   K2 每例程占位：输入/输出签名 + 伪代码 + 参考出处注释（旧库 文件:行）
-   K3 新树独立编译通过（桩主程序；编译器验证接口一致性）
-   ↓ 【审核门：只展示骨架大纲（文件树 + 每文件例程一行清单），
-        逐层确认后放行；伪代码逐文件按展示协议再展开】
-Phase C 具体化（逐文件；每文件先大纲、确认后扩充；组件级新旧对照）
-   C1 L5 仪器：rng（单一随机流）/ linalg / geometry   ← 参考 RAND0 族/gasdev/EIGN/ROTATE 族
-   C2 force_facade + elec_adiabatic + pes_* 成员       ← 参考 interface_TEST/emt_nn/rst/VERLET 内嵌力
-   C3 predicate 文法 + 终止判据装配                   ← 参考 TEST.f:106-146
-   C4 recorder + config_roster + 输入文法             ← 参考 GWRITE/HIST（剥离 audit 所列违规）
-   C5 sampler + dist_* 成员表                         ← 参考 SELECT/THRMAN/INITEBK/SURF/…
-   C6 propagator 封闭族（verlet/symple/radau）        ← 参考 VERLET/SYMPLE/RADAU（剥编排）
-   C7 driver + 结局分类数据                           ← 参考 VENUS.f90 三相位编排
-   C8 analysis/ 离线族                                ← 参考 FINAL/GFINAL/EIGOUT/plot_*
-   ↓
-Phase V 全链路验证（C 阶段各组件验证输入与判据汇编成正式 case 集；
-   判据覆盖率检查 + 全量执行 + 同 ISEED 复现性抽验）
-   ↓
-S 收尾（新程序完备性复审 / 文档收口 / spec §4 回填）
-```
-
-要点：
-- **旧库只读**：venus2026/ 不修改、不清理死代码、不退役（原 C0/T 两类旧树操作
-  废弃）；audit 的 文件:行 引用仅作参考定位。
-- **分阶段计划文件**：每执行一个小 phase，先提交 `docs/plans/<phase>.md`
-  （P0/K1/K2/K3/C1…C8/V/S），经确认后执行；本计划保留序列、映射与量尺。
-- **验证体系重建**（用户裁决 2026-09-06）：旧 10 case 全部舍弃作基准；各 C 步
-  拟定自己的最小验证输入 + 判据（解析/统计锚点 > 守恒律/分布检验；判据设计可
-  借鉴旧 case README 的锚点思想，不沿用其输入与输出基线），V 阶段汇编成正式
-  case 集。临时同量参照：旧程序能算同一物理量时可作对照（非基准、非门槛）。
-- **输入文法**：以旧 KEYWORD=VALUE 为基础扩展构造子新关键字
-  （TERMINATE/OBSERVABLES/ELEMENTS/…，文法定案在 C4）；临时对照旧程序时
-  可复用旧输入。
-- **骨架漂移禁令**：具体化中发现签名不适用，回审核门出示差异、确认后修订。
-- C 序即依赖序：仪器→门面→谓词/记录器→抽样→传播→driver→后处理；
-  C2 需 C1（成员内部调 rng），C7 需 C2-C6（driver 只编排）。
-- §5（原 N1-N3）= 骨架中三个关键文件的接口规格；§6（原 P-A…P-G）= 移植时的
-  剥离/操作要点（audit 违规即"参考时勿带入"清单）；§7（原 X 轨）= 新树归位核对。
-
-## 3. 落点映射表（旧库关注点 → 新树落点）
-
-（2026-09-06 二次修订：独立新程序语境下，本表语义 = 各关注点在新树的落位；
-"原落点"列保留历史出处。旧库 venus2026/ 只读，下列目标文件均指新树。）
-
-| 步骤 | 原落点 | 最终落点 |
-|---|---|---|
-| B1 GWRITE 观测量配置化 | GWRITE 内部表 | recorder.f90 列注册（N3 产出的机制） |
-| B2 TEST 通用判据登记 | TEST.f 内部 | predicate.f90 文法成员（N2 产出） |
-| C1 gasdev/GAMA 迁移 | "src_VENUS 独立仪器模块" | rng.f90（L5，与 RAND0/RAND1/RANDST 同居） |
-| D1/D2/D4 随机律成员化 | 接口 A 成员（位置未定） | pes_glo_spring / pes_langevin_ghost / pes_ldfa，注册进 force_facade.f90 |
-| D3 ghost 参数装配 | "成员初始化钩子" | facade 成员 init 协议（POTPRE 型） |
-| E1 结局块合并+分类 | VENUS.f90 单一路径 | driver 调 analysis 结局分类执行器 + △6 分类数据 |
-| E2 观测积累 | "测量记录器模块" | recorder.f90 终态列 |
-| E3 体系分支 | "装配层" | 构型装配器（roster，N3 地基） |
-| G1/G3 反写表象改交付 | "输入文件或构型装配器" | 构型装配器 + config 文法 |
-| G4 RADOUT 回调 | "向控制核回调" | driver 的输出钩子 + predicate 求值点 |
-
-冲突裁决（两文档不一致处，以基准 optimal_structure 为准；2026-09-06 二次修订后
-裁决 1/2 自动消解——旧树不动，新树直接按基准映射落位，无删/留之争）：
-
-1. **ENMODE**：remediation A2 删除（MPLOT 死）；optimal_structure 判 ◐ 随
-   dist_normalmode 放置。裁决：**不随 A2 删**；其 MPLOT 死调用链删除，X3 时归位为
-   dist_normalmode 的装配期分析工具；届时若全库确无消费者，按 audit 原裁决删除并记录。
-2. **FRICFORCE/DIAG2**：A2 删（死入口）与 D4 复活（LDFA 成员）并存。裁决：A2 中
-   从 VERLET.f90 **删除**（连同 DIAG2/LINEQ/LUDCMP/LUBKSB/FEHLER），物理内容在
-   D4 以 pes_ldfa 成员形态在门面重生（素材经 git 历史可取）。
-3. **case 数量**：16 → 10（见 §0）。
-4. **harmonic_sampling**：audit 判"接入 B′ 或删除"。裁决：接入——X2 注册为
-   dist_surface_oscillator（B′ 第三实现），SELECT 成员表加行。
-
-编号对照：optimal_structure §5 所称 R0→R7 即原 remediation_plan（已删除）的
-P-A…P-G+收尾；本文沿用 P-X 编号并新增 N-X/X-X/S-X。
+1. Internal unit system Å/amu/(10 fs), conversion constants C1=0.04184, C7=0.063508, 23.0605 (eV→kcal/mol),
+   C8=1.987e-3; conversions happen only at the force_facade boundary (the point where the unit contract is honored).
+2. Build with `make` (under venus2026/; on Windows run in Git Bash, linker path variable overrides see CLAUDE.md);
+   flags `-r8 -double-size=64 -i8 -O2 -w`.
+3. Input accepts only the `KEYWORD=VALUE` grammar (input_parser); new keywords always go through the
+   param_mapping registry pattern; fallback to the old integer keywords is retained.
+4. No operator-class calls during the evolution phase (phase restriction, spec 2.5); preparation members internally
+   calling evolution services is legal (boundary 4).
+5. Single random stream: the new program is single-stream from C1 onward (rng.f90, Knuth RAND0 family, ISEED
+   state); no second stream anywhere in the codebase.
+6. After editing a module file, delete stale `.mod` before rebuilding (CLAUDE.md convention).
+7. Line-number references follow the 2026-09-04 audit; if line numbers drift during execution, re-locate by
+   grepping symbol names.
+8. Each C step closes with "minimal verification input + analytical/statistical criteria" (criteria first: define
+   the criteria before writing the implementation); V/S run the new case set over the full chain; the old program
+   serves only as an ad-hoc same-quantity reference, not as a gate.
 
 ---
 
-## 4. Phase 0 准备（版本控制与新程序树立项）
+## 0. Baseline verification (2026-09-06, differences from the audit)
 
-**Files:** 工作区根 `.git`（新建）、`docs/plans/`（分阶段计划文件目录）、
-新程序树 `src/`（命名已在 P0 计划文件定案）。
+Verified before execution; the following are established facts, and the plan adjusts accordingly:
 
-- [x] **0.1 git 初始化**：工作区根 `git init && git add -A && git commit`（docs/、
-  venus2026/ 参考、README 入管；旧库自此只读）。可选接远程（push 前征得用户同意）。
-- [x] **0.2 新程序树立项**：`src/Makefile`（ifx，flags 同旧库约定，Windows
-  链接器遮蔽处理段移植旧库平台段）+ `src/README.md`（L0-L5 一览，占位说明
-  K 阶段生成）+ `src/analysis/README.md`（L4 用途）。
-- [x] **0.3 旧库文档数字修正**：venus2026/CLAUDE.md"16 个示例 case"→10（避免
-  参考误导；此为旧库唯一允许的改动）。
-- [x] 提交 `P0: 版本控制与新程序树立项`。执行细则见 docs/plans/P0.md（v2）。
+| Verified item | Current state | Implication for the plan |
+|---|---|---|
+| `src_VENUS/GLO.f` (uncompiled leftover copy) | **no longer in the tree** | the corresponding P-A1 entry is naturally complete |
+| `ROTATEX_b/ROTATEZ_b` | **no longer in the tree** | same |
+| GASDEV.f/VFDATE.f/POTEN.f/EBOND.f/THERMBATH.f/WEBOND/WLBOND/WENMOD/MICROCI/VOLPSCONE/LMODE/LMEXCT | still present | P-A1/A2 delete as planned |
+| gasdev lives at interface_TEST.f90:112 (function) | still present | P-C1 proceed as planned |
+| GWRITE :59/95-99/110-114, TEST :88-94, VERLET :47,74,137 ghost/GLO embedding | still present, line numbers consistent with the audit | P-B/P-D proceed as planned |
+| Makefile MKL three-library linking | still present | P-A5 proceed as planned |
+| `venus2026/.git` | **does not exist** | Phase 0 must establish version control first |
+| cases/ count | **10** (boltzmann_vib, ebk_fixed_nj, fixed_normalmode_qnums, integrator_matrix, leps_potential, mb_thermal, rigid_surface, rst_beam_scattering, rst_surface_md, twobody_collision) | **all discarded as verification baselines** (user ruling 2026-09-06: the old cases are "old-behavior preservation" use cases, with uneven grounds for judgment and imprinted with defects such as F15/dual random streams); the directory stays in the legacy tree as historical reference; the new case system will be drafted after the K skeleton. CLAUDE.md's "16" is outdated; P0 corrects it |
+| docs/completeness_audit.json | present | subject of the S2 re-audit |
 
-## 5. 骨架接口规格：facade / predicate / recorder+roster（原乙轨 N1-N3）
+## 1. Target end state (definition of the acceptance state)
 
-（2026-09-06 修订：N1-N3 并入 Phase K，作骨架中三个关键文件的接口规格；
-check_* 验证程序挪至对应 C 步骤验收。本节签名与文法定义对 K 直接生效。）
+Structure (excerpt from optimal_structure §1; the file names are the placement targets):
 
-### N1 force_facade.f90 + elec_adiabatic（△1+△5）
+```
+L0 control kernel        driver.f90          the assembly→evolution→statistics call sequence, no physics
+L1 thing-in-itself container state.f90       Q, P, s, F, t (allocatable; dimensions = roster content parameters)
+L1 representation layer  config.f90          scenario, roster, distributions, predicates, outcome classification, observables configuration
+L2 interface A facade    force_facade.f90    (Q,P,s)→(F,E); internally Σ force-contribution members × single-choice electron propagation law
+L2 interface B′ framework sampler.f90        distribution→(Q0,P0,s0) generic sampler
+L3 registry-family members  pes_*.f90 / dist_*.f90
+L3 closed families       propagator.f90 / predicate.f90
+L4 measurement           recorder.f90        trajectory serialization + predicate evaluation
+L4 post-processing       analysis/           outcome classification execution, statistics, plotting (offline-capable)
+L5 instruments           rng.f90, linalg.f90, geometry.f90
+```
+
+End-state criteria (T1-T7, verified item by item at closing S):
+
+- **T1 file structure**: all files in the table above present; Makefile SRC ordered by the new dependency order;
+- **T2 variable-code location**: adding a new PES/distribution member = a new file + one registration line, with
+  zero touching of existing code (verified by the "add a pes_leps variant test piece" drill);
+- **T3 dual-implementation matrix**: A axis HARMONIC+MORSE+LEPS+EMT-NN+RST (≥2 ✓); B′ axis
+  THRMAN+INITEBK+dist_surface_oscillator (≥3); at the configuration level, molecule vs surface, two paradigms
+  (each with a representative among the new verification cases);
+- **T4 unit contract**: grep the whole codebase — 23.0605 and the C1 force conversion appear only at the
+  force_facade boundary;
+- **T5 single random stream**: no `RANDOM_NUMBER` residue anywhere (rng.f90 is the only stream in the codebase);
+- **T6 three phases**: the driver contains only the assembly→evolution→statistics call sequence; inside the
+  evolution loop only facade/propagator/recorder/predicate;
+- **T7 completeness re-audit**: re-audit every routine of the new program against the spec's three questions,
+  producing a new completeness audit (md+json); nothing remains outside the invariant and member classes. The old
+  audit is kept as historical reference.
+
+## 2. Execution sequence (user ruling 2026-09-06: standalone new program + skeleton-first + per-phase plan files)
+
+```
+Phase 0 preparation (git + new-program tree setup)
+   0.1 git init (workspace root; the legacy code is read-only from here on)
+   0.2 new-program tree setup (src/: Makefile skeleton + README + analysis/ placeholder)
+   0.3 legacy CLAUDE.md case-count correction
+   ↓
+Phase K skeleton generation (all L0-L5 files as placeholders in the new tree)
+   K1 real definitions of global variables (state.f90 / config.f90 / consts;
+       block-by-block placement of venus_data's ~40 representation blocks)
+   K2 placeholder per routine: input/output signature + pseudocode + provenance comment (legacy file:line)
+   K3 the new tree compiles independently (stub main program; the compiler verifies interface consistency)
+   ↓ [review gate: show only the skeleton outline (file tree + one-line routine list per file);
+        release after layer-by-layer confirmation; pseudocode expanded per file under the presentation protocol]
+Phase C concretization (file by file; per file, outline first then expand after confirmation; component-level old-vs-new cross-checks)
+   C1 L5 instruments: rng (single random stream) / linalg / geometry   ← reference RAND0 family/gasdev/EIGN/ROTATE family
+   C2 force_facade + elec_adiabatic + pes_* members       ← reference interface_TEST/emt_nn/rst/VERLET embedded forces
+   C3 predicate grammar + termination-criteria assembly   ← reference TEST.f:106-146
+   C4 recorder + config_roster + input grammar            ← reference GWRITE/HIST (stripping the violations listed in the audit)
+   C5 sampler + dist_* member table                       ← reference SELECT/THRMAN/INITEBK/SURF/…
+   C6 propagator closed family (verlet/symple/radau)      ← reference VERLET/SYMPLE/RADAU (orchestration stripped)
+   C7 driver + outcome-classification data                ← reference VENUS.f90 three-phase orchestration
+   C8 analysis/ offline family                            ← reference FINAL/GFINAL/EIGOUT/plot_*
+   ↓
+Phase V full-chain verification (the C-phase per-component verification inputs and criteria assembled into the
+   formal case set; criterion coverage check + full runs + same-ISEED reproducibility spot checks)
+   ↓
+S closing (new-program completeness re-audit / document wrap-up / spec §4 backfill)
+```
+
+Key points:
+- **Legacy code read-only**: venus2026/ is not modified, its dead code is not cleaned, nothing is retired (the
+  original C0/T old-tree operations of both kinds are voided); the audit's file:line references serve only to
+  locate reference code.
+- **Per-phase plan files**: before executing each small phase, first submit `docs/plans/<phase>.md`
+  (P0/K1/K2/K3/C1…C8/V/S) and execute after confirmation; this plan retains the sequence, the mapping, and the
+  yardsticks.
+- **Verification system rebuild** (user ruling 2026-09-06): all 10 old cases are discarded as baselines; each C
+  step drafts its own minimal verification input + criteria (analytical/statistical anchors > conservation-law/
+  distribution checks; the criterion design may borrow the anchor ideas from the old case READMEs without reusing
+  their inputs and output baselines), and Phase V assembles them into the formal case set. Ad-hoc same-quantity
+  cross-check: when the old program can compute the same physical quantity it may be used for comparison (not a
+  baseline, not a gate).
+- **Input grammar**: extend the old KEYWORD=VALUE as the base with constructor new keywords
+  (TERMINATE/OBSERVABLES/ELEMENTS/…, grammar finalized at C4); when temporarily cross-checking the old program,
+  old inputs may be reused.
+- **Skeleton drift ban**: if a signature turns out to be unsuitable during concretization, go back to the review
+  gate, present the difference, and revise after confirmation.
+- The C order is the dependency order: instruments→facade→predicate/recorder→sampling→propagation→driver→
+  post-processing; C2 needs C1 (members internally call rng), C7 needs C2-C6 (the driver only orchestrates).
+- §5 (formerly N1-N3) = the interface specs of the three key skeleton files; §6 (formerly P-A…P-G) = the
+  stripping/operation points when porting (the audit violations are exactly the "do not carry over when
+  referencing" list); §7 (formerly the X track) = the placement check for the new tree.
+
+## 3. Placement mapping table (legacy concern → new-tree placement)
+
+(Second revision, 2026-09-06: in the standalone-new-program context, this table's semantics = where each concern
+lands in the new tree; the "original placement" column keeps the historical provenance. The legacy tree
+venus2026/ is read-only; all target files below refer to the new tree.)
+
+| Step | Original placement | Final placement |
+|---|---|---|
+| B1 GWRITE observables as configuration | GWRITE internal table | recorder.f90 column registration (the mechanism produced by N3) |
+| B2 TEST generic criteria registration | TEST.f internal | predicate.f90 grammar member (produced by N2) |
+| C1 gasdev/GAMA migration | "src_VENUS standalone instrument module" | rng.f90 (L5, co-located with RAND0/RAND1/RANDST) |
+| D1/D2/D4 stochastic-law members | interface A members (location undetermined) | pes_glo_spring / pes_langevin_ghost / pes_ldfa, registered into force_facade.f90 |
+| D3 ghost parameter assembly | "member init hook" | facade member init protocol (POTPRE-style) |
+| E1 outcome block merge + classification | VENUS.f90 single path | driver calls the analysis outcome-classification executor + △6 classification data |
+| E2 observable accumulation | "measurement recorder module" | recorder.f90 final-state columns |
+| E3 system branching | "assembly layer" | configuration assembler (roster, the N3 foundation) |
+| G1/G3 representation write-back turned into delivery | "input file or configuration assembler" | configuration assembler + config grammar |
+| G4 RADOUT callback | "callback to the control kernel" | the driver's output hook + predicate evaluation point |
+
+Conflict adjudication (where the two documents disagree, the baseline optimal_structure prevails; after the second
+revision of 2026-09-06, adjudications 1/2 dissolve automatically — the old tree is untouched and the new tree maps
+directly per the baseline, so there is no delete/keep dispute):
+
+1. **ENMODE**: remediation A2 deletes it (MPLOT dead); optimal_structure judges ◐ to be placed with
+   dist_normalmode. Adjudication: **do not delete it along with A2**; its MPLOT dead call chain is deleted, and at
+   X3 it is placed as dist_normalmode's assembly-time analysis tool; if at that point the whole codebase truly has
+   no consumer, delete it per the audit's original ruling and record that.
+2. **FRICFORCE/DIAG2**: A2's deletion (dead entry) and D4's revival (LDFA member) coexist. Adjudication: in A2,
+   **delete** from VERLET.f90 (together with DIAG2/LINEQ/LUDCMP/LUBKSB/FEHLER); the physics is reborn in D4 as
+   the pes_ldfa member in the facade (the material is retrievable via git history).
+3. **case count**: 16 → 10 (see §0).
+4. **harmonic_sampling**: the audit rules "wire into B′ or delete". Adjudication: wire it in — X2 registers it as
+   dist_surface_oscillator (the B′ third implementation) and adds a row to the SELECT member table.
+
+Numbering correspondence: what optimal_structure §5 calls R0→R7 corresponds to the original (deleted)
+remediation_plan's P-A…P-G + closing; this document keeps the P-X numbering and adds N-X/X-X/S-X.
+
+---
+
+## 4. Phase 0 preparation (version control and new-program tree setup)
+
+**Files:** workspace root `.git` (newly created), `docs/plans/` (per-phase plan file directory),
+new program tree `src/` (naming finalized in the P0 plan file).
+
+- [x] **0.1 git initialization**: workspace root `git init && git add -A && git commit` (docs/, the venus2026/
+  reference, and README under version control; the legacy code is read-only from here on). Optionally connect a
+  remote (ask for user consent before pushing).
+- [x] **0.2 new-program tree setup**: `src/Makefile` (ifx, flags as per the legacy conventions, the Windows
+  linker-masking section ported from the legacy Makefile's platform section) + `src/README.md` (L0-L5 overview,
+  placeholder note: generated in Phase K) + `src/analysis/README.md` (L4 purpose).
+- [x] **0.3 legacy doc number correction**: venus2026/CLAUDE.md "16 example cases"→10 (avoiding a misleading
+  reference; this is the only allowed change to the legacy tree).
+- [x] Commit `P0: version control and new-program tree setup`. Execution details in docs/plans/P0.md (v2).
+
+## 5. Skeleton interface specs: facade / predicate / recorder+roster (formerly track B N1-N3)
+
+(Revised 2026-09-06: N1-N3 are merged into Phase K as the interface specs of the three key skeleton files; the
+check_* verification programs move to the acceptance of the corresponding C steps. The signatures and grammar
+definitions in this section take direct effect for K.)
+
+### N1 force_facade.f90 + elec_adiabatic (△1+△5)
 
 **Files:**
-- Create: `src/force_facade.f90`（新树 L2）
+- Create: `src/force_facade.f90` (new tree L2)
 - Create: `src/elec_adiabatic.f90`
-- Test: `scripts/check_facade.f90`（组件级对照，独立编译）
+- Test: `scripts/check_facade.f90` (component-level cross-check, independently compiled)
 
-**Interfaces（产出，后续任务依赖）：**
+**Interfaces (produced; later tasks depend on them):**
 ```fortran
 module force_facade
-  public :: facade_register_pes(name, pes_proc)      ! 甲类成员注册（可叠加）
-  public :: facade_register_elec(name, elec_proc)    ! 乙类成员注册（单选）
-  public :: facade_init(config)                      ! 组装成员表+能力级协商，非法组合 loud-stop
-  public :: facade_force(Q, P, s, F, E)              ! (Q,P,s)→(F,E)；F=Σ成员贡献；E=T(P)+ΣV
-  public :: facade_info                             ! 成员清单/能力级（诊断输出）
+  public :: facade_register_pes(name, pes_proc)      ! class-A member registration (additive)
+  public :: facade_register_elec(name, elec_proc)    ! class-B member registration (single choice)
+  public :: facade_init(config)                      ! assemble the member table + capability-level negotiation; illegal combinations loud-stop
+  public :: facade_force(Q, P, s, F, E)              ! (Q,P,s)→(F,E); F=Σ member contributions; E=T(P)+ΣV
+  public :: facade_info                             ! member list / capability levels (diagnostic output)
 end module
-! 甲类成员签名：Q,W → F_add, E_add；随机律成员内部调 rng（签名承认随机律）
-! 【单位契约修订（2026-09-06 K2 批2 裁决，总审查确认）】成员交付 eV 力核
-! （g_add[eV/Å], v_add[eV]）；×23.0605×C1 换算集中于门面（ev_kcal 为全库
-! 唯一出现点，累加式与 DPESHON 同形）——N1 原"code 单位"注解按"经门面
-! 换算后"理解，T4 由此成立。C2 实现者以此为准。
-! 乙类成员签名(退化点)：elec_adiabatic: ds/dt≡0，力规则恒等——显式存在约 20 行
+! Class-A member signature: Q,W → F_add, E_add; stochastic-law members call rng internally (the signature acknowledges stochastic laws)
+! [Unit-contract revision (2026-09-06 K2 batch-2 ruling, confirmed by the overall review)] Members deliver an
+! eV force core (g_add[eV/Å], v_add[eV]); the ×23.0605×C1 conversion is centralized in the facade (ev_kcal being
+! the sole occurrence point in the codebase, the accumulation form identical to DPESHON) — N1's original "code
+! units" annotation is to be understood as "after facade conversion"; T4 follows from this. C2 implementers take
+! this as authoritative.
+! Class-B member signature (degenerate point): elec_adiabatic: ds/dt≡0, identity force rule — explicitly present, ~20 lines
 ```
-能力级协商表（facade_init 内数据）：合法三元组当前仅
-`(single_surface, adiabatic, {verlet,symple,radau})`；非法组合打印冲突两轴并 STOP。
+Capability-level negotiation table (data inside facade_init): the only legal triple at present is
+`(single_surface, adiabatic, {verlet,symple,radau})`; illegal combinations print both conflicting axes and STOP.
 
-- [ ] **N1.1** 写 force_facade.f90：成员注册表（name→procedure 数组）、加性合成循环、
-  能力级协商。换算表达式与 DPESHON 完全同形（`-grad×23.0605×C1` 累加），保证 bit 级可比。
-- [ ] **N1.2** 写 elec_adiabatic.f90（退化成员：ds/dt≡0、力规则恒等）。
-- [ ] **N1.3** 写五个甲类成员文件：pes_reference（HARMONIC/MORSE/LEPS 体系无关
-  参考势，参考 test_potentials.f90）、pes_emt_nn、pes_rst（算法自旧库对应文件
-  移植，数据外置与路径关键字沿用），注册进门面。
-- [ ] **N1.4** 写 scripts/check_facade.f90：临时构造输入跑旧程序取参照轨迹
-  （≥100 帧；或对参考势用解析梯度手算），同 Q 下分别经 `DVDQ_1→DPESHON`（旧路）与
-  `facade_force`（新路）求 F/E，逐元素 diff。
-- [ ] **N1.5 验收**：`make` 通过；check_facade 全帧 max|ΔF|=0、max|ΔE|=0（bit 级，
-  不为零则查换算次序并修至为零）。提交 `N1: force_facade 门面+退化电子成员（旁路验证 bit 级一致）`。
+- [ ] **N1.1** Write force_facade.f90: the member registry (name→procedure array), the additive composition
+  loop, capability-level negotiation. The conversion expression exactly matches DPESHON in form
+  (`-grad×23.0605×C1` accumulated), guaranteeing bit-level comparability.
+- [ ] **N1.2** Write elec_adiabatic.f90 (degenerate member: ds/dt≡0, identity force rule).
+- [ ] **N1.3** Write the five class-A member files: pes_reference (the system-independent reference potentials
+  HARMONIC/MORSE/LEPS, referencing test_potentials.f90), pes_emt_nn, pes_rst (algorithms ported from the
+  corresponding legacy files; externalized data and path keywords carried over), registered into the facade.
+- [ ] **N1.4** Write scripts/check_facade.f90: build a temporary input, run the old program for a reference
+  trajectory (≥100 frames; or hand-compute analytical gradients for the reference potentials), compute F/E at
+  the same Q via both `DVDQ_1→DPESHON` (old path) and `facade_force` (new path), and diff element by element.
+- [ ] **N1.5 Acceptance**: `make` passes; check_facade gives max|ΔF|=0 and max|ΔE|=0 over all frames (bit level;
+  if nonzero, check the conversion ordering and fix until zero). Commit `N1: force_facade + degenerate electron
+  member (bypass verification, bit-level identical)`.
 
-### N2 predicate.f90 文法解释器（△2）
+### N2 predicate.f90 grammar interpreter (△2)
 
 **Files:**
-- Create: `src/predicate.f90`（新树 L3 封闭族）
+- Create: `src/predicate.f90` (new tree L3 closed family)
 - Test: `scripts/check_predicate.f90`
 
-**Interfaces（产出）：**
+**Interfaces (produced):**
 ```fortran
 module predicate
-  public :: predicate_parse(str, expr, ios, errmsg)  ! 输入文法表达式 → expr 树
+  public :: predicate_parse(str, expr, ios, errmsg)  ! input-grammar expression → expr tree
   public :: predicate_eval(Q, P, W, roster, expr) → logical
 end module
 ```
-输入文法（新关键字 `TERMINATE =`，param_mapping 注册）：
+Input grammar (new keyword `TERMINATE =`, registered in param_mapping):
 ```
-表达式 := 原式 | AND(e1,e2) | OR(e1,e2) | NOT(e)
-原式   := COM_DISTANCE(片段A, 片段B, 阈值Å[, 退行速度阈])   ← TEST.f:106-146 原型
-        | Z_HEIGHT(片段, 阈值Å[, OUTWARD])                  ← 取代 TEST.f:88-94 写死判据
-        | MAX_STEPS(步数)                                   ← 取代 NC 魔数（恒为安全网）
-        | BOUND(片段A, 片段B, 下阈, 上阈)                    ← 有界窗（约束散射）
-片段   := 名册片段名（A/B/…）或 ATOM(i)
+expression := atom | AND(e1,e2) | OR(e1,e2) | NOT(e)
+atom   := COM_DISTANCE(fragment A, fragment B, threshold Å[, recession-velocity threshold])   ← TEST.f:106-146 prototype
+        | Z_HEIGHT(fragment, threshold Å[, OUTWARD])                  ← replaces the TEST.f:88-94 hardcoded criteria
+        | MAX_STEPS(count)                                   ← replaces the NC magic number (always a safety net)
+        | BOUND(fragment A, fragment B, lower, upper)        ← bounded window (constrained scattering)
+fragment   := roster fragment name (A/B/…) or ATOM(i)
 ```
 
-- [ ] **N2.1** 写文法数据结构（原式/布尔组合节点）+ 解析器 + 求值器（COM 距离与
-  退行速度算法逐行取自 TEST.f:106-146，保证数值同源）。
-- [ ] **N2.2** 无 `TERMINATE` 关键字时的默认表达式 = 现行 TEST 通用判据同参版本
-  （RCRIT 等既有参数映射进表达式），保证 B2 前行为不变。
-- [ ] **N2.3** 写 check_predicate.f90：对临时生成的旧程序轨迹回放（或构造
-  状态序列），断言每步布尔值与
-  TEST.f 现行输出一致。
-- [ ] **N2.4 验收**：`make` 通过；check_predicate 全轨迹一致。提交 `N2: 谓词文法解释器`。
+- [ ] **N2.1** Write the grammar data structures (atom/boolean-combination nodes) + parser + evaluator (the COM
+  distance and recession-velocity algorithms taken line by line from TEST.f:106-146, guaranteeing numerical
+  provenance).
+- [ ] **N2.2** The default expression when no `TERMINATE` keyword is present = a same-parameter version of the
+  current TEST generic criteria (existing parameters such as RCRIT mapped into the expression), guaranteeing
+  unchanged behavior before B2.
+- [ ] **N2.3** Write check_predicate.f90: replay over a temporarily generated old-program trajectory (or a
+  constructed state sequence), asserting that the boolean at every step matches the current TEST.f output.
+- [ ] **N2.4 Acceptance**: `make` passes; check_predicate consistent over the whole trajectory. Commit
+  `N2: predicate grammar interpreter`.
 
-### N3 recorder.f90 列注册 + roster 名册（△4+△3 地基）
+### N3 recorder.f90 column registration + roster (△4+△3 foundation)
 
 **Files:**
-- Create: `src/recorder.f90`、`src/config_roster.f90`（新树）
-- Test: 组件级对照在 C4 接线时进行；本件自测走编译+冒烟
+- Create: `src/recorder.f90`, `src/config_roster.f90` (new tree)
+- Test: the component-level cross-check happens when the wiring is done at C4; this item's self-test is compile + smoke
 
-**Interfaces（产出）：**
+**Interfaces (produced):**
 ```fortran
 module recorder
-  public :: recorder_register_col(name, col_proc)    ! 列 = 名字 + 抽取器
-  public :: recorder_select(cols_spec)                ! OBSERVABLES= 名单或 GWRITE_LEVEL 预设组
-  public :: recorder_frame(Q, P, F, unit)             ! 写一帧所选列
+  public :: recorder_register_col(name, col_proc)    ! column = name + extractor
+  public :: recorder_select(cols_spec)                ! OBSERVABLES= list or GWRITE_LEVEL preset group
+  public :: recorder_frame(Q, P, F, unit)             ! write one frame of the selected columns
 end module
 module config_roster
-  public :: atom_spec(symbol, mass, fragment)         ! 名册元素结构
-  public :: roster_load(ELEMENTS= 列表) / roster_symbol(i) → 'C '/'Au '（原格式宽度）
+  public :: atom_spec(symbol, mass, fragment)         ! roster element structure
+  public :: roster_load(ELEMENTS= list) / roster_symbol(i) → 'C '/'Au ' (original format width)
 end module
 ```
-新关键字：`ELEMENTS = C, AU(111), …`（顺序对应原子序，缺省回退 `AT<i>` 标签）；
-`OBSERVABLES = 列名,…`（与 GWRITE_LEVEL 预设组并存，后者引用列组表）。
+New keywords: `ELEMENTS = C, AU(111), …` (order corresponds to the atomic index; the fallback default is `AT<i>`
+labels); `OBSERVABLES = column names,…` (coexisting with the GWRITE_LEVEL preset groups, the latter referencing
+the column-group table).
 
-- [ ] **N3.1** 写 recorder 列注册机制（列组预设表数据化：level 0/1/2/3 → 列名单）。
-- [ ] **N3.2** 写 config_roster：元素符号表（符号→2 字符标签；质量仍走现行 W 装配）、
-  ELEMENTS 关键字接入。
-- [ ] **N3.3 验收**：`make` 通过；全 case 回归不变（新模块尚无人消费）。
-  提交 `N3: recorder 列注册与名册数据结构`。
+- [ ] **N3.1** Write the recorder column-registration mechanism (the column-group preset table as data: level
+  0/1/2/3 → column lists).
+- [ ] **N3.2** Write config_roster: the element symbol table (symbol→2-char label; masses still go through the
+  current W assembly), and the ELEMENTS keyword hookup.
+- [ ] **N3.3 Acceptance**: `make` passes; all case regressions unchanged (nothing consumes the new module yet).
+  Commit `N3: recorder column registration and roster data structures`.
 
-## 6. 质料操作清单：原纯化主链（P-A…P-G）
+## 6. Material operation list: the original purification main chain (P-A…P-G)
 
-（2026-09-06 二次修订：旧库只读，本节步骤均不在旧库执行。其角色 = **移植参考
-时的剥离/操作要点**——audit 所列违规点即"参考时勿带入新树"的清单，行号与
-条目名用于定位参考代码。P-A 死代码清除整节作废：旧库不清理，新树无死代码
-可清（audit A8 清单 = 新树不必实现的功能清单）。各任务内嵌的"验收"行是旧计划
-的旧树验收，已被 §2/§9 的新验收方式（组件判据验证 + V 全链路新 case 体系）
-取代，仅步骤要点有效。）
+(Second revision, 2026-09-06: the legacy tree is read-only, and the steps in this section are not executed in the
+legacy tree. Their role = **the stripping/operation points when porting for reference** — the violations listed in
+the audit are exactly the "do not carry into the new tree when referencing" list, and the line numbers and entry
+names serve to locate the reference code. The whole P-A dead-code-removal section is void: the legacy tree is not
+cleaned and the new tree has no dead code to clean (the audit A8 list = the list of functionality the new tree
+need not implement). The "acceptance" lines embedded in each task are the old plan's old-tree acceptances,
+superseded by the new acceptance approach of §2/§9 (component criterion verification + the V full-chain new case
+system); only the step essentials remain valid.)
 
-### P-A 死代码清除（零物理风险）
+### P-A dead-code removal (zero physics risk)
 
-**Files:** 删 A1/A2 所列文件；改 VENUS.f90、venus_data.f90、VERLET.f90、GLO.f90、Makefile。
+**Files:** delete the files listed in A1/A2; edit VENUS.f90, venus_data.f90, VERLET.f90, GLO.f90, Makefile.
 
-- [ ] **A1** 删文件：`src_VENUS/{GASDEV.f, VFDATE.f, POTEN.f, EBOND.f, THERMBATH.f,
-  WEBOND.f, WLBOND.f, WENMOD.f}`（GLO.f、ROTATEX_b/ROTATEZ_b 已不在树；核实 Makefile
-  SRC 无残留引用）。
-- [ ] **A2** 删死入口及依赖链：MICROCI.f、VOLPSCONE.f、LMODE.f、LMEXCT.f（EBOND 已在
-  A1）；ENMODE.f 的 MPLOT 调用链删除（文件本体保留待 X3 裁决，见 §3 冲突 1），
-  venus_input.f90:692 的 MPLOT=0 写死关键字一并清；
-  SURF.f 内 PBC；VERLET.f90 内 FRICFORCE+DIAG2+LINEQ+LUDCMP+LUBKSB+FEHLER（物理素材
-  D4 重生）；GLO.f90 内 GLOEQU、DISTRIBUTE。
-- [ ] **A3** VENUS.f90 死块：NCHKP 分支（:182-232）、RKUTTA 系数（:86-94）、idplt
-  直方图死块（:286-299，含 Qr1/Qr2 位点常数与 SYSTEM 壳调用）、NCVIB 死关键字。
-- [ ] **A4** venus_data 死块：MORSEB、STRETB、CUBEB、COORS、GAUSS2/GAUHES、GDD、
-  HIST_ATOM_NAD、U0/U1/V01、RKUTTA 块。
-- [ ] **A5** Makefile：删 MKL 三库链接（全库无调用）与已删文件 SRC 条目。
-- [ ] **验收**：`make` 通过；`bash scripts/regress.sh` 10 case 全 PASS（bit 级）。
-  提交 `P-A: 死代码清除（audit A8 清单）`。
+- [ ] **A1** Delete files: `src_VENUS/{GASDEV.f, VFDATE.f, POTEN.f, EBOND.f, THERMBATH.f, WEBOND.f, WLBOND.f,
+  WENMOD.f}` (GLO.f and ROTATEX_b/ROTATEZ_b are already out of the tree; verify the Makefile SRC has no residual
+  references).
+- [ ] **A2** Delete dead entry points and their dependency chains: MICROCI.f, VOLPSCONE.f, LMODE.f, LMEXCT.f
+  (EBOND already in A1); delete ENMODE.f's MPLOT call chain (the file itself kept pending the X3 adjudication,
+  see §3 conflict 1), and clean venus_input.f90:692's MPLOT=0 hardcoded keyword as well; PBC in SURF.f;
+  FRICFORCE+DIAG2+LINEQ+LUDCMP+LUBKSB+FEHLER in VERLET.f90 (the physics material is reborn in D4); GLOEQU and
+  DISTRIBUTE in GLO.f90.
+- [ ] **A3** VENUS.f90 dead blocks: the NCHKP branch (:182-232), the RKUTTA coefficients (:86-94), the idplt
+  histogram dead block (:286-299, including the Qr1/Qr2 site constants and the SYSTEM shell call), the NCVIB dead
+  keyword.
+- [ ] **A4** venus_data dead blocks: MORSEB, STRETB, CUBEB, COORS, GAUSS2/GAUHES, GDD, HIST_ATOM_NAD, U0/U1/V01,
+  the RKUTTA block.
+- [ ] **A5** Makefile: remove the MKL three-library linking (no calls anywhere) and the SRC entries of deleted
+  files.
+- [ ] **Acceptance**: `make` passes; `bash scripts/regress.sh` — all 10 cases PASS (bit level). Commit
+  `P-A: dead-code removal (audit A8 list)`.
 
-### P-B 测量层纯化（观测量选择退为配置）
+### P-B measurement-layer purification (observable selection demoted to configuration)
 
-**Files:** 改 GWRITE.f90、TEST.f、GFINAL.f、FINAL.f、POTENZ.f、HIST.f90；接线 recorder/predicate/roster。
+**Files:** edit GWRITE.f90, TEST.f, GFINAL.f, FINAL.f, POTENZ.f, HIST.f90; wire in recorder/predicate/roster.
 
-- [ ] **B1** GWRITE 剥体系知识：删 atom1=C 特写行（:59-60）、质量阈元素名（:110-114，
-  改 roster_symbol）、nearest-Au 诊断（:95-99，移 analysis 作可选离线工具）、+6.0 Å
-  PBC 盒（:78-79，改配置）、:43 内联 kB 改用 venus_params 常数；GWRITE_LEVEL 各层
-  观测量集合改走 recorder 列组表。
-- [ ] **B2** TEST.f：删活的 C/Au 判据（:88-94）与两段注释体系知识（:54-78、:149-192）；
-  终止判据改 predicate.f90 装配（无 TERMINATE 关键字走 N2.2 默认表达式）。受影响
-  case（rst_beam_scattering、rst_surface_md、rigid_surface 等 NSURF>0 者）在
-  input_qct.txt 增加与现行判据等价的 TERMINATE 行（阈值取现值；等价翻译以
-  TEST.f 现文为准）。
-- [ ] **B3** GFINAL.f:80 删写死原子 3 的 EREL 覆盖，采用 FINAL 广义 COM 相对能量；
-  同步删 :66-69 current_U0 未初始化打印。
-- [ ] **B4** 删 fort.777/666 的 U0/U1/V01 打印（FINAL.f:131-135、POTENZ.f:76-82，
-  全库无写入者）。
-- [ ] **B5** record_all/HIST：auro=2.94998 与六方格子（PI/3、top/brg/hcp/fcc）改
-  slab 名册参数（新关键字 `SURFACE_LATTICE = HEX(auro)|FCC(a)`，入 config）。
-- [ ] **B6**（增补，audit FINAL 行）删 FINAL.f:616-620 NZDOWN 写死原子 3 死分支
-  （输入层 loud-stop 桩保留）。
-- [ ] **验收**：regress 全 PASS——rst 类 case 轨迹除元素标签来源变化外数值一致；
-  GWRITE 元素名与 ELEMENTS 名册一致（rst case 输入补 ELEMENTS 行后 diff 干净）。
-  提交 `P-B: 测量层纯化（audit: GWRITE/TEST/GFINAL/FINAL/record_all）`。
+- [ ] **B1** GWRITE stripped of system knowledge: delete the atom1=C special-case lines (:59-60), the
+  mass-threshold element names (:110-114, use roster_symbol), the nearest-Au diagnostics (:95-99, moved to
+  analysis as an optional offline tool), the +6.0 Å PBC box (:78-79, made configurable), and the :43 inline kB
+  (use the venus_params constant); the per-level observable sets of GWRITE_LEVEL go through the recorder
+  column-group table.
+- [ ] **B2** TEST.f: delete the live C/Au criteria (:88-94) and the two commented system-knowledge blocks
+  (:54-78, :149-192); the termination criteria are assembled via predicate.f90 (without a TERMINATE keyword, the
+  N2.2 default expression applies). The affected cases (rst_beam_scattering, rst_surface_md, rigid_surface and
+  the other NSURF>0 ones) get a TERMINATE line added to input_qct.txt that is equivalent to the current criteria
+  (thresholds at current values; the equivalent translation follows the current TEST.f text).
+- [ ] **B3** GFINAL.f:80 — delete the hardcoded atom-3 EREL override and adopt FINAL's generalized COM relative
+  energy; also delete the :66-69 uninitialized current_U0 print.
+- [ ] **B4** Delete the fort.777/666 U0/U1/V01 prints (FINAL.f:131-135, POTENZ.f:76-82 — no writers anywhere).
+- [ ] **B5** record_all/HIST: auro=2.94998 and the hexagonal lattice (PI/3, top/brg/hcp/fcc) become slab roster
+  parameters (new keyword `SURFACE_LATTICE = HEX(auro)|FCC(a)`, into config).
+- [ ] **B6** (addendum, audit FINAL row) delete the FINAL.f:616-620 NZDOWN hardcoded atom-3 dead branch (the
+  input-layer loud-stop stub is kept).
+- [ ] **Acceptance**: regress all PASS — rst-type case trajectories numerically identical except for the
+  element-label source change; GWRITE element names consistent with the ELEMENTS roster (after adding the
+  ELEMENTS line to the rst case inputs, the diff is clean). Commit `P-B: measurement-layer purification (audit:
+  GWRITE/TEST/GFINAL/FINAL/record_all)`.
 
-### P-C 随机流统一（可复现性）
+### P-C random-stream unification (reproducibility)
 
-**Files:** 建 rng.f90；改 interface_TEST.f90、GAMA.f、VERLET.f90、VENUS.f90、GLO.f90、THERMO.f 等消费者。
+**Files:** create rng.f90; edit the consumers interface_TEST.f90, GAMA.f, VERLET.f90, VENUS.f90, GLO.f90,
+THERMO.f, etc.
 
-- [ ] **C1** rng.f90（L5）：RAND0/RAND1/RANDST 原样迁入；gasdev 从
-  interface_TEST.f90:112 迁入并改走主流（内部均匀源 RANDOM_NUMBER→RAND1，Box-Muller
-  与缓存态保留）；GAMA 一并迁入（IDUM 形参恢复实效）。
-- [ ] **C2** 全库唯一流核验：grep `RANDOM_NUMBER` 仅 rng.f90 内部转换点允许一处
-  （若全改 RAND1 则零处）；所有消费者（VERLET 噪声、GLOSELECT、THERMO Andersen、
-  QMMICRO 等）经 rng.f90。
-- [ ] **C3** VENUS.f90:184,231 RANDST 双调用修复为读入后单次（F15 关闭）。
-- [ ] **验收**：含噪声/恒温 case（rigid_surface、mb_thermal、rst_surface_md——执行时
-  以各输入 NFC/NGLO/NTHERM 复核名单）同 ISEED 两次运行 bit 级一致；其余 case 与
-  baseline bit 级一致。**预期基线更换**：上述三 case 基线快照更新，README 标注
-  "P-C 换流，旧流不可复现"。提交 `P-C: 单一随机流（audit A2；F15 关闭）`。
+- [ ] **C1** rng.f90 (L5): RAND0/RAND1/RANDST migrated as-is; gasdev moved in from interface_TEST.f90:112 and
+  switched to the main stream (internal uniform source RANDOM_NUMBER→RAND1; Box-Muller and the cache state
+  kept); GAMA moved in as well (the IDUM dummy argument made effective again).
+- [ ] **C2** Single-stream verification over the whole codebase: grep `RANDOM_NUMBER` — only one occurrence
+  allowed, at rng.f90's internal conversion point (zero if everything goes through RAND1); all consumers (VERLET
+  noise, GLOSELECT, THERMO Andersen, QMMICRO, etc.) go through rng.f90.
+- [ ] **C3** Fix the VENUS.f90:184,231 RANDST double call into a single call after read-in (F15 closed).
+- [ ] **Acceptance**: the noise/thermostat cases (rigid_surface, mb_thermal, rst_surface_md — re-verify the list
+  against each input's NFC/NGLO/NTHERM at execution time) are bit-level identical across two runs with the same
+  ISEED; the other cases are bit-level identical with the baseline. **Expected baseline replacement**: the
+  baseline snapshots of those three cases are updated, and the README is annotated "P-C stream switch, old
+  stream not reproducible". Commit `P-C: single random stream (audit A2; F15 closed)`.
 
-### P-D 噪声律入接口 A（成员注册进 force_facade）
+### P-D stochastic laws into interface A (members registered into force_facade)
 
-**前置**：N1 完成；P-B/P-C 已完成（常量先参数化、换流在前）。
+**Preconditions**: N1 done; P-B/P-C done (constants parameterized first, stream switch first).
 
-**Files:** 建 pes_glo_spring.f90、pes_langevin_ghost.f90、pes_ldfa.f90；改 VERLET.f90、ENERGY.f、venus_input.f90、force_facade.f90（注册行）。
+**Files:** create pes_glo_spring.f90, pes_langevin_ghost.f90, pes_ldfa.f90; edit VERLET.f90, ENERGY.f,
+venus_input.f90, force_facade.f90 (registration lines).
 
-- [ ] **D1** VERLET.f90 的 ghost Langevin（:44-50,71-79,153-161）与 GLO 弹簧+随机+
-  摩擦（:137-148）抽为成员：pes_langevin_ghost（随机律）、pes_glo_spring（弹簧+
-  随机+摩擦）；原子索引经成员 ctx 参数化（不再写死 atom2/NATOMA+1/+2）；成员内部
-  调 rng。注册行入 facade_init（由 NGLO/NFC 开关映射为成员装配，文法向后兼容）。
-- [ ] **D2** ENERGY.f:40-47 GLO 弹簧势能删，能量侧经 facade 汇总（E=T(P)+ΣV，
-  kcal/mol 报告口径不变：T/C1 后同标）。
-- [ ] **D3** venus_input.f90:616-621 ghost 参数装配（W(2) 写死、413.4 换算）移入
-  成员 init 钩子（facade_init 时调）。
-- [ ] **D4** pes_ldfa.f90：以 FRICFORCE 物理（NFC=1/2 两律）重生为随机律第三成员。
-- [ ] **D5** VERLET 残留 CALTYP 分支（:34-36,60-62,123-125）清除。
-- [ ] **验收**：rigid_surface 能量分布与 P-C 后基线 bit 级一致（同流同算术序）；
-  `grep -n "NGLO\|ghost" VERLET.f90` 零命中——积分器本体无体系知识。
-  提交 `P-D: 噪声律成员化入接口 A（audit: VERLET/ENERGY/FRICFORCE）`。
+- [ ] **D1** VERLET.f90's ghost Langevin (:44-50,71-79,153-161) and GLO spring+random+friction (:137-148)
+  extracted into members: pes_langevin_ghost (stochastic law), pes_glo_spring (spring+random+friction); the atom
+  indices parameterized via the member ctx (no longer hardcoded atom2/NATOMA+1/+2); the members call rng
+  internally. The registration lines go into facade_init (mapped from the NGLO/NFC switches to member assembly,
+  grammar backward compatible).
+- [ ] **D2** Delete the ENERGY.f:40-47 GLO spring potential; the energy side is summed via the facade
+  (E=T(P)+ΣV, the kcal/mol reporting convention unchanged: same scale after T/C1).
+- [ ] **D3** venus_input.f90:616-621 ghost parameter assembly (W(2) hardcoded, the 413.4 conversion) moved into
+  the member init hook (called at facade_init).
+- [ ] **D4** pes_ldfa.f90: the FRICFORCE physics (NFC=1/2, two laws) reborn as the third stochastic-law member.
+- [ ] **D5** Clean VERLET's residual CALTYP branches (:34-36,60-62,123-125).
+- [ ] **Acceptance**: the rigid_surface energy distribution is bit-level identical to the post-P-C baseline (same
+  stream, same arithmetic order); `grep -n "NGLO\|ghost" VERLET.f90` gives zero hits — the integrator proper
+  carries no system knowledge. Commit `P-D: stochastic-law members into interface A (audit:
+  VERLET/ENERGY/FRICFORCE)`.
 
-### P-E 控制核清理（VENUS.f90）
+### P-E control-kernel cleanup (VENUS.f90)
 
-**Files:** 改 VENUS.f90；接线 recorder/config_roster/predicate。
+**Files:** edit VENUS.f90; wire in recorder/config_roster/predicate.
 
-- [ ] **E1** 结局处理+统计块双份复制（:506-576 与 :581-662）合并为单一结局路径。
-- [ ] **E2** 观测量积累（BOUNCE/z_pos_min 写死原子 3 :399-400,454-458；AE* 数组
-  :544-548,631-635,671-677）移入 recorder 终态列；原子索引退为配置。
-- [ ] **E3** 体系分支（GLO 布局 :322-335、表面对齐 :340、THTA 特例 :344-346）移交
-  构型装配器（roster/装配期）。
-- [ ] **E4** 空检查语句（:462-464）清除。
-- [ ] **E5**（=△6）结局分类 if 链数据化：`OUTCOME = 名字: 谓词表达式` 行 × 计数桶
-  （复用 N2 文法）；VENUS.f90 结局路径只查表计数。
-- [ ] **验收**：regress 全 PASS；VENUS.f90 内 grep 无晶格常数/元素名/写死原子序；
-  只剩装配→演化→统计编排 + 少量循环变量。提交 `P-E: 控制核纯化（audit: VENUS）`。
+- [ ] **E1** Merge the duplicated outcome-handling + statistics blocks (:506-576 and :581-662) into a single
+  outcome path.
+- [ ] **E2** Observable accumulation (BOUNCE/z_pos_min hardcoded atom 3 :399-400,454-458; the AE* arrays
+  :544-548,631-635,671-677) moved into recorder final-state columns; the atom indices demoted to configuration.
+- [ ] **E3** System branching (GLO layout :322-335, surface alignment :340, the THTA special case :344-346)
+  handed over to the configuration assembler (roster/assembly time).
+- [ ] **E4** Remove the empty check statements (:462-464).
+- [ ] **E5** (=△6) the outcome-classification if-chain made data: `OUTCOME = name: predicate expression` rows ×
+  count buckets (reusing the N2 grammar); VENUS.f90's outcome path only does a table lookup and count.
+- [ ] **Acceptance**: regress all PASS; inside VENUS.f90 grep finds no lattice constants/element names/hardcoded
+  atom numbers; only the assembly→evolution→statistics orchestration + a few loop variables remain. Commit
+  `P-E: control-kernel purification (audit: VENUS)`.
 
-### P-F 全局状态分区（venus_data）
+### P-F global-state partitioning (venus_data)
 
-- [ ] **F1** venus_data 以注释显式三分区：物自体区（Q/P/PDOT/QDOT/Q_old——标注
-  →state）/表象区（→config）/仪器区（→rng），每块行注释写明 X 轨去向。
-- [ ] **F2** NN_POT_TYPES 索引（venus_params.f90:88-98）迁入 emt_nn 成员文件；
-  auro 已随 B5 迁出，核实。
-- [ ] **F3** 死块清理与 A4 联动复核。
-- [ ] **验收**：`make` 通过 + regress 全 PASS。提交 `P-F: 全局状态分区标注`。
+- [ ] **F1** venus_data explicitly partitioned in three via comments: the thing-in-itself zone
+  (Q/P/PDOT/QDOT/Q_old — annotated →state) / the representation zone (→config) / the instrument zone (→rng), with
+  each block's line comment stating its X-track destination.
+- [ ] **F2** The NN_POT_TYPES indices (venus_params.f90:88-98) migrate into the emt_nn member file; auro already
+  moved out with B5 — verify.
+- [ ] **F3** Dead-block cleanup cross-checked jointly with A4.
+- [ ] **Acceptance**: `make` passes + regress all PASS. Commit `P-F: global-state partition annotations`.
 
-### P-G 输入文法与构型装配收尾
+### P-G input grammar and configuration-assembly wrap-up
 
-- [ ] **G1** test_potentials.f90 成员反写表象（BOXLX/BOXLY/SKEW/NATOMB/QZB，
-  :152-163,260-293）改为经输入/构型装配器交付；PES 成员只留 Q→V/F 与数据读取。
-- [ ] **G2** JMAXCALC.f:35-48 的 H2/D2 核自旋统计（质量判别）退为输入数据
-  （`NUCLEAR_SPIN_WEIGHTS =` 表或数据文件）。
-- [ ] **G3** BOXLX/BOXLY 默认几何（venus_input.f90:997-998）与 NATOMB 写死域
-  （:703-704）改为必填（缺失 loud-stop 指名关键字）或名册推导；SURF.f:48-50 的
-  SKEW=π/4 默认魔数同步必填化；venus_input.f90:752 的 W=1D30 刚性质量改为装配器
-  按 RIGID 模型语义显式交付。
-- [ ] **G4** RADAU.f 的 RADOUT 内嵌编排（:438-498）改为向控制核回调（输出钩子+
-  谓词求值点，driver 侧接收）；'CALLING RADOUT'（:112,380,428）及 SELECT/SURF/
-  ROTen/THERMO/RADAU/FINLNJ 调试打印残留一并清；PRINFO 约 70 行注释残留清；
-  ROTEN :101-105 调试打印清；ROTATEJKM 尾部激光注释块清。
-- [ ] **验收**：regress 全 PASS；EMT-NN/RST case 数值不变（成员内部合法性保留）。
-  提交 `P-G: 输入文法与构型装配收尾（audit: test_potentials/JMAXCALC/RADAU）`。
+- [ ] **G1** test_potentials.f90's members writing back representation (BOXLX/BOXLY/SKEW/NATOMB/QZB,
+  :152-163,260-293) changed to delivery via the input/configuration assembler; the PES members keep only Q→V/F
+  and data reading.
+- [ ] **G2** JMAXCALC.f:35-48's H2/D2 nuclear-spin statistics (mass discrimination) demoted to input data
+  (`NUCLEAR_SPIN_WEIGHTS =` table or data file).
+- [ ] **G3** The BOXLX/BOXLY default geometry (venus_input.f90:997-998) and the NATOMB hardcoded domain
+  (:703-704) made mandatory (a missing value loud-stops naming the keyword) or roster-derived; SURF.f:48-50's
+  SKEW=π/4 default magic number made mandatory in sync; venus_input.f90:752's W=1D30 rigid mass delivered
+  explicitly by the assembler per RIGID-model semantics.
+- [ ] **G4** RADAU.f's RADOUT embedded orchestration (:438-498) changed to a callback to the control kernel
+  (output hook + predicate evaluation point, received on the driver side); 'CALLING RADOUT' (:112,380,428) and
+  the leftover debug prints in SELECT/SURF/ROTen/THERMO/RADAU/FINLNJ cleaned; PRINFO's ~70 lines of commented
+  residue cleaned; ROTEN :101-105 debug prints cleaned; the ROTATEJKM trailing laser comment block cleaned.
+- [ ] **Acceptance**: regress all PASS; the EMT-NN/RST cases numerically unchanged (member-internal legality
+  preserved). Commit `P-G: input grammar and configuration assembly wrap-up (audit:
+  test_potentials/JMAXCALC/RADAU)`.
 
-## 7. 归位核对清单：原汇合轨 X
+## 7. Placement checklist: the former convergence track X
 
-（2026-09-06 二次修订：X1 并入 K1（state/config 原生定义）；X2/X3/X4/X5/X6
-并入 C7/C5/C6/C1/C8；X7 并入 P0/C7（新树构建与 EXTENDING）。本节保留作
-V 验证前的新树完整性逐条核对。）
+(Second revision, 2026-09-06: X1 merged into K1 (native state/config definitions); X2/X3/X4/X5/X6 merged into
+C7/C5/C6/C1/C8; X7 merged into P0/C7 (new-tree build and EXTENDING). This section is kept as an item-by-item
+new-tree integrity check ahead of V verification.)
 
-- [ ] **X1 state/config 实拆**：按 F1 标注执行。两步提交：先抽 state.f90
-  （物自体 5 组+维数参数；全库 use 点机械替换），regress；再收拢 config.f90
-  （表象块），regress。venus_params 的 C1..C8/PI 保留（单位契约，L1 常数）。
-- [ ] **X2 driver 定型**：VENUS.f90 → driver.f90（三相位调用序列）；harmonic_sampling
-  注册为 dist_surface_oscillator（B′ 第三实现，激活现状死编译件）。
-- [ ] **X3 sampler 成员表**：SELECT 的 NACTA/NACTB 整数分发改 dist_* 成员表注册。
-  名册：dist_boltzmann(THRMAN)、dist_ebk(INITEBK)、dist_surface_oscillator、
-  dist_rotation(ROTEN)、dist_j(PROBJ+JMAXCALC)、dist_incident(SURF+DENS)、
-  dist_barrier_excitation(BAREXC)、dist_thermostat(THERMO)、dist_glo_target(GLOSELECT)、
-  dist_thermalize(md_equilibrate)、dist_normalmode(INITQP/HOMOQP/ORThAN +
-  NMODE/FMTRX/FGMTRX[±ENMODE 按裁决]）、dist_qmmicro(QMMICRO)。顺带：SELECT
-  :1139-1143 md_equilibrate 的 +100 Å 魔数参数化（默认值不变，行为不变）。
-- [ ] **X4 propagator.f90**：积分器统一 init/step/输出回调协议；verlet/symple/radau
-  三成员注册（G4 已剥编排）。
-- [ ] **X5 L5 归位**：linalg.f90(EIGN)、geometry.f90(ROTATE 族/ROTATENO/ROTATEJKM/
-  ROTATEX/Y/Z/CENMAS/ANGVEL/ROTN/ALIGN_ZSTEP/ALIGN_YSTEP/rotaline/GLPAR+PL)；
-  rng.f90 已在（C1）；CPUSEC 入 rng 同级仪器位（VFDATE 已弃）。
-- [ ] **X6 analysis/ 离线化**：FINAL/GFINAL 广义 COM/EREL/OAM 部分（结局分类执行器，
-  消费 E5 数据）、EIGOUT、DENQ+SUMQ（DEL=1 cm⁻¹ 顺带配置化）、HIST 的 plot_* 五
-  函数（格子常数传参化）、nearest-Au 诊断（B1 移来）、EIGOUT 的 IP=77/fort.77
-  通道复用拆分；conserv_check、smoke_rst_bvk 纳入构建（scripts 告别游离命令行）。
-- [ ] **X7 构建与文档**：Makefile SRC 按 L5→L1→L2→L3→L0 依赖序重排；
-  EXTENDING.md 重写（扩展点=pes_* 成员/dist_* 成员/谓词原语/结局分类行/积分器注册）。
-- [ ] **每任务验收**：`make` + regress 全 PASS（bit 级）。X7 后跑 T2 演练：新增
-  `pes_leps` 变体成员（如改参数的 LEPSII）只动新文件+注册行，diff 确认既有文件零触及。
+- [ ] **X1 state/config physical split**: execute per the F1 annotations. Two commits: first extract state.f90
+  (the thing-in-itself 5 groups + dimension parameters; mechanical replacement of the use sites across the
+  codebase), regress; then consolidate config.f90 (the representation blocks), regress. venus_params' C1..C8/PI
+  are kept (unit contract, L1 constants).
+- [ ] **X2 driver finalized**: VENUS.f90 → driver.f90 (the three-phase call sequence); harmonic_sampling
+  registered as dist_surface_oscillator (the B′ third implementation, activating the currently dead compiled
+  unit).
+- [ ] **X3 sampler member table**: SELECT's NACTA/NACTB integer dispatch becomes dist_* member-table
+  registration. Roster: dist_boltzmann(THRMAN), dist_ebk(INITEBK), dist_surface_oscillator,
+  dist_rotation(ROTEN), dist_j(PROBJ+JMAXCALC), dist_incident(SURF+DENS), dist_barrier_excitation(BAREXC),
+  dist_thermostat(THERMO), dist_glo_target(GLOSELECT), dist_thermalize(md_equilibrate),
+  dist_normalmode(INITQP/HOMOQP/ORThAN + NMODE/FMTRX/FGMTRX[±ENMODE per adjudication]), dist_qmmicro(QMMICRO).
+  Incidentally: parameterize the +100 Å magic number in SELECT :1139-1143 md_equilibrate (default unchanged,
+  behavior unchanged).
+- [ ] **X4 propagator.f90**: the integrators unified under an init/step/output-callback protocol; the
+  verlet/symple/radau three members registered (orchestration already stripped by G4).
+- [ ] **X5 L5 placement**: linalg.f90(EIGN), geometry.f90(ROTATE family/ROTATENO/ROTATEJKM/ROTATEX/Y/Z/CENMAS/
+  ANGVEL/ROTN/ALIGN_ZSTEP/ALIGN_YSTEP/rotaline/GLPAR+PL); rng.f90 already in (C1); CPUSEC into the instrument
+  slot alongside rng (VFDATE already dropped).
+- [ ] **X6 analysis/ made offline**: the FINAL/GFINAL generalized COM/EREL/OAM parts (the outcome-classification
+  executor, consuming E5 data), EIGOUT, DENQ+SUMQ (DEL=1 cm⁻¹ incidentally made configurable), HIST's five
+  plot_* functions (lattice constants parameterized), the nearest-Au diagnostics (moved over from B1), and
+  EIGOUT's IP=77/fort.77 channel-reuse split; conserv_check and smoke_rst_bvk brought into the build (scripts
+  farewell to orphan command lines).
+- [ ] **X7 build and docs**: Makefile SRC reordered by the L5→L1→L2→L3→L0 dependency order; EXTENDING.md
+  rewritten (extension points = pes_* members/dist_* members/predicate primitives/outcome-classification rows/
+  integrator registration).
+- [ ] **Per-task acceptance**: `make` + regress all PASS (bit level). After X7, run the T2 drill: adding a
+  `pes_leps` variant member (e.g. a reparameterized LEPSII) touches only a new file + a registration line; diff
+  confirms zero touching of existing files.
 
-## 8. 收尾 S
+## 8. Closing S
 
-- [ ] **S1** 新验证 case 体系全量执行收口 + 各 case results.txt 生成
-  （新程序产出，含判据与容差记录）。
-- [ ] **S2** 新程序完备性复审：按规范三问全例程审查，产出新 completeness 审计
-  （md+json）；旧 audit 保留为历史参考。
-- [ ] **S3** 文档收口：新树 CLAUDE.md/README/EXTENDING.md（扩展点=pes_* 成员/
-  dist_* 成员/谓词原语/结局分类行/积分器注册）；design_spec_completeness.md §4
-  留白填写（接口 A/B′ 形式签名 + 退化点良定义性检验 + 双实现验证记录：A 轴
-  RST+EMT-NN+GLO 随机成员+参考势、B′ 轴 THRMAN+INITEBK+surface_oscillator、
-  构型 twobody vs rst、电子轴绝热退化+TDHF-FSSH 留位）；optimal_structure.md
-  状态改"已实现（新程序）"；根 README 更新布局（src/ 新程序 + venus2026/ 参考）。
-- [ ] **S4** Notion "VENUS-TDHF 通用化"（阶段 P1 架构）任务对账：本计划各阶段
-  勾选状态同步。
+- [ ] **S1** Full execution and wrap-up of the new verification case system + per-case results.txt generation
+  (produced by the new program, including records of criteria and tolerances).
+- [ ] **S2** New-program completeness re-audit: review all routines against the spec's three questions,
+  producing a new completeness audit (md+json); the old audit kept as historical reference.
+- [ ] **S3** Document wrap-up: new-tree CLAUDE.md/README/EXTENDING.md (extension points = pes_* members/dist_*
+  members/predicate primitives/outcome-classification rows/integrator registration); design_spec_completeness.md
+  §4 blanks filled (interface A/B′ formal signatures + degenerate-point well-definedness checks +
+  dual-implementation verification records: A axis RST+EMT-NN+GLO stochastic member+reference potentials, B′
+  axis THRMAN+INITEBK+surface_oscillator, configuration twobody vs rst, electron axis adiabatic degenerate +
+  TDHF-FSSH placeholder); optimal_structure.md status changed to "implemented (new program)"; root README layout
+  updated (src/ new program + venus2026/ reference).
+- [ ] **S4** Notion "VENUS-TDHF generalization" (Phase P1 architecture) task reconciliation: the checkbox
+  states of this plan's phases synced.
 
-## 9. 验收量尺与回归矩阵
+## 9. Acceptance yardsticks and regression matrix
 
-**验证矩阵**（2026-09-06 三次修订：旧 case 舍弃，验证体系重建）：
+**Verification matrix** (third revision, 2026-09-06: old cases discarded, verification system rebuilt; 2026-09-05
+addendum introducing the R8 literature benchmarks — external anchors take priority over self-set criteria):
 
-| 时点 | 范围 | 判据层级 |
+| Time point | Scope | Criterion hierarchy |
 |---|---|---|
-| C1-C8（逐组件） | 每组件最小验证输入 + 判据（先定判据后写实现） | 解析锚点 > 统计分布（KS 等）> 守恒律/闭合量 |
-| V | C 各步验证输入汇编为正式 case 集；判据覆盖率检查（每注册族成员、每封闭族成员至少一个 case 覆盖）；全量执行 + 同 ISEED 复现性抽验 | 同上 + 复现性（同 ISEED 两次运行 bit 级一致） |
-| S | 全量收口 + results.txt | 同上 |
+| C1-C8 (per component) | each component's minimal verification input + criteria (criteria before implementation) | analytical anchors > statistical distributions (KS etc.) > conservation laws/closed quantities |
+| V | the C-step verification inputs assembled into the formal case set; criterion coverage check (every registry-family member and every closed-family member covered by at least one case); full runs + same-ISEED reproducibility spot checks | same as above + reproducibility (two runs with the same ISEED bit-level identical) |
+| S | full wrap-up + results.txt | same as above |
 
-**结构量尺**（S 阶段逐条）：T1-T7（§1）；不变量三问抽检（规范 2.6）——抽
-driver/force_facade/recorder/predicate/sampler 各一例程，问"是否只经手 Q/P/s/F、
-是否按契约索服务、内部有无体系分支/常数"。
+**R8 literature benchmark series** (selected 2026-09-05; criteria: mutually distinct aspects, reproducible, clear
+numerical anchors, analytic potential functions preferred):
 
-## 10. 风险与回退
+| ID | Benchmark work | Potential surface | Verification surface | Anchor data | Hook-up |
+|---|---|---|---|---|---|
+| R8-1 | F+H₂ QCT, Aguado et al., Chem. Phys. 187, 227 (1994) | modified LEPS (Takayanagi-Sato 1988, analytic) | gas-phase scenario + initial-state quantization + final-state analysis | σ_R(E_T, j=0-2) excitation-function table; DCS; rate constants | isomorphic with the LEPS reference potential, just parameter substitution; can start once C2 is done |
+| R8-2 | H+H₂ QCT (Bohm-Truhlar M5 chain, LSTH/SLTH) | LSTH analytic (London form) | gas-phase scenario (optional, three identical atoms) | rate-constant table (author archive at comp.chem.umn.edu) | Truhlar group website download channel verified |
+| R8-3 | GLO surface oscillator, Zhou & Jiang JCP 150, 024105 (2019) | analytic oscillator + friction (all parameters analytic) | force-contribution stochastic-law member (C2 stochastic-law acceptance) | T_s-dependent sticking curves | literature library id=83; GLO parameters of the same kind |
+| R8-4 | H₂O/Ni(111) QCT, Jiang & Guo PRL 114, 166101 (2015) | PIP-NN (non-analytic) | surface scenario + outcome classification (methodology-level comparison, not strict reproduction) | η efficiency ratios 1.50-1.85/1.19-1.46/1.40-1.60; top-site anomaly; θ dependence 9×@573K | literature library id=318 |
+| R8-5 | Tully 1990 three model problems, JCP 93, 1062 | 1D two-state analytic diabatic | electron-axis class-B member acceptance piece (first stop of the FSSH regression) | transition/transmission probability vs momentum curves (incl. the LZ analytic limit) | in parallel with C2 elec_* member development; MLatom 2024 (arXiv 2512.19152)/CRIT 2025 as modern comparisons |
+| R8-6 | H₂/Cu(111) SRP-DFT (Leiden series) | SRP functional (non-analytic) | surface scenario + statistical accuracy (long-term) | molecular beam sticking curves, chemical accuracy | awaiting the ML-PES pipeline |
 
-| 风险 | 缓解 |
+R8 implementation order: R8-1 → R8-5 (parallel with C2) → R8-3 (C2 stochastic-law acceptance) → R8-4
+(methodology comparison) → R8-2/R8-6 (optional/long-term). Relation of R8 to the verification matrix: R8 is the
+external-anchor source for the V-phase formal case set, each entry bound to the criterion design of the
+corresponding C step.
+
+Literature acquisition TODO: Tully 1990, Aguado 1994, Takayanagi-Sato 1988 (download into the library).
+
+**Structural yardsticks** (S phase, item by item): T1-T7 (§1); invariant three-question spot checks (spec 2.6) —
+sample one routine each from driver/force_facade/recorder/predicate/sampler and ask "does it only handle Q/P/s/F,
+does it request services per contract, does it contain system branches/constants internally".
+
+## 10. Risks and rollback
+
+| Risk | Mitigation |
 |---|---|
-| 参考代码缺陷传染（audit 违规点带入新树） | §6 剥离清单逐条对照；check_* 组件级对照截获数值偏离 |
-| 从零重写的行为漂移（同算法不同实现顺序→浮点差异） | 判据以解析/统计/守恒为主（对实现顺序不敏感）；需要逐位精度处（如换算表达式同形）在组件计划中显式声明；旧程序临时同量对照辅助归因 |
-| 骨架与实际不符（C 中发现签名不适用） | 骨架漂移禁令：回审核门出示差异，经确认后修订骨架，禁止静默改签名 |
-| 新旧混淆（venus2026/ 参考 vs src/ 新树） | 旧库只读；新树自 P0 起独立构建；新树每文件头注明参考出处（旧库 文件:行） |
-| 验证判据覆盖不足（旧 case 舍弃后的新风险） | 判据先行原则：C 各步先定判据再写实现；V 阶段判据覆盖率检查（注册族/封闭族成员逐一覆盖）；缺口即补 case |
-| C5 sampler 成员最多、面最大 | 成员表化对照 NACTA/NACTB 分发表逐支核验；integrator_matrix 等 case 覆盖多分支 |
-| Windows/Linux 双平台构建 | 新树 Makefile 双平台自 K3 起持续可编；V 末双平台各跑一次（如可行） |
-| 回退 | 每小 phase 独立计划文件 + 独立提交组；`git revert` 单 phase 粒度恢复 |
+| Reference-code defect contagion (audit violations carried into the new tree) | the §6 stripping list checked item by item; check_* component-level cross-checks catch numerical deviations |
+| Behavioral drift from rewriting from scratch (same algorithm, different operation order → floating-point differences) | criteria mainly analytical/statistical/conservation-based (insensitive to operation order); where bit-level precision is needed (e.g. conversion expressions identical in form), declared explicitly in the component plan; ad-hoc same-quantity comparison with the old program aids attribution |
+| Skeleton at odds with reality (a signature found unsuitable in C) | skeleton drift ban: back to the review gate with the difference, revise the skeleton after confirmation; silently changing signatures forbidden |
+| Old/new confusion (venus2026/ reference vs src/ new tree) | legacy read-only; the new tree independently built from P0 onward; every new-tree file header notes the reference provenance (legacy file:line) |
+| Insufficient verification-criterion coverage (new risk after discarding the old cases) | criteria-first principle: each C step defines criteria before implementation; V-phase criterion coverage check (registry-family/closed-family members each covered); a gap means an added case |
+| C5 sampler has the most members and the largest surface | member-table cross-check of the NACTA/NACTB dispatch table branch by branch; integrator_matrix and other cases cover multiple branches |
+| Windows/Linux dual-platform build | the new-tree Makefile continuously buildable on both platforms from K3 onward; one run on each platform at the end of V (if feasible) |
+| Rollback | each small phase gets an independent plan file + an independent commit group; `git revert` restores at single-phase granularity |
 
-## 11. 交付物清单（完成标志）
+## 11. Deliverables list (completion markers)
 
-1. 独立新程序全树（src/，L0-L5，T1）+ 新验证 case 体系全量通过（V/S1）；
-2. 新程序完备性审计报告（S2）；
-3. 文档收口全套（S3）：spec §4 填写、新树 CLAUDE/README/EXTENDING、
-   optimal_structure 状态更新、根 README 布局；
-4. 过程留痕：docs/plans/ 每小 phase 一份计划文件 + git 提交组，全程可回溯。
+1. The full standalone new-program tree (src/, L0-L5, T1) + the new verification case system fully passing (V/S1);
+2. The new-program completeness audit report (S2);
+3. The full document wrap-up set (S3): spec §4 filled in, new-tree CLAUDE/README/EXTENDING, the
+   optimal_structure status update, root README layout;
+4. Process trail: docs/plans/ with one plan file per small phase + git commit groups, fully traceable.

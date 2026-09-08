@@ -1,345 +1,246 @@
-# VENUS 精简与通用化：程序完备性设计规范
+# VENUS Streamlining and Generalization: Program Completeness Design Specification
 
-状态：设计思路说明（推演文档，非实现文档）
-日期：2026-09-03（当月修订第一轮）
-范围条件：本文档只讨论程序的抽象架构——物理量的类别、子例程的完备分类、
-扩展接口的理论形式。程序执行相关的变量（随机数流状态、断点续算、进程管理）
-与单位制约定属于经验实现层面，不纳入本推演；单位契约作为一行附带义务挂在
-第 3 节末尾。
+Status: design-rationale document (a derivation, not an implementation document)
+Date: 2026-09-03 (first revision round of the month)
+Scope conditions: this document discusses only the program's abstract architecture — the categories of physical quantities, the complete classification of subroutines, and the theoretical form of the extension interfaces. Variables related to program execution (random-stream state, restart/checkpointing, process management) and unit-system conventions belong to the empirical implementation layer and are excluded from this derivation; the unit contract is attached as a one-line ancillary obligation at the end of Section 3.
 
 ---
 
-## 1. QCT 程序的定义与推演目标
+## 1. Definition and Derivation Goal of the QCT Program
 
-**定义**：QCT 程序是在 Born-Oppenheimer 框架内、以 Monte-Carlo 方式抽样
-初态、按 Newtonian 运动方程（含电子自由度时附电子演化方程）传播轨迹、
-并对终态作统计的程序。该定义固定了程序的骨架：系综抽样 → 轨迹传播 →
-终态统计。骨架不随任何具体体系改变。
+**Definition**: a QCT program is a program that, within the Born-Oppenheimer framework, samples initial states by Monte-Carlo, propagates trajectories according to the Newtonian equations of motion (supplemented, when electronic degrees of freedom are present, by electronic evolution equations), and performs statistics on the final states. This definition fixes the program's skeleton: ensemble sampling → trajectory propagation → final-state statistics. The skeleton does not change with any specific system.
 
-QCT 程序按此定义是一个**族**：具体的计算体系（气相双分子、表面散射、
-含耗散热库的散射……）是这个族的成员。程序的任务是对族成员做参数化。
+Under this definition, the QCT program is a **family**: specific computational systems (gas-phase bimolecular, surface scattering, scattering with a dissipative bath, ...) are members of this family. The program's task is to parameterize the family members.
 
-**推演条件限定**：只使用纯粹物理量的类别分析。物理量分为物自体与表象
-两类。
+**Derivation constraints**: only a pure category analysis of physical quantities is used. Physical quantities divide into thing-in-itself and representation.
 
-**物自体的定义（不可约化性判据）**：物自体是在任何时刻都无法进一步
-约化、表示为其他变量的综合等价形式的变量。据此，动能这类量不是物自体
-——它可以写作动量的函数，属于物自体的泛函。物自体的完全清单为：
+**Definition of the thing-in-itself (irreducibility criterion)**: a thing-in-itself is a variable that at no moment can be further reduced, i.e. expressed as a compositional equivalent of other variables. By this criterion, quantities such as the kinetic energy are not thing-in-itself — it can be written as a function of the momentum and is a functional of the thing-in-itself. The complete list of thing-in-itself is:
 
-- Q：核坐标；
-- P：核动量；
-- s：电子态（在 Born-Oppenheimer 近似下可进一步规定为一个占据函数，
-  绝热单面情形为其平庸点）；
-- F：力场——由坐标计算力场的约化需要体系规定，故力场不可约化为其他
-  物自体变量的泛函。
+- Q: nuclear coordinates;
+- P: nuclear momenta;
+- s: electronic state (under the Born-Oppenheimer approximation this can be further specified as an occupation function; in the single adiabatic surface case it is the trivial point thereof);
+- F: force field — reducing the computation of the force field from coordinates requires a system specification, so the force field is not reducible to a functional of other thing-in-itself variables.
 
-轨迹时刻 t 由控制核作为编排变量持有，不列入物理量的分类。
+The trajectory time t is held by the control kernel as an orchestration variable and is not included in the classification of physical quantities.
 
-**表象的定义**：一切对体系的规定与表征数据——可观测量是表象的子集；
-初态规定的量子数、温度、碰撞能等表征量同属表象；动能等可约化量亦属
-表象（作为物自体的泛函）。表象的这一定义由第 2 节的完备性要求导出，
-见该节修补说明。
+**Definition of representation**: all stipulations and characterization data for the system — observables are a subset of representation; the quantum numbers, temperature, collision energy, and similar characterization quantities of the initial-state stipulation likewise belong to representation; reducible quantities such as the kinetic energy also belong to representation (as functionals of the thing-in-itself). This definition of representation is derived from the completeness requirement of Section 2; see the repair note in that section.
 
-演绎需要两条体系无关性断言——物自体的形式与体系规定无关、散射的
-一般形式与体系规定无关——它们在第 2.3 节作为引理建立，不作为无证明
-的前提使用。
+The derivation requires two system-independence assertions — the form of the thing-in-itself is independent of the system specification, and the general form of scattering is independent of the system specification — which are established as lemmas in Section 2.3 rather than used as unproven premises.
 
-**推演目标**：完备性规范——相对于指定的扩展接口，最大化可封装（不随
-体系扩展而修改）的代码量。具体分解为两个命题：
+**Derivation goal**: a completeness norm — maximize, relative to the designated extension interfaces, the amount of code that is encapsulable (unchanged as the system is extended). Concretely it decomposes into two propositions:
 
-1. 完备性：四类纯粹子例程在形式上足以实现完整的 QCT 程序；
-2. 最优性：全纯粹子例程的架构达到可封装代码量的最大值。
+1. Completeness: the four classes of pure subroutine are formally sufficient to implement a full QCT program;
+2. Optimality: the all-pure-subroutine architecture attains the maximum amount of encapsulable code.
 
-目标 1 由 2.2 的分解定理建立，并在 2.3 中加强为可变代码的类分布结论；
-目标 2 由 2.4 的交换论证建立。
+Goal 1 is established by the decomposition theorem of 2.2 and strengthened in 2.3 into a conclusion about the class distribution of variable code; goal 2 is established by the exchange argument of 2.4.
 
 ---
 
-## 2. 四类子例程的完备性
+## 2. Completeness of the Four Classes of Subroutine
 
-### 2.1 类型系统
+### 2.1 Type system
 
-子例程定义为单一类型转换单元：输入若干变量，输出若干变量。变量按
-物自体/表象二分，子例程按输入输出类型的组合分为四类：
+A subroutine is defined as a single type-conversion unit: it takes some variables as input and produces some variables as output. Variables are dichotomized into thing-in-itself/representation, and subroutines are classified into four classes by the combination of input and output types:
 
-| 类别 | 输入 → 输出 | 物理内容 |
+| Class | Input → Output | Physical content |
 |------|------------|---------|
-| 演化 | 物自体 → 物自体 | 改变物理态的全部计算 |
-| 测量 | 物自体 → 表象 | 把物理态翻译为表征数据 |
-| 操作 | 表象 → 物自体 | 把规定装配为物理态 |
-| 后处理 | 表象 → 表象 | 统计与二次加工，不触及物理态 |
+| Evolution | thing-in-itself → thing-in-itself | all computation that changes the physical state |
+| Measurement | thing-in-itself → representation | translating the physical state into characterization data |
+| Operation | representation → thing-in-itself | assembling a stipulation into a physical state |
+| Post-processing | representation → representation | statistics and secondary processing, never touching the physical state |
 
-**修补说明**：若表象严格取"可观测量"义，操作类为空集（初态装配的输入
-——量子数、温度、碰撞能——既非物自体也非可观测量）。完备性要求把表象
-的外延修正为"一切规定与表征数据"。这不是引入第三类变量，而是第二类
-定义的自洽化。
+**Repair note**: if representation were taken strictly in the sense of "observables", the operation class would be empty (the inputs of initial-state assembly — quantum numbers, temperature, collision energy — are neither thing-in-itself nor observables). The completeness requirement forces the extension of representation to be corrected to "all stipulations and characterization data". This does not introduce a third class of variable; it is a self-consistentiation of the second class's definition.
 
-**枚举完备性**：二分变量上的 2×2 矩阵穷举了纯粹子例程的全部类型，
-不存在第五类。
+**Enumerative completeness**: the 2×2 matrix over the dichotomized variables exhausts all types of pure subroutine; a fifth class does not exist.
 
-### 2.2 程序内部功能的划分
+### 2.2 Division of the Program's Internal Functions
 
-**命题（分解定理）**：任何 QCT 程序可分解为三个功能层：
+**Proposition (decomposition theorem)**: any QCT program can be decomposed into three functional layers:
 
-- (a) **控制核**——装配、循环（演化步 → 终止测试 → 周期记录）、统计的
-  调用序列，不含任何物理知识；
-- (b) **四类纯粹子例程**——程序的全部计算内容；
-- (c) **接口成员实现体**——四类子例程中随体系规定更换的成员。
+- (a) the **control kernel** — the call sequence of assembly, looping (evolution step → termination test → periodic recording), and statistics, containing no physical knowledge;
+- (b) the **four classes of pure subroutine** — the entire computational content of the program;
+- (c) **interface member implementations** — the members among the four classes of subroutine that are replaced as the system specification changes.
 
-(c) 不是第四种代码：接口成员本身仍属四类之一（如势能面是演化类服务，
-制备律经 2.3 的重定位后是表象层代码）。(b) 与 (c) 的区分不在代码种类，
-而在变更性。
+(c) is not a fourth kind of code: interface members themselves still belong to one of the four classes (e.g. the potential energy surface is an evolution-class service; the preparation law, after the relocation of 2.3, is representation-layer code). The distinction between (b) and (c) is not in the kind of code but in its mutability.
 
-**证明（结构性）**：由 2.1 的枚举完备性，程序中任何子例程必为四类之一。
-物理知识只可能驻留于改变物理态的计算（必为演化类）与翻译物理态的计算
-（必为测量类）；装配的物理内容（量子化规则等）必在操作类；统计不触及
-物理态，必在后处理类。剥离这些之后剩余的只有调用序列本身，即控制核，
-其物理无知性由构造保证。∎
+**Proof (structural)**: by the enumerative completeness of 2.1, any subroutine in the program must be one of the four classes. Physical knowledge can reside only in computation that changes the physical state (necessarily evolution class) and computation that translates the physical state (necessarily measurement class); the physical content of assembly (quantization rules, etc.) must be in the operation class; statistics does not touch the physical state and must be in the post-processing class. What remains after stripping these away is only the call sequence itself, i.e. the control kernel, whose physical ignorance is guaranteed by construction. ∎
 
-**完备性的建立**：该分解同时证明了第 1 节的目标 1——控制核不含物理、
-全部计算归入四类，故四类纯粹子例程（加控制核编排）在形式上足以实现
-完整的 QCT 程序。
+**Establishment of completeness**: this decomposition simultaneously establishes goal 1 of Section 1 — the control kernel contains no physics and all computation falls into the four classes, so the four classes of pure subroutine (plus control-kernel orchestration) are formally sufficient to implement a full QCT program.
 
-**主循环的划界**：控制核不是子例程，正如微分方程求解器的主循环不是
-右端函数。它是编排层，极小、恒定、对扩展失感；其存在不损害可封装性
-的最大化。
+**Delimitation of the main loop**: the control kernel is not a subroutine, just as the main loop of a differential-equation solver is not the right-hand-side function. It is the orchestration layer — minimal, constant, insensitive to extension; its existence does not compromise the maximization of encapsulability.
 
-### 2.3 非演化类的封装定理
+### 2.3 Encapsulation Theorem for the Non-Evolution Classes
 
-**前向引用说明**：本节使用接口 A（力贡献族——演化类中随体系规定变化
-的部分）与接口 B′（初态分布族——表象层中随体系规定变化的部分），
-其正式定义与不可约性论证在第 3 节；此处按上述直观含义使用。
+**Forward-reference note**: this section uses Interface A (the force-contribution family — the part of the evolution class that varies with the system specification) and Interface B′ (the initial-state distribution family — the part of the representation layer that varies with the system specification); their formal definitions and irreducibility arguments are in Section 3, and they are used here in the intuitive sense just stated.
 
-记体系规定 R =（内容规定 D，形式规定 F）。
+Write the system specification R = (content specification D, formal specification F).
 
-**命题**：存在测量、操作两类纯粹子例程的固定实现，使得对 QCT 族内
-任何体系规定 R，程序的功能完整保持（与未封闭程序计算相同的截面与
-统计量），且两类代码不随 R 改变。随 R 改变（新增或修改）的代码集中
-于接口 A/B 成员与封闭选择族的新成员（含其注册行）。
+**Proposition**: there exist fixed implementations of the measurement and operation classes of pure subroutine such that, for any system specification R in the QCT family, the program's functional integrity is preserved (computing the same cross sections and statistics as the unclosed program), and the code of these two classes does not change with R. The code that changes with R (added or modified) is concentrated in the Interface A/B members and in new members of the closed selection families (including their registration lines).
 
-后处理类不再作为基础程序的一部分证明：后处理是对测量记录的二次
-加工，其代码的平凡性由表象层自封闭（表象→表象）直接给出，按本规范
-不专门论证。
+The post-processing class is no longer proved as part of the base program: post-processing is secondary processing of measurement records; the triviality of its code follows directly from the self-closure of the representation layer (representation → representation) and, per this specification, is not separately argued.
 
-演绎从两条体系无关性引理出发。
+The derivation proceeds from two system-independence lemmas.
 
-**引理一（物自体的形式无关性）**：物自体变量 Q、P、s、F 的形式——
-作为抽象类型的结构——与 R 无关。
+**Lemma 1 (form-independence of the thing-in-itself)**: the form of the thing-in-itself variables Q, P, s, F — their structure as abstract types — is independent of R.
 
-证明：形式与内容的二分。Q、P、s 的类型结构（坐标数组、动量数组、
-电子态对象）固定，自由度名册只决定其维数；维数是类型在运行时携带的
-内容参数，不改变类型的构造方式——正如整数不因取值而改变其类型。
-F 的类型结构（坐标到力的映射）同样固定，其具体的函数内容由 R 规定，
-但映射这一形式不由 R 触及。故四项物自体的形式对一切 R 相同。∎
+Proof: the dichotomy of form and content. The type structures of Q, P, s (coordinate array, momentum array, electronic-state object) are fixed; the degree-of-freedom roster merely determines their dimension. The dimension is a content parameter the type carries at runtime, not a change in how the type is constructed — just as an integer does not change its type by taking a different value. The type structure of F (a mapping from coordinates to forces) is likewise fixed; its concrete functional content is stipulated by R, but the form of the mapping is untouched by R. Hence the form of the four thing-in-itself items is the same for all R. ∎
 
-**引理二（散射形式的无关性）**：散射过程的一般形式——截面作为
-可观测量概念的核心——与 R 无关。
+**Lemma 2 (independence of the form of scattering)**: the general form of the scattering process — with the cross section at the core of the observable concept — is independent of R.
 
-证明：截面 = 事件率对入射流的商，其定义只用初态分布、轨迹结局的
-分类与系综计数三个成分，三者均由 QCT 定义给出；R 只决定事件分类的
-具体成员（何为散射、何为吸附），不改变截面这一形式本身。∎
+Proof: cross section = the quotient of event rate by incident flux; its definition uses only three ingredients — the initial-state distribution, the classification of trajectory outcomes, and ensemble counting — all three given by the QCT definition. R determines only the concrete membership of the event classification (what counts as scattering, what as adsorption) and does not change the form of the cross section itself. ∎
 
-**定理（测量类的形式不变性）**：
+**Theorem (form invariance of the measurement class)**:
 
-1. 测量类的输入必为{Q,P,s,F}序列的子集；
-   由引理一，序列的形式固定，与 R 无关；序列化代码中纯形式的操作因而不含 R 的知识；
-2. 测量可以写作M({Q,P,s,F})，且M可只包含纯形式的操作，例如f(Q(1),P(1),s(1),F(1))；
-对于体系有关的测量量，总可以写成后处理步骤中的操作，因此，程序中的测量类可以具有形式
-不变性，因而具有可封闭性
+1. The input of the measurement class must be a subset of the sequence {Q,P,s,F}; by Lemma 1 the form of the sequence is fixed, independent of R; hence the purely formal operations in the serialization code contain no knowledge of R;
+2. A measurement can be written as M({Q,P,s,F}), where M may contain only purely formal operations, e.g. f(Q(1),P(1),s(1),F(1)); for system-dependent measured quantities, these can always be written as operations in a post-processing step; therefore the measurement class in the program can possess form invariance, and hence closability.
 
-**定理（操作类的可封闭性）**：
+**Theorem (closability of the operation class)**:
 
-1. 操作类的输入根据定义，是与当前体系物理信息无关的量（不然则成为演化）；因而必然
-是一个对初态的规定（否则破坏自洽物理演化，无物理意义）
-2. 进而知道，任何初态规定对程序交付的形式只能是分布，于是操作类
- 收缩为一个固定构造：按给定分布抽样 (Q₀, P₀, s₀)，分布由物理规律
- 规定，因而必定是体系无关的；
- 
-**结论（总结）**：非演化部分全部与 R 无关——测量代码的形式不变性由引理一经
-序列化与谓词解释的封闭给出；操作类的固定性由初态分布这一中介给出；
-后处理平凡。
-可变代码全部位于演化类（接口 A）与表象层（接口 B′）。本结论与 2.4 的
-交换论证互补：交换论证给出全局最优性，本结论给出可变代码的类分布。
+1. By definition, the input of the operation class is a quantity independent of the current system's physical information (otherwise it would be evolution); hence it must be a stipulation of the initial state (otherwise it would break self-consistent physical evolution and be physically meaningless);
+2. It follows that any initial-state stipulation can be delivered to the program only in the form of a distribution, so the operation class contracts to a single fixed construction: sampling (Q₀, P₀, s₀) from a given distribution, where the distribution is stipulated by physical law and is therefore necessarily system-independent;
 
-**边界（如实声明）**：
+**Conclusion (summary)**: the entire non-evolution part is independent of R — the form invariance of the measurement code is given by Lemma 1 via the closure of serialization and predicate interpretation; the fixity of the operation class is given by the intermediary of the initial-state distribution; post-processing is trivial. All variable code lies in the evolution class (Interface A) and the representation layer (Interface B′). This conclusion is complementary to the exchange argument of 2.4: the exchange argument gives global optimality, while this conclusion gives the class distribution of the variable code.
 
-1. 可变性是被重定位而非消灭——接口成员实现体这一不可消除下界不变，
-   本结论改写的是其地址（演化类成员 + 表象层成员）；
-2. 引理一中"维数是内容参数"的辩护以类型结构可携带运行时维数为
-   实现前提（Fortran 可分配数组满足）；
-3. 谓词文法与分布表示的覆盖是经验前提，须对已知判据族与制备律族
-   枚举核对；
-4. 相位修正：装配相位的实际调用 = 操作类框架 + 接口 B′ 分布成员
-   （表象层代码）；制备成员内部可调用演化服务，属成员内部结构，
-   不违反"演化期无操作类"的方向性限制。
+**Boundaries (honest declaration)**:
 
-### 2.4 最优性（交换论证）
+1. Mutability is relocated, not eliminated — the irreducible lower bound, namely the interface member implementations, remains; what this conclusion rewrites is their address (evolution-class members + representation-layer members);
+2. The defense in Lemma 1 that "the dimension is a content parameter" presupposes that type structures can carry a runtime dimension (satisfied by Fortran allocatable arrays);
+3. The coverage of the predicate grammar and of distribution representations is an empirical premise that must be checked by enumeration against the known families of criteria and preparation laws;
+4. Phase correction: the actual invocation during the assembly phase = operation-class framework + Interface B′ distribution member (representation-layer code); a preparation member may internally call evolution services — this is internal member structure and does not violate the directionality restriction that "no operation-class calls occur during the evolution phase".
 
-论证分两步。
+### 2.4 Optimality (Exchange Argument)
 
-第一步（可行性）：由 2.2 的分解定理，全纯粹架构能够实现完整的 QCT
-程序——没有可行性，最优性无从谈起。
+The argument proceeds in two steps.
 
-第二步（最优性）：可变代码量存在不可消除的下界——接口成员的实现体
-（每个新的形式规定必然带来新的实现代码）。全纯粹架构恰好达到该下界：
-随扩展修改的代码恰为接口实现。任何不纯粹的子例程都把物理知识寄放在
-接口之外，在相应规定变更时被迫修改封装区，可变代码量严格大于下界。
+Step one (feasibility): by the decomposition theorem of 2.2, the all-pure architecture can implement a full QCT program — without feasibility, optimality cannot be discussed.
 
-**纯粹完备性推论**：全纯粹子例程架构是可封装代码量最大的架构——
-完备性（2.2）保证其可行，交换论证保证其最优。
+Step two (optimality): there is an irreducible lower bound on the amount of variable code — the implementations of the interface members (every new formal specification necessarily brings new implementation code). The all-pure architecture exactly attains this lower bound: the code modified upon extension is exactly the interface implementations. Any impure subroutine deposits physical knowledge outside the interfaces and, when the corresponding specification changes, is forced to modify the encapsulated region, giving a variable-code amount strictly greater than the lower bound.
 
-### 2.5 相位限制（三阶段图景的推导地位）
+**Pure-completeness corollary**: the all-pure-subroutine architecture is the architecture with the maximum encapsulable code — completeness (2.2) guarantees its feasibility, and the exchange argument guarantees its optimality.
 
-三阶段（装配 → 演化 → 统计）不是独立假设，而是四分类加相位限制的推论：
+### 2.5 Phase Restriction (Derivational Status of the Three-Phase Picture)
 
-| 相位 | 允许调用的类别 |
+The three phases (assembly → evolution → statistics) are not an independent assumption but a corollary of the four-class classification plus the phase restriction:
+
+| Phase | Classes permitted to be called |
 |------|--------------|
-| 装配 | 操作类（加初始化性测量） |
-| 演化 | 演化类与测量类（终止测试与记录；终止布尔是表象的退化成员） |
-| 统计 | 后处理类 |
+| Assembly | operation class (plus initializing measurements) |
+| Evolution | evolution class and measurement class (termination test and recording; the termination Boolean is a degenerate member of representation) |
+| Statistics | post-processing class |
 
-演化期不出现操作类调用——运行期干预会破坏轨迹流的纯粹性，这是 QCT
-概念中"轨迹一旦发出即自治"的精确表达。
+No operation-class call occurs during the evolution phase — runtime intervention would destroy the purity of the trajectory flow; this is the precise expression, within the QCT concept, of "a trajectory, once launched, is autonomous".
 
-### 2.6 不变量判据（验收量尺）
+### 2.6 Invariant Criteria (Acceptance Gauge)
 
-完备性标准是规范，判据是量尺。对既有代码，逐例程检验三问：
+The completeness standard is the norm; the criteria are the gauge. For existing code, each routine is examined with three questions:
 
-1. 是否只经手 QCT 概念固定的物理量（Q、P、s、F 作为抽象态）？
-2. 是否只按接口契约索要服务，把服务提供方当黑盒？
-3. 内部是否没有任何针对具体体系/势能面/方法写死的分支或常数？
+1. Does it handle only the physical quantities fixed by the QCT concept (Q, P, s, F as an abstract state)?
+2. Does it request services only through interface contracts, treating the service provider as a black box?
+3. Does its interior contain no branches or constants hard-wired for a specific system / potential energy surface / method?
 
-三问通过者为不变类；夹带部件知识者为不完备子例程（如 GWRITE 型：测量类
-单元内嵌体系知识），其命运不是删除而是纯化——体系知识参数化后经接口
-进入。判据的可靠性以接口契约的完备性为前提；契约变更是版本化的稀有
-事件。
+A routine passing the three questions is of invariant class; one carrying component knowledge is an incomplete subroutine (e.g. of the GWRITE type: a measurement-class unit with embedded system knowledge), whose fate is not deletion but purification — the system knowledge is parameterized and enters through an interface. The reliability of the criteria presupposes the completeness of the interface contracts; contract changes are rare, versioned events.
 
 ---
 
-## 3. 接口的定义与完备性
+## 3. Definition and Completeness of the Interfaces
 
-### 3.1 接口的定义与固化操作
+### 3.1 Definition of Interfaces and the Freezing Operation
 
-**接口的定义**：随计算体系的任意变化不具有不变性的代码。（不变性的三层
-含义：签名对一切变化不变；封闭成员族对族内换件不变、对族扩展可变；
-开放接口连族都不封闭。）
+**Definition of an interface**: code that does not possess invariance under arbitrary changes of the computational system. (The three layers of meaning of invariance: the signature is invariant under all changes; the closed member family is invariant under replacement within the family and variable under family extension; an open interface is not even closed as a family.)
 
-用语约定：接口取广义——封闭选择族与开放接口皆属之；3.3 节的"不可约
-接口"指其中的开放部分。
+Terminology convention: "interface" is taken broadly — both closed selection families and open interfaces fall under it; the "irreducible interfaces" of Section 3.3 refer to the open part thereof.
 
-**输入文件的定义**：一种可以在不更改代码的前提下定义体系的规定。输入
-文件中的**量**（数值参数）与**质**（预存方案中的选择）对应固定读取
-文法中的参数与构造子：体系 = C(q₁,…,qₙ)。
+**Definition of an input file**: a stipulation by which a system can be defined without changing code. The **quantities** (numerical parameters) and **qualities** (choices among prestored schemes) in an input file correspond to the parameters and constructors of a fixed reading grammar: system = C(q₁,…,qₙ).
 
-**固化操作**：对接口中功能范围有限的部分（如核传播子），预先写好几种
-选择并封闭。固化不消灭可变性，而是将其编址：换预设只改输入文件（代码
-触及为零），加预设只新增成员体加一行注册（既有代码触及为零）。固化
-的本质是把体系规定从代码搬进数据。
+**The freezing operation**: for those parts of the interface with a bounded functional scope (e.g. the nuclear propagator), several choices are written in advance and closed. Freezing does not eliminate mutability; it addresses it: switching a preset changes only the input file (zero code touched); adding a preset only adds a member body plus one registration line (zero touching of existing code). The essence of freezing is to move the system specification from code into data.
 
-**接口的完备性**（完备性推论的子集）：接口设计以通过输入文件最小化
-代码变动为完备标准——封闭层覆盖一切可枚举的功能族，实际开放（须新增
-代码才能扩展）的接口缩减到最小集合，即 3.3 节的不可约接口。
+**Completeness of the interfaces** (a subset of the completeness corollary): interface design takes the minimization of code changes via input files as its completeness standard — the closed layer covers all enumerable functional families, and the actually open interfaces (those requiring new code to extend) shrink to the minimal set, namely the irreducible interfaces of Section 3.3.
 
-### 3.2 剩余范畴的分解
+### 3.2 Decomposition of the Residual Category
 
-对准经典体系作范畴分析，可变性分布于三个层面（绝对完备）：
+A category analysis of quasi-classical systems distributes the mutability over three levels (absolute completeness):
 
-1. **核层面**：核传播子。可变性平凡（Verlet 族小而稳定），封闭。
+1. **Nuclear level**: the nuclear propagator. The mutability is trivial (the Verlet family is small and stable); closed.
 
-2. **电子层面**：核电子耦合方式。按因子化定理分解为两条独立的轴：
+2. **Electronic level**: the mode of nuclear-electron coupling. By the factorization theorem it decomposes into two independent axes:
 
-   - **H 场提供方**（势能面的推广）：交付 Q ↦ (H(Q), ∇H(Q) 或等价物)，
-     与电子方法无关。交付表示分**能力级**：单面 / 多绝热面 / 完整
-     diabatic 矩阵 / 独立电子张量。
-   - **电子传播子**（混合量子-经典方法）：该表示的消费者（绝热 /
-     Ehrenfest / FSSH…）。绝热是退化点（消费单面表示时复合塌缩为纯
-     PES），接口必须在退化点良定义。
+   - **H-field provider** (generalization of the potential energy surface): delivers Q ↦ (H(Q), ∇H(Q) or equivalent), independent of the electronic method. The delivered representation is stratified by **capability level**: single surface / multiple adiabatic surfaces / full diabatic matrix / independent-electron tensor.
+   - **Electron propagator** (mixed quantum-classical methods): the consumer of that representation (adiabatic / Ehrenfest / FSSH ...). Adiabatic is a degenerate point (when consuming the single-surface representation, the composition collapses to a pure PES); the interface must be well defined at degenerate points.
 
-   两轴独立（任意 PES × 任意方法皆合法配对，笛卡尔积结构），经固定的
-   中介泛函复合（绝热：F=−∇V_α；Ehrenfest：F=−⟨ψ|∇H|ψ⟩；FSSH：
-   当前面 −∇V_α）。捆绑实现（把 H 的知识与电子方法写进同一例程）在
-   架构上被因子化定理排除；实现数从 |势|×|方法| 降为 |势|+|方法|。
-   能力级与方法的合法性在读取输入时做类型检查，非法组合显式拒绝并
-   指明冲突的两轴。
+   The two axes are independent (any PES × any method is a legal pairing — a Cartesian product structure), composed through a fixed intermediary functional (adiabatic: F=−∇V_α; Ehrenfest: F=−⟨ψ|∇H|ψ⟩; FSSH: current surface −∇V_α). Bundled implementations (writing the knowledge of H and the electronic method into the same routine) are architecturally excluded by the factorization theorem; the number of implementations drops from |potentials|×|methods| to |potentials|+|methods|. The legality of capability levels and methods is type-checked when the input is read; illegal combinations are explicitly rejected with the two conflicting axes named.
 
-3. **散射层面**：散射的先天规定——必然属于若干反应物的一个交互
-   事件；规定两者即规定散射。据此拆解为：
+3. **Scattering level**: the a priori stipulation of scattering — necessarily an interaction event belonging to several reactants; stipulating the two stipulates the scattering. Accordingly it is decomposed into:
 
-   - **反应物的规定 = 纯粹构型规定**。这不是背景性陈述而是穷举后的
-     剩余：动力学内容（力）已按因子化归 PES，统计内容归初态分布，
-     反应物身上剩下的只有同一性与几何。构型规定进一步二分为分子
-     形式规定（名册、几何）与初态统计分布，两者皆由输入文件确定。
-     自由度名册（刚性表面、可动 slab、GLO ghost）在此安放。
-     经验地存在两种规定范式——分子散射与表面散射——它们构成本
-     层面的双实现检验；名册与几何是纯数据，不是代码自由度；
-   - **事件的规定**，完整分解为三块：入射通道（相对运动的分布：
-     碰撞能、碰撞参数、取向——归入初态统计分布）、终止谓词
-     （封闭文法，见下）、结局分类（何为散射/吸附/解离——按测量
-     形式不变性定理，这是后处理配置，数据非代码）。
+   - **Stipulation of the reactants = pure configuration stipulation**. This is not a background remark but the residue after exhaustion: the dynamical content (forces) has already been assigned to the PES by factorization, the statistical content to the initial-state distribution; what remains on the reactants is only identity and geometry. The configuration stipulation further dichotomizes into the molecular formal specification (roster, geometry) and the initial-state statistical distribution, both determined by the input file. The degree-of-freedom roster (rigid surface, movable slab, GLO ghosts) is housed here. Empirically there are two stipulation paradigms — molecular scattering and surface scattering — which constitute the dual-implementation test of this level; roster and geometry are pure data, not code degrees of freedom;
+   - **Stipulation of the event**, fully decomposed into three blocks: the incident channel (the distribution of relative motion: collision energy, impact parameter, orientation — assigned to the initial-state statistical distribution), the termination predicate (a closed grammar, see below), and the outcome classification (what counts as scattering/adsorption/dissociation — by the measurement form-invariance theorem, this is post-processing configuration, data not code).
 
-   拆解的后果：原"散射场景描述子"不再是一个高于其他槽的整体——
-   名册与几何退为纯数据，噪声律归力贡献族（要求接口 A 的签名承认
-   随机律，如 GLO 的 Langevin 随机力），终止谓词走封闭文法，结局
-   分类走后处理配置；唯一幸存的开放代码自由度是初态分布族（接口
-   B′，见 3.3）。电子初态 s₀（占据函数的初始规定）显式归入初态
-   统计分布；其表示随能力级增长，属文法版本化事项。
+   Consequence of the decomposition: the former "scattering scenario descriptor" is no longer a whole standing above the other slots — roster and geometry recede to pure data, the noise law goes to the force-contribution family (requiring the signature of Interface A to admit stochastic-law members, e.g. the GLO Langevin random force), the termination predicate goes through the closed grammar, and the outcome classification goes to post-processing configuration; the sole surviving open code degree of freedom is the initial-state distribution family (Interface B′, see 3.3). The electronic initial state s₀ (the initial stipulation of the occupation function) is explicitly assigned to the initial-state statistical distribution; its representation grows with the capability level and is a matter of grammar versioning.
 
-### 3.3 不可约接口
+### 3.3 The Irreducible Interfaces
 
-经过上述分解与固化，实际开放的接口不可约地为两个。两者皆为注册族
-（新成员体 + 一行注册，既有代码零触及），但类型不同、不可归并：
+After the above decomposition and freezing, the actually open interfaces are irreducibly two. Both are registry families (new member body + one registration line, zero touching of existing code), but they differ in type and cannot be merged:
 
-**接口 A：力贡献族（PES 的推广）**
-任何体系的总力是若干贡献之和（表面相互作用、GLO 弹簧项、约束投影、
-外场驱动、随机力……）。开放接口不是"一个势能槽"而是可加组合的贡献
-族：每成员 = 代码 + 外部数据（NN 权重、拟合参数）。类型签名为
-Q ↦ F（演化类）。不封闭的根因：函数空间无界且成员携带数据；签名
-必须承认随机律成员。
+**Interface A: the force-contribution family (generalization of the PES)**
+The total force on any system is a sum of contributions (surface interaction, GLO spring term, constraint projection, external-field driving, random force, ...). The open interface is not "one potential slot" but an additively composable family of contributions: each member = code + external data (NN weights, fitted parameters). The type signature is Q ↦ F (evolution class). Root cause of non-closure: the function space is unbounded and members carry data; the signature must admit stochastic-law members.
 
-**接口 B′：初态分布族**
-规定 → 初态分布的成员族（表象层）：内部态量子化律（Boltzmann、EBK、
-Wigner、绝热开关……）、靶制备（晶格热化、振子平衡）、电子初态 s₀
-的规定。类型签名为表象 → 分布。不封闭的根由与 A 同构且不可消除：
-量子化规则是研究开放的族，不存在"分布的文法"式的组合封闭——
-判据对照：终止谓词的封闭靠布尔代数组合性，核传播子的封闭靠功能
-范围有界，分布族两者皆无。A 与 B′ 不可归并：类型签名不同，
-归并将破坏 2.2 的分解结构（演化类服务 vs 表象层规定）。
+**Interface B′: the initial-state distribution family**
+The member family taking stipulations → initial-state distributions (representation layer): internal-state quantization laws (Boltzmann, EBK, Wigner, adiabatic switching, ...), target preparation (lattice thermalization, oscillator equilibrium), and the stipulation of the electronic initial state s₀. The type signature is representation → distribution. The root cause of non-closure is isomorphic to A's and irreducible: the quantization rules are a research-open family; there is no combinatory closure of the "grammar of distributions" kind — criterion comparison: the closure of the termination predicate rests on the compositionality of Boolean algebra, that of the nuclear propagator on the boundedness of its functional scope; the distribution family has neither. A and B′ cannot be merged: their type signatures differ, and merging would destroy the decomposition structure of 2.2 (evolution-class services vs representation-layer stipulations).
 
-**封闭层（对照）**：核传播子、电子传播子为功能范围有限的选择族；
-终止谓词为布尔组合文法；结局分类为后处理数据。皆不属于开放接口。
+**Closed layer (for contrast)**: the nuclear propagator and the electron propagator are selection families of bounded functional scope; the termination predicate is a Boolean-combination grammar; the outcome classification is post-processing data. None belong to the open interfaces.
 
-**不可约性说明**：力贡献族与初态分布族各自不可进一步归约——前者
-由函数空间的无界性，后者由量子化规则的研究开放性保证。开放/封闭
-的区分在此只能经验地陈述：注册族研究开放，封闭族功能有界。
+**Irreducibility note**: the force-contribution family and the initial-state distribution family are each not further reducible — the former by the unboundedness of the function space, the latter by the research-openness of the quantization rules. The open/closed distinction can here only be stated empirically: registry families are research-open; closed families are functionally bounded.
 
-**单位契约（附带义务）**：接口签名的语义对物理量本身定义，与表示它们
-的单位无关；但实现时必须钉死唯一的单位约定（本程序内部为 Å/amu/10 fs，
-见 CLAUDE.md），换算集中于接口边界。单位制不塑形架构，故不进入正文
-推演。
+**Unit contract (ancillary obligation)**: the semantics of an interface signature are defined for the physical quantities themselves, independent of the units representing them; but at implementation time a single unit convention must be pinned down (inside this program Å/amu/10 fs, see CLAUDE.md), with conversions concentrated at interface boundaries. The unit system does not shape the architecture and therefore does not enter the main derivation.
 
 ---
 
-## 4. 不可约接口的形式定义（留白）
+## 4. Formal Definitions of the Irreducible Interfaces (Partially Filled In)
 
-待 P1 阶段落成 Fortran 侧抽象接口草案（derived type + procedure 组件）
-后填写。每接口须附：
+### 4.1 Internal Structure of Class-B Members (Three-Layer Decomposition of MQC Propagation)
 
-- 形式签名（输入输出的类型与语义，按能力级分层）；
-- 退化点良定义性检验（绝热情形、刚性表面情形）；
-- 双实现验证记录（接口 A：RST 解析势 + NN 势 + GLO 随机力成员；
-  接口 B′：Boltzmann + EBK（+ 绝热开关，素材已入库 id=366/367）；
-  构型层面：分子散射 + 表面散射两种规定范式；电子轴：绝热 +
-  TDHF-FSSH）——双实现是签名切分正确性
-  的证伪程序：两个实现若在某量上被迫共享本不应该共享的信息，说明槽
-  切错了。
+**Proposition**: any MQC dynamical propagation can be split into three successive sub-phases — nuclear propagation, electronic propagation, and state-statistics matching. This is a miniature replica, inside the evolution step, of the control kernel's three phases (assembly → evolution → statistics).
+
+- **Nuclear propagation**: advance (Q, P) given the forces. A closed-family member (Verlet/Symple/Radau), independent of all MQC methods — this layer was separated long ago in the decomposition, and the three-way division confirms its status;
+- **Electronic propagation**: advance the electronic variables given Q(t) — the amplitude ODE of wavefunction methods (TDSE integration along the trajectory), the mapping-phase-space flow of mapping methods, or analytic elimination (friction/noise kernels);
+- **State-statistics matching**: read the electronic statistics (populations, gaps, derivatives) and write the classical side (discrete reassignment of the active-surface index) and the nuclear side (momentum-projection adjustment) — the enforcement mechanism of quantum-classical statistical consistency. The sole consumption point of the random stream during the evolution phase lies in this layer.
+
+**Generalized definition of state-statistics matching**: every method enforces quantum-classical statistical consistency by some mechanism of its own — FSSH by hopping rules, MDEF by the fluctuation-dissipation relation (borne by a noise-law member), SQC by zero-point constraints. Under this definition the third layer is complete for the MQC family; Ehrenfest is a degenerate point that actively abandons consistency (at the price of mean-field illusion).
+
+**Method × three-layer degenerate-point table**:
+
+| Method | Nuclear propagation | Electronic propagation | State-statistics matching |
+|---|---|---|---|
+| FSSH | closed family | amplitude ODE | fewest-switches hopping + momentum adjustment |
+| Ehrenfest | closed family | the same amplitude ODE | identity (no active surface) |
+| IESH | closed family | independent-electron amplitude ODE | per-electron hopping |
+| LZSH | closed family | degenerate (amplitudes not integrated) | LZ probability at crossing points |
+| SQC/CSDM | closed family | mapping-phase-space flow | final-state window binning |
+| MDEF | closed family | analytic elimination (TDPT) | fluctuation-dissipation (noise-law member) |
+
+Corollary 1 (decomposition of the method concept): Ehrenfest and FSSH share all electronic-propagation code, differing only in the force rule and the matching rule — a "method" decomposes into fewer reusable parts, and the method count drops multiplicatively to a combination of "force rule × matching rule".
+
+**Three restrictions**:
+
+1. The three layers are not a free Cartesian product but a stratification with dependency declarations: the matching rule declares its requirements on electronic propagation (FSSH needs the amplitudes and their time derivatives; LZSH only the gap and slopes in the crossing region; mapping methods only the final state). This is isomorphic to the capability-level mechanism: each layer declares its capability requirement on the H-field provider (adiabatic single surface → add gradients → add nonadiabatic coupling vectors — the momentum projection of the matching layer raises the requirement to the highest level), and the facade takes the union at assembly time for a legality check;
+2. Decoherence corrections straddle the layer boundary between electronic propagation and matching: DoM-type schemes modify the amplitude equation (a declarative sub-option of electronic propagation); decay-of-mixing-type schemes reset the amplitudes after a failed hop (post-processing of matching) — decoherence models enter as sub-options and do not break the decomposition;
+3. Inter-trajectory coupling methods (CT-MQC, AIMS) break the premise that "matching reads the statistics of a single trajectory by itself" and remain outside the QCT family definition (consistent with the scope-boundary clause of 3.3).
+
+**Architectural placement**: the class-B members (electron propagation laws) are further decomposed internally into two registration units — the amplitude propagator (cross-method shared infrastructure; RK/matrix-exponential integrators for a given representation, bounded functional scope, closable) and the matching rule (a method-specific small unit, the consumption point of the random stream). Refined diagnosis of the historical pathology: the over-reacher that forced VERLET in TDHF-FSSH is the matching layer (the momentum projection requires force evaluation in step with integration); it should be handled as a dependency declaration from the matching layer to the nuclear-propagation layer, negotiated at assembly time, not as a hard constraint.
+
+**Benchmarking feedback**: the three Tully 1990 models (R8-5) degrade nuclear propagation to the trivial (one-dimensional translation) and isolate electronic propagation and matching for testing — model 1 tests the asymptotic correctness of matching (the LZ limit); model 2 tests the time-step coupling of the two layers. The acceptance targets of R8-5 are stated per layer.
+
+### 4.2 Formal Signatures (Remainder Left Blank)
+
+To be filled in after a draft of the Fortran-side abstract interfaces (derived types + procedure components) is in place. Each interface must be accompanied by:
+
+- a formal signature (the types and semantics of inputs and outputs, stratified by capability level);
+- a well-definedness check at degenerate points (the adiabatic case, the rigid-surface case);
+- dual-implementation verification records (Interface A: RST analytic potential + NN potential + GLO random-force member; Interface B′: Boltzmann + EBK (+ adiabatic switching, material already in stock at id=366/367); configuration level: the two stipulation paradigms of molecular scattering and surface scattering; electronic axis: adiabatic + TDHF-FSSH) — dual implementation is the falsification procedure for the correctness of signature partitioning: if two implementations are forced to share information on some quantity that they should not share, the slot was cut wrongly.
 
 ---
 
-## 附：与现有任务的关系
+## Appendix: Relation to Existing Tasks
 
-- 删除裁决：凡既不属于控制核与四类纯粹子例程、又不能表达为接口 A/B
-  成员或封闭选择族成员的功能，即为冗余（RK4 死入口、ADAMS、编译期
-  PES 变体按此出局）；
-- 输入关键字重构：现有 keyword=value 输入向"构造子 + 参数"文法靠拢，
-  质参数选封闭族成员，量参数填数值；
-- 任务跟踪：Notion "VENUS-TDHF 通用化"（阶段 P1 架构）。
+- Deletion verdicts: any functionality that belongs neither to the control kernel and the four classes of pure subroutine nor to expressibility as an Interface A/B member or a closed selection-family member is redundant (the RK4 dead entry, ADAMS, and compile-time PES variants are thereby eliminated);
+- Input keyword refactoring: the existing keyword=value input moves toward a "constructor + parameters" grammar; quality parameters select closed-family members, quantity parameters fill in numerical values;
+- Task tracking: Notion "VENUS-TDHF generalization" (phase P1 architecture).

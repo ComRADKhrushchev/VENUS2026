@@ -1,13 +1,17 @@
 !=====================================================================
-! sampler.f90 — L2 接口 B′ 框架：初态分布通用抽样器（分布成员注册 + 方案分发
-!                ——分布→(Q0,P0,s0)；SELECT 整数分发改成员表）
-! 参考: src_VENUS/SELECT.f90:71-87（顶部门控——读入直配坐标的旧任务分流）、
-!       :89-142（片段位置 + DH 分离能参考——能量归 facade、几何归 roster，剥除）、
-!       :144-186（片段 A/B 初始化分派——旧整数开关分发的成员表化位）、
-!       :188-207（碰撞装配分派：表面/气相两路）、:1300-1334（setup_surface_collision）、
-!       :1337-1404（setup_gas_collision——两路归并入射通道成员）、
-!       :1407-1491（finalize_and_report——报告归 recorder，剥除）；
-!       分布成员名册（X2/X3）：boltzmann/ebk/incident（批 3 建骨架）+ 余 9 个 → C5
+! sampler.f90 - L2 interface-B' framework: general initial-state distribution sampler (distribution-member
+!                registration + scheme dispatch - distributions -> (Q0,P0,s0); the SELECT integer dispatch
+!                becomes a member table)
+!                (see previous line)
+! Reference: src_VENUS/SELECT.f90:71-87 (top gating - old task fork for read-in direct coordinates),
+!       :89-142 (fragment placement + DH dissociation-energy reference - energy to the facade, geometry to
+!       the roster, excised),
+!       :144-186 (fragment A/B initialization dispatch - where the old integer-switch dispatch becomes a
+!       member table),
+!       :188-207 (collision-assembly dispatch: surface/gas two routes), :1300-1334 (setup_surface_collision),
+!       :1337-1404 (setup_gas_collision - the two routes merge into the incident-channel member),
+!       :1407-1491 (finalize_and_report - reporting to the recorder, excised);
+!       distribution member roster (X2/X3): boltzmann/ebk/incident (batch-3 skeleton) + 9 more -> C5
 !=====================================================================
 module sampler
    use state, only: state_t
@@ -15,55 +19,66 @@ module sampler
    private
    public :: samp_reg, samp_run
 
-   ! 分布成员接口：按自带分布抽 (q0,p0,s0) 的成员负责分量写入物理态
+   ! Distribution member interface: members sample (q0,p0,s0) from their own distribution and write the
+   ! components they own into the physical state
    abstract interface
       subroutine dist_proc_i(sta)
          import :: state_t
-         type(state_t), intent(inout) :: sta  ! 初态（成员负责的 q/p/s 分量被抽样改写）
+         type(state_t), intent(inout) :: sta  ! initial state (the q/p/s components owned by the member are
+         ! overwritten by sampling)
       end subroutine dist_proc_i
    end interface
 
-   ! 分布成员表（B′ 注册族——新增成员 = 新文件 + 一行注册，T2）
-   integer, parameter :: max_dist = 16   ! 成员表容量 [行]
+   ! Distribution member table (B' registry family - a new member = a new file + one registration line, T2)
+   integer, parameter :: max_dist = 16   ! member-table capacity [row]
    type :: dist_entry_t
-      character(len=32) :: name = ''     ! 成员名（方案键——samp_run 的 scheme）
-      procedure(dist_proc_i), pointer, nopass :: proc => null() ! 成员抽样例程
+      character(len=32) :: name = ''     ! member name (the scheme key of samp_run)
+      procedure(dist_proc_i), pointer, nopass :: proc => null() ! member sampling routine
    end type dist_entry_t
-   type(dist_entry_t) :: dist_tbl(max_dist) ! 分布成员表（模块私有；C5 填充）
-   integer :: n_dist = 0                   ! 已登记行数 [行]
+   type(dist_entry_t) :: dist_tbl(max_dist) ! distribution member table (module-private; filled in C5)
+   integer :: n_dist = 0                   ! registered row count [row]
 contains
    !------------------------------------------------------------------
-   ! samp_reg(name, proc) — 登记分布成员进成员表
-   ! 参考: docs/final_completion_plan.md §7 X2/X3（SELECT 成员表化——12 成员名册）
+   ! samp_reg(name, proc) - register a distribution member into the member table
+   ! Reference: docs/final_completion_plan.md §7 X2/X3 (SELECT as a member table - the 12-member roster)
    subroutine samp_reg(name, proc)
-      character(len=*), intent(in) :: name  ! 成员名（如 'boltzmann'/'ebk'/'incident'）
-      procedure(dist_proc_i) :: proc        ! 成员抽样例程
-      ! 伪代码：
-      ! 1. 重名或表满 → loud-stop
-      ! 2. 登记行 {name, proc}（装配相位执行——driver；dist_* 成员各注册一行）
+      character(len=*), intent(in) :: name  ! member name (e.g. 'boltzmann'/'ebk'/'incident')
+      procedure(dist_proc_i) :: proc        ! member sampling routine
+      ! Pseudocode:
+      ! 1. Duplicate name or full table -> loud-stop
+      ! 2. Register the row {name, proc} (executed in the assembly phase by the driver;
+      !    each dist_* member registers one line)
    end subroutine samp_reg
 
    !------------------------------------------------------------------
-   ! samp_run(scheme, sta) — 按方案名分发抽样：调成员写初态分量
-   ! 参考: src_VENUS/SELECT.f90:144-186（片段分派）、:188-207（碰撞装配分派）
+   ! samp_run(scheme, sta) - dispatch sampling by scheme name: call the member to write initial-state
+   ! components
+   ! Reference: src_VENUS/SELECT.f90:144-186 (fragment dispatch), :188-207 (collision
+   ! assembly dispatch)
    subroutine samp_run(scheme, sta)
-      character(len=*), intent(in) :: scheme ! 抽样方案名（config%reactants%dist_scheme
-                                             ! 所指成员名——旧整数分发→成员表，X3；
-                                             ! 整数编号→成员名映射 C5 接线定形）
-      type(state_t), intent(inout) :: sta    ! 初态（q0/p0/s0——被成员抽样改写）
-      ! 伪代码：
-      ! 1. 查分布成员表 dist_tbl 得 scheme 成员（未登记 loud-stop 指名）
-      !    ——分布成员表 C5 填充（现仅框架：批 3 三示例 boltzmann/ebk/incident
-      !    建骨架，余 9 个成员 surface_oscillator/rotation/j/barrier_excitation/
-      !    thermostat/glo_target/thermalize/normalmode/qmmicro → C5——E3）
-      ! 2. 调成员 proc(sta)：按自带分布抽其负责的初态分量（成员 = 代码 + 自带
-      !    数据；内部可用 rng/linalg/geometry 仪器——制备成员内部调演化服务
-      !    合法，边界 4）
-      ! 3. 多片段体系依 config%reactants%dist_scheme 依序调各成员（片段 A/B
-      !    分布）+ 入射通道成员（碰撞能/碰撞参数/取向——旧 setup_gas_collision
-      !    :1337-1404 / setup_surface_collision :1300-1334 两路归并）
-      ! 4. 旧 SELECT 总编排剥除：片段位置与 DH 分离能参考（:89-142）——能量经
-      !    facade、几何经 roster；finalize_and_report（:1407-1491）——归 recorder
-      !    统计列；sampler 只承担 分布→(q0,p0,s0)
+      character(len=*), intent(in) :: scheme ! sampling scheme name (the config%reactants%dist_scheme key)
+                                             ! the member name it denotes - old integer
+                                             ! dispatch -> member table, X3;
+      ! integer-code -> member-name mapping wired in C5)
+      type(state_t), intent(inout) :: sta    ! initial state (q0/p0/s0 - overwritten by the member's sampling)
+      ! Pseudocode:
+      ! 1. Look up the scheme member in dist_tbl (unregistered -> loud-stop naming it)
+      !    - the distribution member table is filled in C5 (currently a bare frame:
+      !    batch-3 examples boltzmann/ebk/incident
+      !    skeleton the first three; the remaining 9 members surface_oscillator/rotation/j/
+      !    barrier_excitation/thermostat/glo_target/thermalize/normalmode/qmmicro -> C5 - E3)
+      ! 2. Call the member proc(sta): sample the initial-state components it owns from its
+      !    own distribution (member = code + its own data; the rng/linalg/geometry
+      !    instruments are usable internally - preparation members calling evolution
+      !    services internally is legal, boundary 4)
+      ! 3. Multi-fragment systems call the members in order per config%reactants%
+      !    dist_scheme (fragment A/B distributions) + the incident-channel member
+      !    (collision energy / impact parameter / orientation - the old setup_gas_collision
+      !    :1337-1404 / setup_surface_collision :1300-1334 two routes merged)
+      ! 4. The old SELECT master orchestration is excised: fragment placement and the DH
+      !    dissociation-energy reference (:89-142) - energy goes through the facade,
+      !    geometry through the roster; finalize_and_report (:1407-1491) - belongs to
+      !    the recorder's statistics columns; the sampler only does distribution -> (q0,p0,s0)
+      !    (see previous line)
    end subroutine samp_run
 end module sampler

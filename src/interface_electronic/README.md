@@ -1,26 +1,40 @@
-# interface_electronic/ — 电子层面扩展成员（两轴同家）
+# interface_electronic/ - extensible electronic-layer members (both axes in one home)
 
-规范 §3.2-2 电子层面的两条独立轴的可换成员同居此目录，以文件前缀区分：
+The interchangeable members of the two independent electronic-layer axes of spec §3.2-2 live in
+this directory, distinguished by file prefix:
 
-| 轴 | 前缀 | 接口 | 现有 / 计划 |
+| Axis | Prefix | Interface | Present / planned |
 |---|---|---|---|
-| H 场提供方（可叠加贡献族） | pes_* | 甲类：facade_reg_pes（单入口，可选 repr=r_scalar〔缺省〕/r_diab/r_adiab——E10 归一：表象是登记数据不是注册分叉）。签名 pes_proc_i(q, mass, ws)——成员按自身 ws 填充模式交付：scalar 填 g_add[eV/Å]/v_add[eV]；diab 填 H 矩阵 + 矩阵元梯度（eV、eV/Å）；adiab 填各面 V_i/力核 + 当前面导数耦合行 d_i,·（经 ws%i_want 请求——i_surf 不进签名）。×23.0605×C1 换算集中在 facade（单位契约，主计划 §5 N1）；多面主势不做加性叠加 | C2 六件：reference / emt_nn / rst / glo_spring / langevin_ghost / ldfa；多面成员随 elec_tsh/elec_iesh 消费者引入 |
-| 电子传播子（量子-经典方法） | elec_* | 乙类：facade_reg_elec（单选）。签名 elec_proc_i(s, f, dt, ws)——E9 加步长（跃迁概率 g_ij(dt) 所需）、E10 加工作区（只读消费：按 ws%repr 解释容器，成员不支持的 repr → loud-stop）。绝热 = 退化点（ds/dt≡0、力规则恒等、忽略 dt 与 ws），接口在退化点良定义 | elec_adiabatic（先行）；IESH / FSSH 将来同住 |
+| H-field providers (additive contribution family) | pes_* | Class A: facade_reg_pes (single entry, optional repr=r_scalar [default]/r_diab/r_adiab - E10 unification: representation is registration data, not a registration fork). Signature pes_proc_i(q, mass, ws) - members deliver per their own ws fill mode: scalar fills g_add [eV/Å]/v_add [eV]; diab fills the H matrix + matrix-element gradients (eV, eV/Å); adiab fills per-surface V_i/force kernels + the current-surface derivative-coupling row d_i,. (via the ws%i_want request - i_surf stays out of the signature). The x23.0605xC1 conversion is centralized in the facade (unit contract, master plan §5 N1); multi-surface main PES is not additively summed | Six in C2: reference / emt_nn / rst / glo_spring / langevin_ghost / ldfa; multi-surface members arrive with the elec_tsh/elec_iesh consumers |
+| Electron propagators (quantum-classical methods) | elec_* | Class B: facade_reg_elec (single select). Signature elec_proc_i(s, f, dt, ws) - E9 adds the step (needed for the hop probability g_ij(dt)), E10 adds the workspace (read-only consumption: interpret the container per ws%repr; a repr the member does not support -> loud-stop). Adiabatic = degenerate point (ds/dt == 0, identity force rule, ignores dt and ws); the interface is well-defined at the degenerate point | elec_adiabatic (first); IESH / FSSH will live here later |
 
-**两轴独立**（任意 PES × 任意方法合法配对，笛卡尔积结构）由代码机制保证，
-与目录编组无关：模块互相独立（pes_* 与 elec_* 零引用）、两个注册表
-（reg_pes / reg_elec 分立）、facade_init 能力级协商（非法组合 loud-stop
-并指名冲突两轴）。
+**The two axes are independent** (any PES x any method is a legal pairing, a Cartesian-product
+structure), guaranteed by code mechanisms,
+orthogonal to directory grouping: the modules are mutually independent (pes_* and elec_* share
+zero references), the two registries
+(reg_pes / reg_elec are separate), and the facade_init capability negotiation (illegal
+combinations loud-stop,
+naming both conflicting axes).
 
-**E9 多面升级 → E10 工作区修订（2026-09-07）**：E9 引入甲类双签名（透热/
-绝热）+ 乙类签名扩 dt + 协商表数据化 triad_tbl（四行：单面绝热现行 + 多面
-tsh/iesh 预放行）。E10 公理化修正（三公理：接口不变性/黑箱性/物自体原则）
-——甲类签名完全归一 pes_proc_i(q, mass, ws)：表象构件（H_ij/d_ij/V_i）
-收纳于 ws_t 容器（facade/elec_ws.f90——表象从签名分叉降级为 ws%repr 数据
-标记），不进 state_t、不出门面箱外、生命周期一步；双注册例程撤销
-（facade_reg_pes 单入口带可选 repr）。**radau 在多面行恒假**不变（自适应
-序列边界"一步"无良定义，跃迁概率 g_ij(dt) 失据，非绝热只配定步长积分器）。
+**E9 multi-surface upgrade -> E10 workspace revision (2026-09-07)**: E9 introduced the class-A
+dual signature (diabatic/
+adiabatic) + the class-B dt argument + the negotiation table as data triad_tbl (four rows:
+current single-surface adiabatic + multi-surface
+tsh/iesh pre-allowed). E10's axiomatic correction (three axioms: interface invariance /
+black-box property / thing-in-itself principle)
+- the class-A signature is fully unified as pes_proc_i(q, mass, ws): representation constructs
+(H_ij/d_ij/V_i)
+are housed in the ws_t container (facade/elec_ws.f90 - representation demoted from a signature
+fork to the ws%repr data
+tag); they do not enter state_t, do not leave the facade box, and live for one step; the dual
+registration routines are withdrawn
+(facade_reg_pes is a single entry with optional repr). **radau stays false on multi-surface
+rows** unchanged (adaptive
+sequence boundaries have no well-defined "one step", the hop probability g_ij(dt) loses its
+basis, so nonadiabatic only pairs with fixed-step integrators).
 
-接入 = 新文件 + 装配相位一行注册，既有代码零触及（T2 判据演练点）。
+Plugging in = a new file + one registration line in the assembly phase, zero touch to existing
+code (the T2 criterion exercise point).
 
-参考质料（旧库只读）：interface_TEST.f90 / EMT-NN / RST / VERLET.f90 内嵌力。
+Reference material (old library, read-only): interface_TEST.f90 / EMT-NN / RST / VERLET.f90
+inlined forces.

@@ -1,11 +1,14 @@
-! control.f90 —— 控制流必须变量（独立模块）：主控编排输入，不含物理规定
+! control.f90 - control-flow must variables (standalone module): driver-orchestration input,
+!              no physics settings
 module control
-  ! 控制流输入：主控编排所需，不含物理规定（规范 §2.2：控制核无物理知识）
+  ! Control-flow input: what the control kernel needs for orchestration, no physics settings
+  ! (spec §2.2: the control kernel holds no physics knowledge)
   implicit none
   public
-  integer :: task    = 0   ! 任务方案（轨迹计算/读入坐标/…，输入 TASK 映射）
-  integer :: n_traj  = 1   ! 轨迹条数（旧 NT）
-  character(len=80) :: title(2) = ''  ! 运行标题
-  integer :: i_seed(8) = 0 ! 随机数种子（8 字，rng 初始化用）
-  ! 留白：断点续算、并行/进程管理等运行控制——将来按需引入（规范 §1 范围条件）
+  integer :: task    = 0   ! task scheme (trajectory run / read-in coordinates / ...; maps the TASK input)
+  integer :: n_traj  = 1   ! number of trajectories (old NT)
+  character(len=80) :: title(2) = ''  ! run title
+  integer :: i_seed(8) = 0 ! random seed (8 words; used to initialize rng)
+  ! Left blank: checkpoint restart, parallelism/process management and other run controls -
+  ! introduced later if needed (spec §1 scope conditions)
 end module

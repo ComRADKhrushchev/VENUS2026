@@ -1,29 +1,31 @@
 !=====================================================================
-! propagator.f90 — L3 封闭族：核传播子（verlet/symple/radau 三成员注册 +
-!                   统一回调步进——积分器本体无体系知识）
-! 参考: src_VENUS/VERLET.f90:31-79（velocity Verlet：力前算 :34-41、位置全步
-!       :52-56、力后算+半步 :60-67）；:90-170（Beeman 三阶：位置预测 :98-103、
-!       速度预测 :105-109、力暂存与重算 :111-125、速度校正 :163-168）；
-!       src_VENUS/SYMPLE.f:14-86（Schlier 4/6/8 阶系数装载）、:88-100（交错
-!       漂移-踢击主循环）；src_VENUS/RADAU.f:90-94（Radau 节点 hh）、:138-175
-!       （w/u 权与三角系数 c/d/ra）、:183-195（首序列 6 迭代）、:197-311（子步
-!       预测-差分修正）、:313-336（重启判据与序列推进）、:390-396（自适应步长
-!       tp=dir·tcorr·(ss/hv)^(1/9)）；RADOUT :438-498（内嵌编排——剥除为 hooks
-!       回调，G4）；
-!       剥离清单（参考时勿带入）：VERLET.f90:44-50/:71-79/:151-161（ghost 朗之万）、
-!       :130-148（GLO/LDFA 内嵌力）、:179-270（FRICFORCE/DIAG2 链）——随机律一律经
-!       force_facade 成员汇总（P-D1/D4）；'CALLING RADOUT' 调试打印（RADAU.f:112/
-!       :380/:428）与 PRINFO 注释残留不迁（G4）
-! dt 通道注记（E9）：facade_force(sta, e, dt) 第三参可选——定步长成员
-!       （verlet/symple）传 prop_cfg%dt（跃迁概率 g_ij(dt) 语义在此良定义）；
-!       radau 序列内子步调用不传 dt（缺省回落 prop_cfg%dt，仅作占位）——非绝热
-!       × radau 组合已被协商表 triad_tbl 排除（多面行 ok_radau=.false.），本注记
-!       只约束绝热路径行为不变
+! propagator.f90 - L3 closed family: nuclear propagators (verlet/symple/radau three-member registration +
+!                   unified callback stepping - the integrator body holds no system knowledge)
+! Reference: src_VENUS/VERLET.f90:31-79 (velocity Verlet: force first :34-41, full position step
+!       :52-56, force re-evaluation + half step :60-67); :90-170 (third-order Beeman: position predictor
+!       :98-103, velocity predictor :105-109, force staging and re-evaluation :111-125, velocity
+!       corrector :163-168);
+!       src_VENUS/SYMPLE.f:14-86 (Schlier 4th/6th/8th-order coefficient loading), :88-100 (alternating
+!       drift-kick main loop); src_VENUS/RADAU.f:90-94 (Radau nodes hh), :138-175
+!       (w/u weights and triangle coefficients c/d/ra), :183-195 (6 iterations for the first sequence),
+!       :197-311 (substep predictor-corrector), :313-336 (restart test and sequence advance), :390-396
+!       (adaptive step tp=dir*tcorr*(ss/hv)^(1/9)); RADOUT :438-498 (inlined orchestration - excised into
+!       hooks callbacks, G4);
+!       Excision list (do not carry over when referencing): VERLET.f90:44-50/:71-79/:151-161 (ghost Langevin),
+!       :130-148 (GLO/LDFA inlined forces), :179-270 (FRICFORCE/DIAG2 chain) - stochastic laws always go
+!       through force_facade member aggregation (P-D1/D4); the 'CALLING RADOUT' debug prints (RADAU.f:112/
+!       :380/:428) and the PRINFO comment remnants are not carried over (G4)
+! dt channel note (E9): the third argument of facade_force(sta, e, dt) is optional - fixed-step members
+!       (verlet/symple) pass prop_cfg%dt (the hop probability g_ij(dt) semantics are well-defined here);
+!       radau substep calls inside a sequence pass no dt (the default falls back to prop_cfg%dt, a
+!       placeholder only) - the nonadiabatic x radau combination is already excluded by the negotiation
+!       table triad_tbl (ok_radau=.false. on multi-surface rows); this note only pins adiabatic-path
+!       behavior to stay unchanged
 !=====================================================================
 module propagator
    use state,         only: state_t
-   use config,        only: prop_cfg => propagator   ! 别名规避与模块同名冲突
-                                                      ! （prop_cfg 即 config 实例 propagator）
+   use config,        only: prop_cfg => propagator   ! alias to avoid clashing with the module name
+                                                      ! (prop_cfg is the config instance 'propagator')
    use config_roster, only: roster
    use force_facade,  only: facade_force
    implicit none
@@ -31,143 +33,155 @@ module propagator
    public :: hooks_t, prop_reg, prop_step
    public :: verlet_step, symple_step, radau_step
 
-   ! 检查点回调接口（RADOUT 编排剥除位——G4：输出→recorder、终止→predicate）
+   ! Checkpoint callback interfaces (the excised RADOUT orchestration site - G4: output -> recorder,
+   ! termination -> predicate)
    abstract interface
-      subroutine hook_out_i(sta)             ! 输出钩子：一检查点的帧写出
+      subroutine hook_out_i(sta)             ! output hook: write the frame of one checkpoint
          import :: state_t
-         type(state_t), intent(in) :: sta    ! 物理态（只读快照）
+         type(state_t), intent(in) :: sta    ! physical state (read-only snapshot)
       end subroutine hook_out_i
-      logical function hook_term_i(sta)      ! 终止谓词求值点：真=终止本轨迹
+      logical function hook_term_i(sta)      ! termination-predicate evaluation point: true = terminate this trajectory
          import :: state_t
-         type(state_t), intent(in) :: sta    ! 物理态（只读快照）
+         type(state_t), intent(in) :: sta    ! physical state (read-only snapshot)
       end function hook_term_i
    end interface
 
-   ! 演化回调束（driver 装配；空指针=该类回调不挂——旧 RADOUT 两回调位的数据化）
+   ! Evolution callback bundle (assembled by the driver; a null pointer = that callback class is not
+   ! attached - the old RADOUT's two callback sites turned into data)
    type :: hooks_t
-      procedure(hook_out_i),  pointer, nopass :: out  => null() ! 输出钩子（旧 RADOUT→GWRITE 位）
-      procedure(hook_term_i), pointer, nopass :: term => null() ! 终止谓词点（旧 RADOUT→TEST 位）
+      procedure(hook_out_i),  pointer, nopass :: out  => null() ! output hook (old RADOUT -> GWRITE site)
+      procedure(hook_term_i), pointer, nopass :: term => null() ! termination-predicate point (old RADOUT -> TEST site)
    end type hooks_t
 
-   ! 积分器成员接口：推进一个步长（verlet/symple）或一个自适应序列（radau）
+   ! Integrator member interface: advance one step (verlet/symple) or one adaptive sequence (radau)
    abstract interface
       subroutine integ_proc_i(sta, hooks)
          import :: state_t, hooks_t
-         type(state_t), intent(inout) :: sta   ! 物理态（q/p/t 被推进；f 为力工作区）
-         type(hooks_t), intent(in)    :: hooks ! 检查点回调束（序列成员在边界调）
+         type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
+         type(hooks_t), intent(in)    :: hooks ! checkpoint callback bundle (sequence members call it at boundaries)
       end subroutine integ_proc_i
    end interface
 
-   ! 封闭族注册表（三成员装配期各登记一行；表容量含余量）
-   integer, parameter :: max_integ = 8        ! 注册表容量 [行]
+   ! Closed-family registry (each of the three members registers one row at assembly time; capacity has slack)
+   integer, parameter :: max_integ = 8        ! registry capacity [row]
    type :: integ_entry_t
-      integer :: id = 0                       ! 积分器编号（config%propagator%id 的键）
-      procedure(integ_proc_i), pointer, nopass :: proc => null() ! 成员步进例程
+      integer :: id = 0                       ! integrator code (the key of config%propagator%id)
+      procedure(integ_proc_i), pointer, nopass :: proc => null() ! member stepping routine
    end type integ_entry_t
-   type(integ_entry_t) :: reg_tbl(max_integ)  ! 注册表（模块私有）
-   integer :: n_reg = 0                       ! 已登记行数 [行]
+   type(integ_entry_t) :: reg_tbl(max_integ)  ! registry (module-private)
+   integer :: n_reg = 0                       ! registered row count [row]
 contains
    !------------------------------------------------------------------
-   ! prop_reg(id, proc) — 登记积分器成员进封闭族注册表
-   ! 参考: docs/final_completion_plan.md §7 X4（积分器统一协议 + 三成员注册）
+   ! prop_reg(id, proc) - register an integrator member into the closed-family registry
+   ! Reference: docs/final_completion_plan.md §7 X4 (unified integrator protocol + three-member registration)
    subroutine prop_reg(id, proc)
-      integer, intent(in) :: id           ! 积分器编号 [—]（1=verlet/2=symple/3=radau——
-                                          ! config%propagator%id 的键）
-      procedure(integ_proc_i) :: proc     ! 成员步进例程
-      ! 伪代码：
-      ! 1. 重复 id 或表满 → loud-stop（封闭族仅三成员，装配期各调一次）
-      ! 2. 登记行 {id, proc}（driver 装配相位执行——E7）
+      integer, intent(in) :: id           ! integrator code [-] (1=verlet/2=symple/3=radau -
+                                          ! the key of config%propagator%id)
+      procedure(integ_proc_i) :: proc     ! member stepping routine
+      ! Pseudocode:
+      ! 1. Duplicate id or full table -> loud-stop (the closed family has exactly three members, each
+      !    registered once at assembly time)
+      ! 2. Register the row {id, proc} (executed in the driver's assembly phase - E7)
    end subroutine prop_reg
 
    !------------------------------------------------------------------
-   ! prop_step(sta, hooks) — 步进一分派：按 config%propagator%id 调已注册成员
-   ! 参考: src_VENUS/RADAU.f:438-498（RADOUT 编排剥除→hooks 回调的旧形态）
+   ! prop_step(sta, hooks) - step dispatch: call the registered member per config%propagator%id
+   ! Reference: src_VENUS/RADAU.f:438-498 (the old form before RADOUT orchestration was excised into hooks callbacks)
    subroutine prop_step(sta, hooks)
-      type(state_t), intent(inout) :: sta   ! 物理态（经成员推进一个步长/序列）
-      type(hooks_t), intent(in)    :: hooks ! 检查点回调束（透传成员）
-      ! 伪代码：
-      ! 1. 按 prop_cfg%id 查注册表 reg_tbl（未注册 loud-stop 指名 id）
-      ! 2. 调成员 proc(sta, hooks)：推 sta 前进 prop_cfg%dt
-      !    （radau=一个自适应序列；成员内部按需多次调 facade_force）
-      ! 3. 检查点协议（成员内履行，先 out 后 term）：
-      !    hooks%out 挂了才调——一帧写出（recorder 接线）；
-      !    hooks%term 挂了才调——真=终止本轨迹（终止旗标由 driver 侧闭包置位：
-      !    hooks 为 nopass 指针，闭包宿主在 driver 持旗标——E7 演化环的终止通道）
+      type(state_t), intent(inout) :: sta   ! physical state (advanced one step/sequence by the member)
+      type(hooks_t), intent(in)    :: hooks ! checkpoint callback bundle (passed through to the member)
+      ! Pseudocode:
+      ! 1. Look up reg_tbl by prop_cfg%id (unregistered id -> loud-stop naming the id)
+      ! 2. Call the member proc(sta, hooks): advance sta by prop_cfg%dt
+      !    (radau = one adaptive sequence; the member calls facade_force as often as needed)
+      ! 3. Checkpoint protocol (honored inside the member, out before term):
+      !    call hooks%out only if attached - one frame written (recorder wiring);
+      !    call hooks%term only if attached - true = terminate this trajectory (the termination flag is
+      !    set by the driver-side closure: hooks are nopass pointers, the closure host in the driver holds
+      !    the flag - the termination channel of the E7 evolution loop)
+      !    (see previous line)
    end subroutine prop_step
 
    !------------------------------------------------------------------
-   ! verlet_step(sta, hooks) — velocity Verlet（order=1）/ Beeman 三阶（order=2）单步
-   ! 参考: src_VENUS/VERLET.f90:31-79（VV）；:90-170（Beeman）
+   ! verlet_step(sta, hooks) - velocity Verlet (order=1) / third-order Beeman (order=2) single step
+   ! Reference: src_VENUS/VERLET.f90:31-79 (VV); :90-170 (Beeman)
    subroutine verlet_step(sta, hooks)
-      type(state_t), intent(inout) :: sta   ! 物理态（q/p/t 推进；f 力工作区）
-      type(hooks_t), intent(in)    :: hooks ! 检查点回调束（步末调）
-      ! 局部工作区留 C6 声明（旧 FT2/QTP1 力与坐标暂存——力差分是 Beeman 分支状态）
-      ! 伪代码：
-      ! 1. dt = prop_cfg%dt、mass = roster%mass、order = prop_cfg%order
-      ! 2. order=1（velocity Verlet，旧 :31-79）：
-      ! 2a. facade_force(sta, e)（步首力 F(t)——旧 :34-41 力位）
-      ! 2b. p += f·dt/2（半步动量，旧 :39-41）
-      ! 2c. q += (p/m)·dt（位置全步，旧 :52-56）
-      ! 2d. facade_force(sta, e)（步末力 F(t+dt)，旧 :60-62 力位）
-      ! 2e. p += f·dt/2（半步收尾，旧 :65-67）
-      ! 3. order=2（Beeman 三阶，旧 :90-170）：
-      ! 3a. 位置预测：q += (p/m)·dt + dt²·(4f(t)−f(t−dt))/(6m)（旧 :98-103）
-      ! 3b. 动量预测：p += dt·(3f(t)−f(t−dt))/2（旧 :105-109）
-      ! 3c. 力暂存 f(t)→f(t−dt)（旧 :111-114）；facade_force(sta, e)（力重算，旧 :123-125）
-      ! 3d. 动量校正：p = m·(q−q_prev)/dt + dt·(2f(t+dt)+f(t))/(6m)
-      !     （旧 :163-168；q_prev=3a 前的 q，旧 QTP1 暂存）
-      ! 4. 旧 ghost 朗之万（:44-50/:71-79/:151-161）与 GLO/LDFA 内嵌力
-      !    （:130-148、FRICFORCE :179-270）不迁——随机律经 facade_force 成员
-      !    汇总（P-D1/D4），积分器本体无体系知识
-      ! 5. sta%t += dt；步末检查点回调（先 out 后 term）
+      type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
+      type(hooks_t), intent(in)    :: hooks ! checkpoint callback bundle (called at step end)
+      ! Local work arrays are declared in C6 (old FT2/QTP1 force and coordinate staging - force
+      ! differencing is state of the Beeman branch)
+      ! Pseudocode:
+      ! 1. dt = prop_cfg%dt, mass = roster%mass, order = prop_cfg%order
+      ! 2. order=1 (velocity Verlet, old :31-79):
+      ! 2a. facade_force(sta, e) (force F(t) at step start - old :34-41 force site)
+      ! 2b. p += f*dt/2 (half-step momentum, old :39-41)
+      ! 2c. q += (p/m)*dt (full position step, old :52-56)
+      ! 2d. facade_force(sta, e) (force F(t+dt) at step end - old :60-62 force site)
+      ! 2e. p += f*dt/2 (completing the half step, old :65-67)
+      ! 3. order=2 (third-order Beeman, old :90-170):
+      ! 3a. position predictor: q += (p/m)*dt + dt^2*(4f(t)-f(t-dt))/(6m) (old :98-103)
+      ! 3b. momentum predictor: p += dt*(3f(t)-f(t-dt))/2 (old :105-109)
+      ! 3c. stage force f(t)->f(t-dt) (old :111-114); facade_force(sta, e) (force re-evaluation, old :123-125)
+      ! 3d. momentum corrector: p = m*(q-q_prev)/dt + dt*(2f(t+dt)+f(t))/(6m)
+      !     (old :163-168; q_prev is the q before 3a, staged in the old QTP1)
+      ! 4. The old ghost Langevin (:44-50/:71-79/:151-161) and GLO/LDFA inlined forces
+      !    (:130-148, FRICFORCE :179-270) are not carried over - stochastic laws go through force_facade
+      !    member aggregation (P-D1/D4); the integrator body holds no system knowledge
+      ! 5. sta%t += dt; checkpoint callbacks at step end (out before term)
    end subroutine verlet_step
 
    !------------------------------------------------------------------
-   ! symple_step(sta, hooks) — 4/6/8 阶辛几何单步（Schlier 系数交错漂移-踢击）
-   ! 参考: src_VENUS/SYMPLE.f:14-86（系数装载）、:88-100（主循环）
+   ! symple_step(sta, hooks) - 4th/6th/8th-order symplectic single step (Schlier coefficients, alternating drift-kick)
+   ! Reference: src_VENUS/SYMPLE.f:14-86 (coefficient loading), :88-100 (main loop)
    subroutine symple_step(sta, hooks)
-      type(state_t), intent(inout) :: sta   ! 物理态（q/p/t 推进；f 力工作区）
-      type(hooks_t), intent(in)    :: hooks ! 检查点回调束（步末调）
-      ! 系数缓存留 C6 声明（旧 A(0:34) + FIRST 旗标——模块私有静态）
-      ! 伪代码：
-      ! 1. 首次调用按 order（4/6/8，config%propagator%order）装载 Schlier 系数
-      !    a(0:2N)（N=5/8/17；对称后半镜像复制，旧 :14-86 的 FIRST 块）
-      ! 2. 交错循环 i=0..N-1（旧 :88-97）：
-      ! 2a. facade_force(sta, e)（踢击前力——旧 :94-96 力位）
-      ! 2b. p += dt·a(2i)·f（动量踢击，旧 :91）
-      ! 2c. q += dt·a(2i+1)·p/m（位置漂移，旧 :92）
-      ! 3. 末拍：facade_force(sta, e)；p += dt·a(2N)·f（旧 :98-100）
-      ! 4. sta%t += dt；步末检查点回调（先 out 后 term）
+      type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
+      type(hooks_t), intent(in)    :: hooks ! checkpoint callback bundle (called at step end)
+      ! The coefficient cache is declared in C6 (old A(0:34) + FIRST flag - module-private statics)
+      ! Pseudocode:
+      ! 1. On first call load the Schlier coefficients per order (4/6/8, config%propagator%order)
+      !    into a(0:2N) (N=5/8/17; symmetric second half mirror-copied, the FIRST block of old :14-86)
+      ! 2. Alternating loop i=0..N-1 (old :88-97):
+      ! 2a. facade_force(sta, e) (force before the kick - old :94-96 force site)
+      ! 2b. p += dt*a(2i)*f (momentum kick, old :91)
+      ! 2c. q += dt*a(2i+1)*p/m (position drift, old :92)
+      ! 3. Final beat: facade_force(sta, e); p += dt*a(2N)*f (old :98-100)
+      ! 4. sta%t += dt; checkpoint callbacks at step end (out before term)
    end subroutine symple_step
 
    !------------------------------------------------------------------
-   ! radau_step(sta, hooks) — Everhart RA15 一个 Gauss-Radau 序列（自适应步长）
-   ! 参考: src_VENUS/RADAU.f:90-94（节点 hh）、:138-175（w/u 权与 c/d/ra）、
-   !       :183-195（首序列 6 迭代 + 步首力）、:197-311（子步预测-差分修正）、
-   !       :313-336（重启判据与序列推进）、:390-396（下一序列步长）；
-   !       RADOUT :438-498（编排剥除→hooks，G4）
+   ! radau_step(sta, hooks) - one Everhart RA15 Gauss-Radau sequence (adaptive step)
+   ! Reference: src_VENUS/RADAU.f:90-94 (nodes hh), :138-175 (w/u weights and c/d/ra),
+   !       :183-195 (6 iterations for the first sequence + force at sequence start), :197-311 (substep
+   !       predictor-difference corrector),
+   !       :313-336 (restart test and sequence advance), :390-396 (next-sequence step);
+   !       RADOUT :438-498 (orchestration excised -> hooks, G4)
    subroutine radau_step(sta, hooks)
-      type(state_t), intent(inout) :: sta   ! 物理态（q/p/t 推进；f 力工作区）
-      type(hooks_t), intent(in)    :: hooks ! 检查点回调束（序列边界调）
-      ! 常数与 B/G/E 系数阵缓存留 C6 声明（模块私有静态——序列间携带）
-      ! 伪代码：
-      ! 1. 首次调用装载常数：Radau 节点 hh(2:8)（旧 :92-94）、w/u 权（旧 :138-143）、
-      !    三角形系数 c/d/ra（旧 :153-175）
-      ! 2. 速度折叠 v = p/m（旧 :103-107）；首序列迭代数 6、后续序列 2
-      !    （旧 :185、:419）
-      ! 3. 序列内子步循环（迭代 × 7 子步，旧 :197-311）：
-      ! 3a. 由 B 系数七阶展开预测子步坐标 yy（旧 :220-245）
-      ! 3b. facade_force 于子步坐标求值（旧 :250-260 力位；f_j = f/m 折叠）
-      ! 3c. 差分修正：g 系数逐阶差商 + B 系数三角累加（旧 :262-311）
-      ! 4. 序列收尾：q/p 推进一序列长 tt（旧 :329-336）；末项 hv 估计
-      !    （旧 :313-317）；重启判据 tp/tt≤1 则弃序列重启（旧 :319-327）
-      ! 5. 自适应步长：tp = tcorr·(ss/hv)^(1/9)（旧 :390；指数 1/9 旧 :74；
-      !    ss = 10^(−order) 精度参数，方向 dir 随 tf 符号——旧 :133-135）
-      ! 6. 步长夹逼 dt_min/dt_max——prop_cfg 留白字段，C6 引入
-      !    （K1 计划 §1.3 留白注；引入前以 ss 精度单控）
-      ! 7. 序列边界检查点回调（先 out 后 term；旧 RADOUT :449-478 的
-      !    GWRITE/TEST 调用位——ENERGY_1/FINAL/GFINAL 统计编排不迁，归统计
-      !    相位）；旧 NIP 间隔输出（旧 :99-101 prtime）由检查点间隔参数承担——C6 定形
-      ! 8. sta%t += 序列长 tt；term 真即收束本步返 driver
+      type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
+      type(hooks_t), intent(in)    :: hooks ! checkpoint callback bundle (called at sequence boundaries)
+      ! Caches for the constants and B/G/E coefficient arrays are declared in C6 (module-private statics -
+      ! carried across sequences)
+      ! Pseudocode:
+      ! 1. On first call load the constants: Radau nodes hh(2:8) (old :92-94), w/u weights (old :138-143),
+      !    triangle coefficients c/d/ra (old :153-175)
+      ! 2. Fold velocities v = p/m (old :103-107); iteration count 6 for the first sequence, 2 afterwards
+      !    (old :185, :419)
+      ! 3. Substep loop within the sequence (iterations x 7 substeps, old :197-311):
+      ! 3a. Predict substep coordinates yy from the seventh-order B-coefficient expansion (old :220-245)
+      ! 3b. facade_force evaluated at substep coordinates (old :250-260 force site; f_j = f/m fold)
+      ! 3c. Difference correction: divided differences of the g coefficients + triangle accumulation of the
+      !    B coefficients (old :262-311)
+      ! 4. Sequence close-out: advance q/p by the sequence length tt (old :329-336); last-term hv estimate
+      !    (old :313-317); restart test - if tp/tt<=1 discard the sequence and restart (old :319-327)
+      ! 5. Adaptive step: tp = tcorr*(ss/hv)^(1/9) (old :390; the 1/9 exponent is old :74;
+      !    ss = 10^(-order) is the accuracy parameter, direction dir follows the sign of tf - old :133-135)
+      ! 6. Step clamping dt_min/dt_max - deferred fields of prop_cfg, introduced in C6
+      !    (K1 plan §1.3 deferred note; until then accuracy is controlled by ss alone)
+      ! 7. Checkpoint callbacks at sequence boundaries (out before term; the GWRITE/TEST call sites of old
+      !    RADOUT :449-478 - the ENERGY_1/FINAL/GFINAL statistics orchestration is not carried over, it
+      !    belongs to the statistics phase); the old NIP interval output (old :99-101 prtime) is borne by a
+      !    checkpoint-interval parameter - finalized in C6
+      !    (see previous line)
+      !    (see previous line)
+      ! 8. sta%t += sequence length tt; a true term ends this step and returns to the driver
    end subroutine radau_step
 end module propagator

@@ -1,31 +1,33 @@
 !=====================================================================
-! driver.f90 — L0 主控：program venus——三相位编排（装配 → 演化 → 统计）；
-!               物理态持有者（state_t 参数传递——K1 计划 D1）
-! 参考: venus2026/VENUS.f90:71-115（初始化数组清零 + 读入段——装配相位原型）、
-!       :157-167（积分参数装配——propagator 槽的旧位）、:182-232（随机流
-!       初始化 RANDST :184/:231——rng_init 位）、:239-705（TRAJECTORY_LOOP ×
-!       INTEGRATION_LOOP 两环结构——演化相位骨架原型）、:316-349（初值装载
-!       与 SELECT 调用 :349——samp_run 位）、:402-413（初力/首帧 GWRITE/
-!       QSAVE-PSAVE 暂存——轨迹环首原型）、:419-465（积分环 INTEGRATOR 三
-!       分支分派 :423-465——prop_step 统一）、:505-576 与 :581-662（NFINAL/
-!       NTEST 两出口的结局块）、:669-699（长时程出口）、:243-301（完成段：
-!       结局汇总与直方图五调用 :286-299——统计相位原型）
-! 剥离清单（参考时勿带入，K2 计划取材注——体系分支/双份结局块/死块全剥离）：
-!   - RKUTTA 系数死块 :86-94（RKUTTA 在 K1 §2 死块清单——永不进入）
-!   - 断点续算分支 :182-232（NCHKP——control 留白，将来按需引入）
-!   - 体系分支 :322-346（NSURF==2·NGLO 表面四原子装载/FIXROTDATM 对齐/
-!     THTA 度弧分叉——构型范式数据化 config%reactants%surface_model，
-!     细节归 sampler/roster 成员）
-!   - 双份结局块 :505-576 与 :581-662（两入口的 FINAL/GFINAL/record_all/
-!     反应计数几乎逐行全同——归并为本骨架统计相位单次逐轨迹处理）
-!   - 反弹/最小高追踪 :453-464（BOUNCE/z_pos_min——体系诊断量，归 recorder
-!     列注册）
-!   - 模布居追踪 :363-395/:468-502（MPLOT/ENMODE/EBOND——归 analysis 留白 C8）
-!   - 转动能重复抽样平均 :511-542/:598-629（NCROT ERAVA/ERAVB 双份——
-!     fin_t 留白/统计相位）
-!   - 能量守恒追踪与门 :451-452/:461-464/:559-565（HTMAX-HTMIN——归 recorder
-!     能量列聚合 + outcome 表行）
-!   - STOP/计时双份打印 :243-301（999/6 双通道逐行重复——归并统计段一次）
+! driver.f90 - L0 control kernel: program venus - three-phase orchestration (assembly -> evolution -> statistics);
+!               holder of the physical state (state_t passed by argument - K1 plan D1)
+! Reference: venus2026/VENUS.f90:71-115 (array zero-init + read-in - prototype of the assembly phase),
+!       :157-167 (integrator parameter assembly - old site of the propagator slot), :182-232 (random-stream
+!       initialization RANDST :184/:231 - the rng_init site), :239-705 (TRAJECTORY_LOOP x
+!       INTEGRATION_LOOP two-loop structure - prototype of the evolution-phase skeleton), :316-349 (initial-value
+!       loading and the SELECT call :349 - the samp_run site), :402-413 (initial force / first-frame GWRITE /
+!       QSAVE-PSAVE staging - prototype of the trajectory-loop head), :419-465 (integration-loop INTEGRATOR
+!       three-branch dispatch :423-465 - unified by prop_step), :505-576 and :581-662 (the outcome blocks of the
+!       NFINAL/NTEST two exits), :669-699 (long-time exit), :243-301 (completion section:
+!       outcome summary and the five histogram calls :286-299 - prototype of the statistics phase)
+! Excision list (do not carry over when referencing; K2 plan sourcing note - system branches / duplicated
+!   outcome blocks / dead blocks are all excised):
+!   - RKUTTA coefficient dead block :86-94 (RKUTTA is on the K1 §2 dead-block list - never entered)
+!   - checkpoint-restart branch :182-232 (NCHKP - left blank in control, introduced later if needed)
+!   - system branch :322-346 (NSURF==2.NGLO surface four-atom loading / FIXROTDATM alignment /
+!     THTA degree-radian fork - configuration paradigm moved into data as
+!     config%reactants%surface_model; details belong to sampler/roster members)
+!     (kept for context; see previous line)
+!   - duplicated outcome blocks :505-576 and :581-662 (FINAL/GFINAL/record_all of the two entrances are
+!     nearly line-identical - merged into a single per-trajectory pass in this skeleton's statistics phase)
+!   - bounce/minimum-height tracking :453-464 (BOUNCE/z_pos_min - system diagnostics, moved to recorder
+!     column registration)
+!   - mode-population tracking :363-395/:468-502 (MPLOT/ENMODE/EBOND - deferred to analysis, C8)
+!   - rotational-energy resampling average :511-542/:598-629 (NCROT ERAVA/ERAVB duplicated -
+!     fin_t left blank / statistics phase)
+!   - energy-conservation tracking and gate :451-452/:461-464/:559-565 (HTMAX-HTMIN - moved to recorder
+!     energy-column aggregation + an outcome-table row)
+!   - duplicated STOP/timing prints :243-301 (999/6 double channel, line-by-line repeats - merged into one statistics-section pass)
 !=====================================================================
 program venus
    use control,        only: task, n_traj, title, i_seed
@@ -48,107 +50,110 @@ program venus
    use input,          only: read_input
    implicit none
 
-   ! —— 编排计数与旗标（局部变量——E7；旧 NTZ/NC/NX 全局编排量收归于此）——
-   integer :: traj_i        ! 轨迹序 [条]（旧 NTZ；1..n_traj）
-   integer :: step_i        ! 步序 [步]（旧 NC——pred_eval 的 MAX_STEPS 通道）
-   logical :: term_flag     ! 本轨迹终止旗标（hooks%term 闭包宿主持有——E7
-                            ! 演化环终止通道，propagator.f90 注 3 同源）
-   real(8) :: e0            ! 轨迹初态总能 [kcal/mol]（facade_force 出口——
-                            ! 守恒漂移基准，旧 E0）
-   real(8) :: t_cpu(2)      ! 计时对 [s]（旧 START_TIME/FINISH_TIME——统计段打印）
-   integer :: u_out         ! 记录单元号 [—]（帧/终态行共用；旧 6/8/1000+NTZ
-                            ! 族的单元编排 C4 定形）
-   character(len=32) :: outc_name  ! 本轨迹结局名 [—]（统计相位——outc_classify 出口）
-   ! —— 相位间承接的数据结构 ——
-   type(state_t) :: sta                      ! 物理态（driver 持有——K1 D1；
-                                             ! 演化相位独占写、统计相位只读）
-   type(state_t), allocatable :: sta_fin(:)  ! 各轨迹终态快照 [条]（演化→统计
-                                             ! 承接；旧 QSAVE/PSAVE 暂存位同源)
-   type(hooks_t) :: hooks                    ! 检查点回调束（rec_frame/pred_eval 接线）
-   type(expr_t)  :: expr_term                ! 终止谓词树（装配相位 pred_parse 产物）
-   type(outc_tbl_t) :: outc_tbl              ! 结局分类表（outcome_tbl 解析产物——C7）
-   type(fin_t) :: fin                        ! 终态量（统计相位逐轨迹承接）
-   type(hist_spec_t) :: spec_hist            ! 直方图规格（统计相位装配——C8）
-   type(hist_data_t) :: data_hist            ! 轨迹行表（recorder 终态行聚合——C8）
-   type(lat_t) :: lattice                    ! 格子常数（roster 晶胞映射——统计相位）
-   integer, allocatable :: cnt_outc(:)       ! 各结局计数 [条]（与 outc_tbl 行对齐；
-                                             ! 旧 NONREACT/NREACT/NLONG 计数组）
+   ! -- orchestration counters and flags (local variables - E7; the old global NTZ/NC/NX bookkeeping lands here) --
+   integer :: traj_i        ! trajectory index [count] (old NTZ; 1..n_traj)
+   integer :: step_i        ! step index [step] (old NC - the MAX_STEPS channel of pred_eval)
+   logical :: term_flag     ! termination flag for this trajectory (held by the hooks%term closure host - E7
+                            ! evolution-loop termination channel, same source as propagator.f90 note 3)
+   real(8) :: e0            ! total energy of the initial state [kcal/mol] (facade_force output -
+                            ! the reference for conservation drift, old E0)
+   real(8) :: t_cpu(2)      ! timing pair [s] (old START_TIME/FINISH_TIME - printed in the statistics section)
+   integer :: u_out         ! recording unit number [-] (shared by frames and final-state rows; old 6/8/1000+NTZ
+                            ! family of unit assignments, finalized in C4)
+   character(len=32) :: outc_name  ! outcome name of this trajectory [-] (statistics phase - outc_classify output)
+   ! -- data structures handed between phases --
+   type(state_t) :: sta                      ! physical state (held by the driver - K1 D1;
+                                             ! written exclusively in the evolution phase, read-only in statistics)
+   type(state_t), allocatable :: sta_fin(:)  ! final-state snapshots per trajectory [count] (evolution -> statistics
+                                             ! hand-off; same source as the old QSAVE/PSAVE staging)
+   type(hooks_t) :: hooks                    ! checkpoint callback bundle (wired to rec_frame/pred_eval)
+   type(expr_t)  :: expr_term                ! termination-predicate tree (produced by pred_parse in the assembly phase)
+   type(outc_tbl_t) :: outc_tbl              ! outcome-classification table (parsed from outcome_tbl - C7)
+   type(fin_t) :: fin                        ! final-state quantities (taken over per trajectory in statistics)
+   type(hist_spec_t) :: spec_hist            ! histogram specification (assembled in statistics - C8)
+   type(hist_data_t) :: data_hist            ! trajectory row table (aggregated from recorder final-state rows - C8)
+   type(lat_t) :: lattice                    ! lattice constants (mapped from the roster unit cell - statistics phase)
+   integer, allocatable :: cnt_outc(:)       ! per-outcome counts [count] (aligned with outc_tbl rows;
+                                             ! replaces the old NONREACT/NREACT/NLONG counters)
 
-   ! 伪代码（三相位——E7；规范 §2.5 相位限制表：装配=操作类+初始化性测量、
-   ! 演化=演化类+测量类、统计=后处理类）：
+   ! Pseudocode (three phases - E7; spec §2.5 phase restriction table: assembly = operational class +
+   ! initializing measurements, evolution = evolution class + measurement class, statistics = post-processing class):
    !
-   ! ===== 相位 1：装配 =====
-   ! 1. read_input('input_qct.txt')——输入框架（KEYWORD=VALUE → control/config
-   !    槽/名册暂存/成员参数；文法 C4；旧 VENUS.f90:115 read_venus_input 位）
-   ! 2. rng_init(i_seed 折算)——随机流建立（旧 :184/:231 RANDST(ISEED)；
-   !    control%i_seed 8 字→i_seed 折算映射 C4——input 步 5）
-   ! 3. roster_load()——原子清单装配（质量表/片段 A 表/平衡几何/晶胞；
-   !    旧 :316-335 初值装载位的名册化）
-   ! 4. state_create(sta, size(roster%mass), electronic%n_surf)——物理态分配
-   !    （natoms 由名册定；n_surf 传 config 值——电子振幅按面数分配，缺省 1
-   !    绝热退化点；E9）
-   ! 5. 成员注册（各一行——注册族装配期约定）：
-   !    prop_reg(1, verlet_step)、prop_reg(2, symple_step)、
-   !    prop_reg(3, radau_step)（封闭三成员——X4，统一旧 :423-465 三分支）；
-   !    facade_reg_elec('adiabatic', …)——乙类退化成员（ad_dsdt/ad_force_rule
-   !    到槽的适配接线 C2）；facade_reg_pes(主势名, …)——pes_* 成员 C2 填充
-   !    （单面六成员缺省 r_scalar 注册行零触及；多面主势同入口带可选
-   !    repr=r_diab/r_adiab——E10 归一单签名，随 elec_tsh/iesh 消费者引入，
-   !    注册行同为一行，T2 不变）；samp_reg(分布成员名, …)——dist_* 成员 C5 接线
-   !    （boltzmann/ebk/incident 批 3 骨架 + 余 9 个）
-   ! 6. facade_init()——成员装配 + 能力级三元组校验（非法组合 loud-stop）
-   ! 7. rec_select(observables%rec_level)（或 rec_select(observables%obs_list)
-   !    名单入口）——记录列组选择（注册先于选列）
-   ! 8. pred_parse(event%term_expr, expr_term)——终止树装配；无 TERMINATE 键
-   !    时默认表达式（同参版——C3 装配层构造，predicate.f90 注 5）；
-   !    event%outcome_tbl → outc_tbl 解析（C7 文法定形件）；spec_hist/
-   !    lattice 装配（直方图规格与 roster 晶胞映射——C8）
-   ! 9. hooks 接线（E7 终止通道——propagator.f90 注 3）：hooks%out => 输出
-   !    闭包（宿主内部调 rec_frame(sta, u_out)——nopass 指针 + 宿主持单元号，
-   !    闭包宿主例程形态 C3 定形）；hooks%term => 终止闭包（内部调
-   !    pred_eval(sta, expr_term, step_i)，真则置 term_flag——旗标本程序持有）
-   ! 10. allocate(sta_fin(n_traj)、cnt_outc(outc_tbl%n_row)、data_hist 列——
-   !     相位间承接结构装配；计时起点 t_cpu(1)
+   ! ===== Phase 1: assembly =====
+   ! 1. read_input('input_qct.txt') - input framework (KEYWORD=VALUE -> control/config
+   !    slots / roster staging / member parameters; grammar finalized in C4; old VENUS.f90:115 read_venus_input site)
+   ! 2. rng_init(converted i_seed) - establish the random stream (old :184/:231 RANDST(ISEED);
+   !    the control%i_seed 8-word -> i_seed conversion is finalized in C4 - input step 5)
+   ! 3. roster_load() - assemble the roster (mass table / fragment-A table / equilibrium geometry / unit cell;
+   !    the roster-ification of the old :316-335 initial-value loading site)
+   ! 4. state_create(sta, size(roster%mass), electronic%n_surf) - allocate the physical state
+   !    (natoms from the roster; n_surf passes the config value - electronic amplitudes are sized by the
+   !    number of surfaces, default 1, the adiabatic degenerate point; E9)
+   !    (see previous line)
+   ! 5. member registration (one line each - the registry-family assembly-time convention):
+   !    prop_reg(1, verlet_step), prop_reg(2, symple_step),
+   !    prop_reg(3, radau_step) (the closed three-member set - X4, unifying the old :423-465 three branches);
+   !    facade_reg_elec('adiabatic', ...) - the class-B degenerate member (the adapter wiring from
+   !    ad_dsdt/ad_force_rule to the slot is finalized in C2); facade_reg_pes(main-PES name, ...) - pes_*
+   !    members filled in C2 (the six single-surface members keep the default r_scalar with zero registration-line
+   !    changes; multi-surface main PES uses the same entry with optional repr=r_diab/r_adiab - the E10 unified
+   !    single signature, introduced with the elec_tsh/iesh consumers, still one registration line, T2
+   !    unchanged); samp_reg(distribution member name, ...) - dist_* member wiring in C5
+   !    (batch-3 skeleton boltzmann/ebk/incident + the remaining 9)
+   ! 6. facade_init() - member assembly + capability-triple validation (illegal combinations loud-stop)
+   ! 7. rec_select(observables%rec_level) (or rec_select(observables%obs_list)
+   !    list entry) - recording column-group selection (registration precedes column selection)
+   ! 8. pred_parse(event%term_expr, expr_term) - assemble the termination tree; with no TERMINATE key,
+   !    the default expression (same-parameter version - built by the assembly layer, predicate.f90 note 5);
+   !    event%outcome_tbl -> outc_tbl parsing (the C7 grammar deliverable); spec_hist /
+   !    lattice assembly (histogram specification and roster unit-cell mapping - C8)
+   ! 9. hooks wiring (the E7 termination channel - propagator.f90 note 3): hooks%out => output
+   !    closure (host internally calls rec_frame(sta, u_out) - nopass pointer + unit number held by the host;
+   !    closure-host routine shape finalized in C3); hooks%term => termination closure (internally calls
+   !    pred_eval(sta, expr_term, step_i) and sets term_flag when true - the flag is held by this program)
+   ! 10. allocate(sta_fin(n_traj), cnt_outc(outc_tbl%n_row), data_hist columns -
+   !     assemble the inter-phase hand-off structures; timing start t_cpu(1)
    !
-   ! ===== 相位 2：演化（轨迹环 × 积分环）=====
-   ! 【相位限制声明（E7——规范 §2.5）】：积分环（下方内环）内只出现
-   !    facade/propagator/recorder/predicate 四类调用——直接调用仅
-   !    prop_step（propagator 类）；facade_force（facade 类）由传播子成员
-   !    内部求值；rec_frame（recorder 类）经 hooks%out 检查点回调；
-   !    pred_eval（predicate 类）经 hooks%term 闭包。环内无 sampler/
-   !    analysis/input/roster 调用；编排计数 traj_i/step_i 为局部变量。
-   ! 轨迹环：do traj_i = 1, n_traj（旧 TRAJECTORY_LOOP :239）
-   ! 1. samp_run(scheme, sta)——逐轨迹初态制备（操作类调用——规范 §2.3
-   !    边界 4：装配相位的实际调用含分布成员，制备成员属装配性调用；
-   !    位于轨迹环首、积分环外；旧 :349 SELECT 位。scheme 取
-   !    reactants%dist_scheme 映射的成员名——C5 接线）
-   ! 2. facade_force(sta, e0)——初力与初态总能（旧 :402-403 DVDQ_1/ENERGY_1）
-   ! 3. rec_frame(sta, u_out)——首帧（旧 :405 GWRITE 位）
-   ! 4. step_i = 0、term_flag = .false.（编排复位）
-   ! 5. 积分环：do while (.not. term_flag)（旧 INTEGRATION_LOOP :419）
-   ! 5a. step_i = step_i + 1（编排计数——MAX_STEPS 安全网通道）
-   ! 5b. prop_step(sta, hooks)——推进一检查点（成员内部：facade_force
-   !     多次 + 检查点回调先 out（rec_frame）后 term（pred_eval→term_flag）；
-   !     旧 :423-465 三分支 + :450/:459 间隔输出的统一位）
-   ! 6. 环尾（积分环外、轨迹环尾）：sta_fin(traj_i) = sta——终态快照存档
-   !    （旧 :411-413 QSAVE/PSAVE 暂存位同源）；rec_final(sta, u_out)——
-   !    终态行（测量类；recorder 终态行含体系诊断列——bounce/z_min 等，
-   !    剥离清单第 5 条的落位）
-   !    （旧双份结局块 :505-576/:581-662 的 FINAL/GFINAL/record_all/反应计数
-   !    与长时程出口 :669-699——全部延后统计相位处理，见剥离清单）
+   ! ===== Phase 2: evolution (trajectory loop x integration loop) =====
+   ! [Phase restriction statement (E7 - spec §2.5)]: inside the integration loop (the inner loop below)
+   !    only the four call classes facade/propagator/recorder/predicate appear - the only direct call is
+   !    prop_step (propagator class); facade_force (facade class) is evaluated inside the propagator member,
+   !    rec_frame (recorder class) comes through the hooks%out checkpoint callback,
+   !    pred_eval (predicate class) through the hooks%term closure. No sampler /
+   !    analysis/input/roster calls inside the loop; the orchestration counters traj_i/step_i are locals.
+   ! Trajectory loop: do traj_i = 1, n_traj (old TRAJECTORY_LOOP :239)
+   ! 1. samp_run(scheme, sta) - per-trajectory initial-state preparation (an operational-class call - spec §2.3
+   !    boundary 4: actual calls in the assembly phase include distribution members, and preparation members
+   !    count as assembly-like calls; located at the trajectory-loop head, outside the integration loop;
+   !    old :349 SELECT site. scheme takes the member name mapped from reactants%dist_scheme - C5 wiring)
+   ! 2. facade_force(sta, e0) - initial force and total energy of the initial state (old :402-403 DVDQ_1/ENERGY_1)
+   ! 3. rec_frame(sta, u_out) - first frame (old :405 GWRITE site)
+   ! 4. step_i = 0, term_flag = .false. (orchestration reset)
+   ! 5. Integration loop: do while (.not. term_flag) (old INTEGRATION_LOOP :419)
+   ! 5a. step_i = step_i + 1 (orchestration counter - the MAX_STEPS safety-net channel)
+   ! 5b. prop_step(sta, hooks) - advance one checkpoint (inside the member: facade_force called
+   !     multiple times + checkpoint callbacks, first out (rec_frame) then term (pred_eval -> term_flag);
+   !     the unified site of the old :423-465 three branches + :450/:459 interval output)
+   ! 6. Loop tail (outside the integration loop, at the trajectory-loop end): sta_fin(traj_i) = sta - archive
+   !    the final-state snapshot (same source as old :411-413 QSAVE/PSAVE); rec_final(sta, u_out) -
+   !    the final-state row (measurement class; recorder final-state rows carry system-diagnostic columns - bounce/z_min etc.,
+   !    the landing spot of excision-list item 5)
+   !    (the old duplicated outcome blocks :505-576/:581-662 - FINAL/GFINAL/record_all/reaction counting
+   !    and the long-time exit :669-699 - all deferred to the statistics phase, see the excision list)
    !
-   ! ===== 相位 3：统计（后处理类——outcome/analysis 调用）=====
-   ! 1. 逐轨迹：do traj_i = 1, n_traj
-   ! 1a. fin_eval(sta_fin(traj_i), fin)——终态量（旧 FINAL 广义部分）
-   ! 1b. outc_name = outc_classify(fin, outc_tbl)；cnt_outc 命中行 +1
-   !     （旧 :552-571/:645-657 反应计数与 :669-685 长时程计数——数据化）
-   ! 1c. data_hist 聚合（fin/recorder 终态行 → e_rel/thta/x0/y0/z_min/
-   !     v_fin/n_bnc/site 列——旧 GFINAL.f:199-202 与 record_all 的装配位，
-   !     C8 接线）
-   ! 2. analysis 调用：plot_hist(spec_hist, data_hist, lattice)（五类直方图
-   !    ——旧 :286-299 plot_* 五调用位；HISTO 目录编排在此）；需要时
-   !    dens_states/eig_out（态密度/本征输出）
-   ! 3. 汇总打印：结局计数表/有效轨迹数/能量守恒漂移汇总/计时（旧
-   !    :243-284 双通道归并一次；守恒门 verdict 交 outcome 表行）
-   ! 4. state_destroy(sta)、释放 sta_fin/cnt_outc/data_hist——收尾
+   ! ===== Phase 3: statistics (post-processing class - outcome/analysis calls) =====
+   ! 1. Per trajectory: do traj_i = 1, n_traj
+   ! 1a. fin_eval(sta_fin(traj_i), fin) - final-state quantities (the generalized part of old FINAL)
+   ! 1b. outc_name = outc_classify(fin, outc_tbl); increment cnt_outc for the matched row
+   !     (old :552-571/:645-657 reaction counting and :669-685 long-time counting - now data-driven)
+   ! 1c. data_hist aggregation (fin / recorder final-state rows -> e_rel/thta/x0/y0/z_min/
+   !     v_fin/n_bnc/site columns - the assembly site of old GFINAL.f:199-202 and record_all,
+   !     C8 wiring)
+   ! 2. analysis calls: plot_hist(spec_hist, data_hist, lattice) (the five histogram kinds
+   !    - old :286-299 five plot_* call sites; HISTO directory layout lives here); when needed,
+   !    dens_states/eig_out (density of states / eigenvalue output)
+   ! 3. Summary printout: outcome count table / valid-trajectory count / energy-conservation drift summary /
+   !    timing (old
+   !    :243-284 double channel merged into one pass; the conservation-gate verdict goes to an outcome-table row)
+   ! 4. state_destroy(sta), deallocate sta_fin/cnt_outc/data_hist - wrap up
 end program venus

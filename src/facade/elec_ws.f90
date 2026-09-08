@@ -1,20 +1,31 @@
 !=====================================================================
-! elec_ws.f90 — L2 门面内部接线契约：电子工作区 ws_t（表象构件的容器——
-!               甲类成员填充、乙类成员消费；一步生命周期，每步求值重建）
-! 参考: docs/plans/K2.md E10（用户裁决 2026-09-07：接口不变性/黑箱性/
-!       物自体原则三公理）；docs/design_spec_completeness.md §3.2-2（两轴）
-! 设计公理（E10 立法）：
-!   A 接口不变性——甲/乙类成员签名对体系不变：签名只传容器 ws_t，
-!     不传 h_ij/d_ij 等形态数组（面数、表象不进签名）；
-!   B 黑箱性——甲类+乙类合为一个 system black box；箱外（driver/
-!     propagator/output）只见 (Q,P,s[,dt])→(F,E)；ws 不出现于 facade_force
-!     箱外签名；
-!   C 物自体原则——H_ij/d_ij/V_i 等表象构件不具有物自体地位（随表象选择
-!     而变的"为我们"之量）：不进 state_t、不出箱外、生命周期一步
-!     （facade_force 局部声明、门面内消亡）。
-! 本模块为成员可见的哑元类型契约（Fortran 约束：签名哑元类型必须对
-! 成员模块可见）——依赖方向：force_facade 与 interface_electronic/ 成员
-! 均 use 本模块（L3→L2 向下依赖合法）；本模块零依赖（仅 implicit none）。
+! elec_ws.f90 - L2 facade-internal wiring contract: electronic workspace ws_t (the container of
+!               representation constructs - filled by class-A members, consumed by class-B members;
+!               one-step lifetime, rebuilt at every evaluation)
+! Reference: docs/plans/K2.md E10 (user adjudication 2026-09-07: interface invariance / black-box
+!       property / thing-in-itself principle - the three axioms); docs/design_spec_completeness.md §3.2-2 (two axes)
+! Design axioms (enacted by E10):
+!   A Interface invariance - class-A/class-B member signatures are invariant across systems: the signature
+!     carries only the container ws_t, never shape arrays like h_ij/d_ij (surface count and representation
+!     stay out of the signature);
+!     (see previous line)
+!   B Black-box property - class A + class B together form one system black box; outside the box
+!     (driver/propagator/output) only (Q,P,s[,dt])->(F,E) is visible; ws never appears in a
+!     facade_force signature outside the box;
+!     (see previous line)
+!     (see previous line)
+!   C Thing-in-itself principle - representation constructs such as H_ij/d_ij/V_i have no
+!     thing-in-itself status (they are "for us" quantities that change with the representation choice):
+!     they do not enter state_t, do not leave the box, and live for one step (declared locally in
+!     facade_force, dying inside the facade).
+!     (see previous line)
+!     (see previous line)
+! This module is the dummy-type contract visible to members (a Fortran constraint: signature dummy types
+! must be visible to the member modules) - dependency direction: force_facade and the
+! interface_electronic/ members all use this module (L3->L2 downward dependency is legal); this module
+! itself has zero dependencies (only implicit none).
+! (see previous line)
+! (see previous line)
 !=====================================================================
 module elec_ws
    implicit none
@@ -22,36 +33,39 @@ module elec_ws
    public :: ws_t
    public :: r_empty, r_scalar, r_diab, r_adiab
 
-   ! ws 填充模式值（repr 标记——表象从接口分叉降级为数据标记，E10）
-   integer, parameter :: r_empty  = 0  ! 空/未装配（门面每步求值前复位）
-   integer, parameter :: r_scalar = 1  ! 单面标量模式（g_add/v_add——六单面成员）
-   integer, parameter :: r_diab   = 2  ! 多面透热模式（h_ij/dh_ij；IESH 天然）
-   integer, parameter :: r_adiab  = 3  ! 多面绝热模式（v_surf/g_surf/d_ij）
+   ! ws fill-mode values (the repr tag - representation demoted from an interface fork to a data tag, E10)
+   integer, parameter :: r_empty  = 0  ! empty / not assembled (facade resets before each evaluation)
+   integer, parameter :: r_scalar = 1  ! single-surface scalar mode (g_add/v_add - the six single-surface members)
+   integer, parameter :: r_diab   = 2  ! multi-surface diabatic mode (h_ij/dh_ij; natural for IESH)
+   integer, parameter :: r_adiab  = 3  ! multi-surface adiabatic mode (v_surf/g_surf/d_ij)
 
-   ! 电子工作区：门面私有中间量容器（成员经签名读写；对箱外不可见）
+   ! Electronic workspace: the facade-private container of intermediates (members read/write it via the
+   ! signature; invisible outside the box)
    type :: ws_t
-      integer :: repr = r_empty   ! 填充模式（r_*：成员填充时自报；门面与
-                                  ! 乙类成员按此解释容器——表象是数据不是签名）
-      integer :: i_want = 0       ! 请求字段（门面写入：裁剪请求——绝热模式
-                                  ! 当前面耦合行 d_i,· 的 i；成员读。
-                                  ! i_surf 不进甲类签名，经此字段传达）
-      ! —— scalar 模式容器 ——
-      real(8), allocatable :: g_add(:)  ! 力核 −dV/dq [eV/Å]（随机律为等效力核）
-      real(8)              :: v_add     ! 能量贡献 [eV]
-      ! —— diab 模式容器 ——
-      real(8), allocatable :: h_ij(:,:)   ! 透热哈密顿矩阵 [eV]（n_surf 阶对称；
-                                          ! 成员交付全矩阵；对称性成员自理）
-      real(8), allocatable :: dh_ij(:,:,:) ! 矩阵元梯度 [eV/Å]（ndof×n_surf²；
-                                          ! 大态空间压缩交付属文法版本化事项）
-      ! —— adiab 模式容器 ——
-      real(8), allocatable :: v_surf(:)   ! 各面能量 [eV]
-      real(8), allocatable :: g_surf(:,:) ! 各面力核 [eV/Å]（ndof×n_surf）
-      real(8), allocatable :: d_ij(:,:)   ! 当前面导数耦合 <φ_i|∇_q|φ_j> [1/Å]
-                                          ! （ndof×n_surf——按 i_want 行交付，
-                                          ! O(ndof·n_surf) 而非全对；能隙加权
-                                          ! 变体交成员/消费者自理，契约认裸 d）
+      integer :: repr = r_empty   ! fill mode (r_*: self-declared by the filling member; the facade and
+                                  ! class-B members interpret the container by it - representation is data, not signature)
+      integer :: i_want = 0       ! request field (written by the facade: a trimming request - in adiabatic
+                                  ! mode, the i of the current-surface coupling row d_i,.; the member reads it.
+                                  ! i_surf stays out of the class-A signature and is conveyed through this field)
+      ! -- scalar-mode container --
+      real(8), allocatable :: g_add(:)  ! force kernel -dV/dq [eV/Å] (an equivalent force kernel for stochastic laws)
+      real(8)              :: v_add     ! energy contribution [eV]
+      ! -- diab-mode container --
+      real(8), allocatable :: h_ij(:,:)   ! diabatic Hamiltonian matrix [eV] (symmetric of order n_surf;
+                                          ! the member delivers the full matrix; symmetry is the member's own affair)
+      real(8), allocatable :: dh_ij(:,:,:) ! matrix-element gradients [eV/Å] (ndof x n_surf^2;
+                                          ! compressed delivery for large state spaces is a grammar-versioning matter)
+      ! -- adiab-mode container --
+      real(8), allocatable :: v_surf(:)   ! per-surface energies [eV]
+      real(8), allocatable :: g_surf(:,:) ! per-surface force kernels [eV/Å] (ndof x n_surf)
+      real(8), allocatable :: d_ij(:,:)   ! current-surface derivative couplings <phi_i|grad_q|phi_j> [1/Å]
+                                          ! (ndof x n_surf - delivered by the requested i_want row,
+                                          ! O(ndof*n_surf) rather than all pairs; gap-weighted variants are
+                                          ! left to the member/consumer - the contract accepts plain d)
    end type ws_t
 contains
-   ! 本模块纯类型/常数契约，无例程（类型生命周期管理归 force_facade：
-   ! 每步求值复位 repr=r_empty、按模式分配/复用容器——C2 随门面具体化定形）
+   ! This module is a pure type/constant contract with no routines (type lifecycle management belongs to
+   ! force_facade: reset repr=r_empty before each evaluation, allocate/reuse containers per mode -
+   ! finalized in C2 together with the facade concretization)
+   ! (see previous line)
 end module elec_ws

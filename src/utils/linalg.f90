@@ -1,7 +1,9 @@
 !=====================================================================
-! linalg.f90 — L5 仪器：对称矩阵本征分解（本征值升序 + 本征向量按列）
-! 参考: src_VENUS/EIGN.f:1-248（EIGN——Givens-Householder 三对角化 + 带位移 QL）
-!       消费者：惯量张量对角化 venus_input.f90:553/:814；力常数矩阵 FGMTRX.f:35/:60
+! linalg.f90 - L5 instrument: symmetric-matrix eigendecomposition (eigenvalues ascending +
+!              eigenvectors by column)
+! Reference: src_VENUS/EIGN.f:1-248 (EIGN - Givens-Householder tridiagonalization + shifted QL)
+!       consumers: inertia-tensor diagonalization venus_input.f90:553/:814; force-constant
+!       matrix FGMTRX.f:35/:60
 !=====================================================================
 module linalg
    implicit none
@@ -9,23 +11,32 @@ module linalg
    public :: eig_sym
 contains
    !------------------------------------------------------------------
-   ! eig_sym(a, d) — 对称阵本征值/向量（a 下三角读入并被破坏；本征值升序）
-   ! 参考: src_VENUS/EIGN.f:27-99（三对角化）；:103-186（单位阵伴生 + 带位移 QL 迭代）；
-   !       :192-229（转置排序 + 向量重排）；:231-247（回代累积变换）
+   ! eig_sym(a, d) - symmetric-matrix eigenvalues/vectors (a read by lower triangle and destroyed;
+   ! eigenvalues ascending)
+   ! Reference: src_VENUS/EIGN.f:27-99 (tridiagonalization); :103-186 (adjoint identity + shifted QL
+   ! iteration);
+   !       :192-229 (transposed sort + vector reordering); :231-247 (back-substitution
+   !       accumulating transforms)
    subroutine eig_sym(a, d)
-      real(8), intent(inout) :: a(:,:)  ! 对称矩阵 n×n（下三角输入并被破坏；
-                                        ! 出口为本征向量按列、升序对应 d）
-      real(8), intent(out)   :: d(:)    ! 本征值（n 个，代数升序）
-      ! 伪代码：
-      ! 1. n = size(d)；n=0 直接返回（旧 :20）
-      ! 2. Givens-Householder 三对角化：逐列构造 W 向量与比例因子 D，
-      !    P/Q 向量法形成 PAP，得对角 gamma、次对角 beta 及变换因子阵
-      !    （仅用下三角并破坏之，旧 :27-99）
-      ! 3. 伴生单位阵；带位移 QL 迭代（位移取角上 2×2 中靠近下对角元的根，
-      !    旧 :109-186）；收敛阈（旧哑元 RHO）取内部默认，消费者需要时
-      !    C 阶段提升为哑元
-      ! 4. 本征值转置排序成升序，本征向量列同步换位（旧 :192-229）
-      ! 5. 本征向量回代累积 Householder 变换（旧 :231-247）
-      ! 6. d ← 排序后本征值；向量按列存于 a
+      real(8), intent(inout) :: a(:,:)  ! symmetric matrix n x n (lower triangle on input,
+                                        ! destroyed;
+      ! on exit, eigenvectors by column, ascending to
+      ! match d)
+      real(8), intent(out)   :: d(:)    ! eigenvalues (n of them, algebraically ascending)
+      ! Pseudocode:
+      ! 1. n = size(d); n=0 returns immediately (old :20)
+      ! 2. Givens-Householder tridiagonalization: build the W vector and scale factor D
+      ! column by column,
+      !    the P/Q vector method forms PAP, giving the diagonal gamma, off-diagonal beta, and
+      !    the transform-factor array
+      !    (uses and destroys only the lower triangle, old :27-99)
+      ! 3. Adjoint identity matrix; shifted QL iteration (the shift is the root of the corner
+      ! 2x2 closest to the lower diagonal element,
+      !    old :109-186); the convergence threshold (old dummy RHO) takes an internal default,
+      !    to be promoted to a dummy argument in phase C
+      !    (see previous line)
+      ! 4. Sort the transposed eigenvalues ascending, swapping eigenvector columns in step (old :192-229)
+      ! 5. Back-substitute the eigenvectors accumulating the Householder transforms (old :231-247)
+      ! 6. d <- the sorted eigenvalues; vectors stored by column in a
    end subroutine eig_sym
 end module linalg

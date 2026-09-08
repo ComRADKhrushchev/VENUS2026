@@ -1,27 +1,29 @@
-# VENUS2026 项目
+# VENUS2026 Project
 
-VENUS 程序精简与重构的独立工作项目。
+An independent working project for streamlining and refactoring the VENUS program.
 
-## 布局
+## Layout
 
 ```
-venus2026/    程序源码（自 C@Au_TDHF/venus2026_stage 迁出，git 管理文件
-              223 个，工作产物 fort.*/stdout* 未迁移；原仓库含 .git 历史，
-              远程 github.com/ComRADKhrushchev/VENUS2026.git）
-docs/         设计文档
-  design_spec_completeness.md   程序完备性设计规范（推演文档）
+venus2026/    program sources (moved out of C@Au_TDHF/venus2026_stage; 223 git-managed
+              files, work products fort.*/stdout* not migrated; the original repository
+              carries .git history, remote github.com/ComRADKhrushchev/VENUS2026.git)
+docs/         design documents
+  design_spec_completeness.md   program-completeness design spec (derivation document)
 ```
 
-## 当前阶段任务
+## Current-phase task
 
-精简 VENUS2026：削除冗余功能。架构裁决依据
-docs/design_spec_completeness.md——四类纯粹子例程 + 控制核的分解、
-不可约接口 A（力贡献门面，内部双注册轴）与 B′（初态分布族）、
-封闭选择族（核传播子、终止谓词文法、结局分类数据）。
+Streamline VENUS2026: cut redundant functionality. The architectural adjudication basis is
+docs/design_spec_completeness.md — the decomposition into four classes of pure subroutines plus the
+control kernel; the irreducible interfaces A (the force-contribution facade, internally a dual
+registration axis) and B′ (the initial-state distribution family); and the closed selection families
+(nuclear propagators, the termination-predicate grammar, outcome-classification data).
 
-## 注意
+## Notes
 
-- venus2026/ 目前无 .git（迁移时仅复制了受管文件）；需要历史时回
-  C@Au_TDHF/venus2026_stage 取，或在原仓库继续用 git 操作后同步
-- 构建与运行约定见 venus2026/CLAUDE.md（Makefile 单入口、ifx、
-  内部单位 Å/amu/10 fs、KEYWORD=VALUE 输入）
+- venus2026/ currently has no .git (only the managed files were copied during migration); when
+  history is needed, go back to C@Au_TDHF/venus2026_stage, or continue working with git in the
+  original repository and then sync
+- Build and run conventions are in venus2026/CLAUDE.md (Makefile single entry, ifx, internal units
+  Å/amu/10 fs, KEYWORD=VALUE input)

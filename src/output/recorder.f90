@@ -1,30 +1,44 @@
 !=====================================================================
-! recorder.f90 — L4 记录：轨迹帧/终态的列式记录器（列 = 名字 + 抽取器的
-!                注册机制；预设级或名单选列——体系知识经 roster/名单参数化）
-! 参考: src_VENUS/GWRITE.f90:25-31（帧头：轨迹号/步号/时间 + T/V/H 能量行）、
-!       :49-60（fort.1NNN 分子文件：步头 + E0(eV)/T(eV)/H(eV) 行 + 指定原子
-!       Q/V 三元组）、:106-117（全原子 Q/P 展平段——GWRITE_LEVEL≥2）、
-!       :122-127（逐原子力段——GWRITE_LEVEL≥5）、:133-143（NFQP 全坐标
-!       stdout 段）、:145（FLUSH 检查点冲刷）；
-!       src_VENUS/HIST.f90:8-24（record_all 终态记录列：Ntz/Nb/Site/RX0/RY0/
-!       Zmin/Vfinal/Erel/Theta/Ephi——rec_final 列组来源；格位列经 surfcell
-!       :19——lattice 传参化归 plot_hist 模块）；
-!       src_VENUS/VENUS.f90:405/:450/:459（GWRITE 调用位——检查点间隔 NIP 的
-!       旧编排，新版经 propagator 检查点回调）、:572（CLOSE(1000+NTZ) 单元
-!       收尾——编排归 driver）；
-!       src_TEST/interface_TEST.f90:18-30（POT0 能量口径——能量列抽取器口径）
-! 剥离警示（GWRITE 四处体系知识——参考勿带入，K2 计划取材注）：
-!   (1) 原子标签写死：'Q(C)='/'V(C)=' 以原子 1 为体系指定原子（:59-60）
-!       → 观测对象经名册片段/名单指定；
-!   (2) 质量阈元素名：W(i)<50 → 'C '/'Au ' 标签（:110-114）→ 标签取
-!       roster%symb；
-!   (3) nearest-Au 诊断：指定原子到最近 Au 的距离/坐标/分量扫描（:68-99）
-!       → 最近邻诊断列参数化（目标原子与候选集经名册指定，C8 定形）；
-!   (4) PBC 盒写死：由 QZB(1,·) 极值 + 6.0 Å padding 推 box（:69-87）→
-!       盒参数经 roster 晶胞字段（box_lx/box_ly/skew）；
-!   另：E0/23.0605 eV 显示换算（:57）不在本模块散写——eV 口径归单位契约
-!   （force_facade 的 ev_kcal 唯一点，T4 同源）；旧随机数回显段（:30）与
-!   旧温度回显段（:33-45）属旧任务分支——不迁
+! recorder.f90 - L4 recording: column-style recorder of trajectory frames / final states
+!                (column = name + extractor registration mechanism; column selection by
+!                preset level or list - system knowledge parameterized via roster/list)
+! (see previous line)
+! Reference: src_VENUS/GWRITE.f90:25-31 (frame header: trajectory number / step number / time
+!       + T/V/H energy line),
+!       :49-60 (fort.1NNN molecule files: step header + E0(eV)/T(eV)/H(eV) lines + the
+!       designated atom's
+!       Q/V triple), :106-117 (all-atom Q/P flattened section - GWRITE_LEVEL>=2),
+!       :122-127 (per-atom force section - GWRITE_LEVEL>=5), :133-143 (NFQP full-coordinate
+!       stdout section), :145 (FLUSH checkpoint flush);
+!       src_VENUS/HIST.f90:8-24 (record_all final-state record columns: Ntz/Nb/Site/RX0/RY0/
+!       Zmin/Vfinal/Erel/Theta/Ephi - the source of the rec_final column group; the site column
+!       via surfcell
+!       :19 - lattice parameterized into the plot_hist module);
+!       src_VENUS/VENUS.f90:405/:450/:459 (GWRITE call sites - the old orchestration of the
+!       NIP checkpoint interval,
+!       new version via propagator checkpoint callbacks), :572 (the CLOSE(1000+NTZ) unit
+!       close-out - orchestration belongs to the driver);
+!       src_TEST/interface_TEST.f90:18-30 (POT0 energy convention - the energy-column
+!       extractor convention)
+! Excision warning (four spots of system knowledge in GWRITE - do not carry over when
+! referencing; K2 plan sourcing note):
+!   (1) Hardwired atom labels: 'Q(C)='/'V(C)=' treat atom 1 as the system's designated atom
+!       (:59-60)
+!       -> the observed object is designated via roster fragments / lists;
+!   (2) Mass-threshold element names: W(i)<50 -> 'C '/'Au ' labels (:110-114) -> labels
+!       taken from roster%symb;
+!       (see previous line)
+!   (3) nearest-Au diagnostics: distance/coordinates/component scan from the designated atom
+!       to the nearest Au (:68-99)
+!       -> nearest-neighbor diagnostic column parameterized (target atom and candidate set via
+!       the roster, finalized in C8);
+!   (4) Hardwired PBC box: derived from the QZB(1,.) extrema + 6.0 Å padding (:69-87) ->
+!       box parameters via the roster unit-cell fields (box_lx/box_ly/skew);
+!   Also: the E0/23.0605 eV display conversion (:57) is not scattered in this module - the eV
+!   convention belongs to the unit contract
+!   (the single force_facade ev_kcal point, same source as T4); the old random-number echo
+!   section (:30) and
+!   the old temperature echo section (:33-45) belong to old task branches - not carried over
 !=====================================================================
 module recorder
    use state,         only: state_t
@@ -35,123 +49,159 @@ module recorder
    private
    public :: col_val_i, rec_reg_col, rec_select, rec_frame, rec_final
 
-   ! 列抽取器接口：由物理态抽取一个标量观测值（测量类消费演化服务——能量列
-   ! 内部经 facade_force 求势能，方向合法；规范 §2.2 测量类定义）
+   ! Column-extractor interface: extract one scalar observable from the physical state
+   ! (the measurement class consuming evolution services - energy columns obtain the potential
+   ! energy internally via facade_force, a legal direction; spec §2.2 measurement-class
+   ! definition)
    abstract interface
       real(8) function col_val_i(sta)
          import :: state_t
-         type(state_t), intent(in) :: sta   ! 物理态（只读快照）
+         type(state_t), intent(in) :: sta   ! physical state (read-only snapshot)
       end function col_val_i
    end interface
 
-   ! 列注册表（列 = 名字 + 抽取器；装配期注册，记录期只读）
-   integer, parameter :: max_col = 64        ! 注册表容量 [列]
+   ! Column registry (column = name + extractor; registered at assembly time, read-only
+   ! during recording)
+   integer, parameter :: max_col = 64        ! registry capacity [column]
    type :: col_entry_t
-      character(len=16) :: name = ''         ! 列名（obs_list 名单键；1-16 字符）
-      procedure(col_val_i), pointer, nopass :: val => null() ! 抽取器
+      character(len=16) :: name = ''         ! column name (obs_list list key; 1-16 characters)
+      procedure(col_val_i), pointer, nopass :: val => null() ! extractor
    end type col_entry_t
-   type(col_entry_t) :: col_tbl(max_col)     ! 列注册表（模块私有）
-   integer :: n_col = 0                      ! 已注册列数 [列]
-   integer :: sel_idx(max_col) = 0           ! 已选列的注册表索引 [—]
-   integer :: n_sel = 0                      ! 已选列数 [列]（rec_select 装配）
-   logical :: sec_qp  = .false.              ! 全原子 Q/P 展平段门（rec_level≥2）
-   logical :: sec_frc = .false.              ! 逐原子力段门（rec_level≥5）
+   type(col_entry_t) :: col_tbl(max_col)     ! column registry (module-private)
+   integer :: n_col = 0                      ! registered column count [column]
+   integer :: sel_idx(max_col) = 0           ! registry indices of the selected columns [-]
+   integer :: n_sel = 0                      ! selected column count [column] (rec_select assembly)
+   logical :: sec_qp  = .false.              ! all-atom Q/P flattened-section gate (rec_level>=2)
+   logical :: sec_frc = .false.              ! per-atom force section gate (rec_level>=5)
 
-   ! 选列泛型两入口：预设级 or 名单（GWRITE_LEVEL 四级语义 GWRITE.f90:11-15
-   ! 与 config%observables%rec_level/obs_list 两键——K1 §1.4 观测设置槽）
+   ! Two entries of the column-selection generic: preset level or list (the four-level
+   ! GWRITE_LEVEL semantics of GWRITE.f90:11-15
+   ! paired with the config%observables%rec_level/obs_list keys - the K1 §1.4 observable
+   ! settings slot)
    interface rec_select
-      module procedure rec_sel_lvl   ! 按预设级（rec_level 键）
-      module procedure rec_sel_lst   ! 按名单（obs_list 键——逗号分隔列名）
+      module procedure rec_sel_lvl   ! by preset level (the rec_level key)
+      module procedure rec_sel_lst   ! by list (the obs_list key - comma-separated column names)
    end interface rec_select
 contains
    !------------------------------------------------------------------
-   ! rec_reg_col(name, proc) — 注册观测列（名字 + 抽取器各一行）
-   ! 参考: docs/final_completion_plan.md §5（列注册机制——C4 记录器）；
-   !       interface_TEST.f90:18-30（能量列口径——框架预注册列的参照）
+   ! rec_reg_col(name, proc) - register an observable column (one row each of name + extractor)
+   ! Reference: docs/final_completion_plan.md §5 (the column-registration mechanism - C4
+   ! recorder);
+   !       interface_TEST.f90:18-30 (energy-column convention - reference for the
+   !       framework-preregistered columns)
    subroutine rec_reg_col(name, proc)
-      character(len=*), intent(in) :: name  ! 列名（obs_list 名单键）
-      procedure(col_val_i) :: proc          ! 列抽取器
-      ! 伪代码：
-      ! 1. 重名或表满 → loud-stop（指名列名）
-      ! 2. 登记行 {name, proc}（装配相位执行——driver/成员 init 各注册一行）
-      ! 3. 框架预注册列（本模块装配时先调）：t_kin（Σp²/2·roster%mass/e_conv，
-      !    旧 T 口径 ENERGY.f:58-66）、v_pot/e_tot（经 facade_force(sta, e)
-      !    ——observables%e_kin/e_pot/e_tot 开关各对应一列，旧 GWRITE.f90:31
-      !    的 T/V/H 行）；成员/分析量列（e_rel、z_min、n_bnc 等）随成员与
-      !    analysis 各自注册——C8 接线
+      character(len=*), intent(in) :: name  ! column name (obs_list list key)
+      procedure(col_val_i) :: proc          ! column extractor
+      ! Pseudocode:
+      ! 1. Duplicate name or full table -> loud-stop (naming the column)
+      ! 2. Register the row {name, proc} (executed in the assembly phase - the driver / member
+      ! inits each register rows)
+      ! 3. Framework-preregistered columns (called first when this module is assembled):
+      !    t_kin (sum p^2/2*roster%mass/e_conv,
+      !    the old T convention ENERGY.f:58-66), v_pot/e_tot (via facade_force(sta, e)
+      !    - the observables%e_kin/e_pot/e_tot switches each map to a column, the old
+      !    GWRITE.f90:31
+      !    T/V/H line); member/analysis-quantity columns (e_rel, z_min, n_bnc etc.) are
+      !    registered by their own
+      !    members and analysis - C8 wiring
    end subroutine rec_reg_col
 
    !------------------------------------------------------------------
-   ! rec_select(level / list) — 选列泛型（两入口见模块声明部 interface 块）
+   ! rec_select(level / list) - column-selection generic (two entries in the interface block
+   ! of the module declaration part)
    !
-   ! rec_level 预设列组数据表（config%observables%rec_level 键——旧
-   ! GWRITE_LEVEL 语义 GWRITE.f90:11-15 的参数化重述）：
-   !   级 0 = 最小：帧头（轨迹/步/时间）+ t_kin/v_pot/e_tot 能量行（旧 :28/:31）
-   !   级 1 = +结构诊断列（最近邻距离/坐标等——旧 :63-99 诊断段；体系知识
-   !          参数化后入列，剥离警示 (3)(4)）
-   !   级 2 = +全原子 Q/P 展平段 sec_qp（默认——旧 :106-117，向后兼容级；
-   !          标签取 roster%symb——剥离警示 (2)）
-   !   级 5 = +逐原子力段 sec_frc（旧 :122-127）
+   ! rec_level preset column-group data table (the config%observables%rec_level key - the
+   ! parameterized restatement of the GWRITE_LEVEL semantics, GWRITE.f90:11-15):
+   !   Level 0 = minimal: frame header (trajectory/step/time) + t_kin/v_pot/e_tot energy line
+   !   (old :28/:31)
+   !   Level 1 = + structural diagnostic columns (nearest-neighbor distances / coordinates
+   !   etc. - the old :63-99 diagnostic section;
+   !          system knowledge parameterized into columns, excision warnings (3)(4))
+   !   Level 2 = + the all-atom Q/P flattened section sec_qp (default - old :106-117, the
+    !          backward-compatible level;
+       !          labels from roster%symb - excision warning (2))
+       !   Level 5 = + the per-atom force section sec_frc (old :122-127)
 
    !------------------------------------------------------------------
-   ! rec_sel_lvl(level) — 按预设级选列（置 sel_idx 与两段门）
-   ! 参考: GWRITE.f90:11-15（四级语义）
+   ! rec_sel_lvl(level) - select columns by preset level (sets sel_idx and the two section
+   ! gates)
+   ! Reference: GWRITE.f90:11-15 (four-level semantics)
    subroutine rec_sel_lvl(level)
-      integer, intent(in) :: level   ! 预设级 [—]（0/1/2/5；缺省调用传
-                                     ! observables%rec_level）
-      ! 伪代码：
-      ! 1. 依上方数据表置 sel_idx（级 n 含级 <n 的全部列）与段门
-      !    sec_qp/sec_frc（级 ≥2/≥5 开）
-      ! 2. 表中列未注册 → loud-stop 指名（装配次序错——注册先于选列）
+      integer, intent(in) :: level   ! preset level [-] (0/1/2/5; the default call passes
+                                     ! observables%rec_level)
+      ! Pseudocode:
+      ! 1. Set sel_idx per the data table above (level n includes all columns of levels < n)
+      !    and the section gates
+      !    sec_qp/sec_frc (open at levels >=2/>=5)
+      ! 2. A table column not registered -> loud-stop naming it (assembly-order error -
+      !    registration precedes column selection)
    end subroutine rec_sel_lvl
 
    !------------------------------------------------------------------
-   ! rec_sel_lst(list) — 按名单选列（逗号分隔列名逐名查注册表）
-   ! 参考: config%observables%obs_list（K1 §1.4——名单键）
+   ! rec_sel_lst(list) - select columns by list (comma-separated column names looked up in
+   ! the registry one by one)
+   ! Reference: config%observables%obs_list (K1 §1.4 - the list key)
    subroutine rec_sel_lst(list)
-      character(len=*), intent(in) :: list  ! 列名名单（逗号分隔；
-                                            ! 名单含保留段名 'all_qp'/'all_frc'
-                                            ! 时开对应展平段——C4 定形）
-      ! 伪代码：
-      ! 1. 逗号分段逐名查 col_tbl（未注册 loud-stop 指名）
-      ! 2. 命中行索引依序入 sel_idx、计 n_sel；段名按保留字开段门
+      character(len=*), intent(in) :: list  ! column-name list (comma-separated;
+                                            ! a list containing the reserved section names
+                                            ! 'all_qp'/'all_frc'
+      ! opens the corresponding flattened section -
+      ! finalized in C4)
+      ! Pseudocode:
+      ! 1. Split on commas and look up each name in col_tbl (unregistered -> loud-stop
+      !    naming it)
+      ! 2. Matching row indices enter sel_idx in order, counting n_sel; section names open
+      !    the section gates as reserved words
    end subroutine rec_sel_lst
 
    !------------------------------------------------------------------
-   ! rec_frame(sta, unit) — 写一检查点帧（逐已选列取值 + 门控展平段）
-   ! 参考: GWRITE.f90:25-31（帧头/能量行）、:49-60（分子文件步段）、
-   !       :106-127（两展平段）、:145（flush）
+   ! rec_frame(sta, unit) - write one checkpoint frame (per selected column values + gated
+   ! flattened sections)
+   ! Reference: GWRITE.f90:25-31 (frame header / energy line), :49-60 (molecule-file step
+   ! sections),
+   !       :106-127 (the two flattened sections), :145 (flush)
    subroutine rec_frame(sta, unit)
-      type(state_t), intent(in) :: sta   ! 物理态（只读快照——检查点回调传入）
-      integer, intent(in) :: unit        ! 输出单元号 [—]（driver 编排——旧
-                                         ! 6/8/1000+NTZ 族，单元分配 C4 定形）
-      ! 伪代码：
-      ! 1. 帧头：轨迹号 traj_i/步号 step_i/时间 sta%t（旧 :27-28——序号通道
-      !    经闭包宿主或可选哑元传入，骨架签名按计划两哑元——C4 定形）
-      ! 2. 逐已选列 j = 1..n_sel：val = col_tbl(sel_idx(j))%val(sta)，
-      !    依列格式化写一行/一节（能量行口径旧 :31）
-      ! 3. sec_qp 开：全原子逐行 q/p 六元（标签 roster%symb——剥离警示 (2)；
-      !    旧 :109-115）
-      ! 4. sec_frc 开：逐原子力三元（旧 :122-127；sta%f）
-      ! 5. flush(unit)（旧 :145）
+      type(state_t), intent(in) :: sta   ! physical state (read-only snapshot - passed in by
+      ! the checkpoint callback)
+      integer, intent(in) :: unit        ! output unit number [-] (driver orchestration - the
+      ! old 6/8/1000+NTZ family, unit assignment finalized
+      ! in C4)
+      ! Pseudocode:
+      ! 1. Frame header: trajectory number traj_i / step number step_i / time sta%t (old
+      !    :27-28 - the index channel arrives
+      !    via the closure host or an optional dummy argument; the skeleton signature keeps
+      !    the planned two dummies - finalized in C4)
+      ! 2. Per selected column j = 1..n_sel: val = col_tbl(sel_idx(j))%val(sta),
+      !    format-write one line/section per column (energy-line convention old :31)
+      ! 3. sec_qp open: per atom one q/p six-tuple line (labels roster%symb - excision
+      !    warning (2);
+      !    old :109-115)
+      ! 4. sec_frc open: per atom one force triple (old :122-127; sta%f)
+      ! 5. flush(unit) (old :145)
    end subroutine rec_frame
 
    !------------------------------------------------------------------
-   ! rec_final(sta, unit) — 写轨迹终态行（record_all 列组——统计相位消费的
-   !                        逐轨迹记录）
-   ! 参考: HIST.f90:8-24（record_all：终态行各列 + 首行表头）、:18（表头列序
-   !       Ntz/Nb/Site/RX0/RY0/Zmin/Vfinal/Erel/Theta/Ephi）
+   ! rec_final(sta, unit) - write the trajectory final-state row (the record_all column group
+   ! - the per-trajectory record
+   ! consumed by the statistics phase)
+   ! (see previous line)
+   ! Reference: HIST.f90:8-24 (record_all: final-state row columns + first-line header), :18
+   !       (header column order Ntz/Nb/Site/RX0/RY0/Zmin/Vfinal/Erel/Theta/Ephi)
    subroutine rec_final(sta, unit)
-      type(state_t), intent(in) :: sta   ! 物理态（终态快照——只读）
-      integer, intent(in) :: unit        ! 输出单元号 [—]
-      ! 伪代码：
-      ! 1. traj_i = 1 时写表头行（旧 HIST.f90:18——列名序）
-      ! 2. 终态行各列取值：e_rel/thta/z_min/v_fin/n_bnc/x0/y0/site——终态量
-      !    经 analysis/final_state 的 fin_t（列抽取器注册制——C8 接线；
-      !    旧 record_all 直读全局 AErelS 等的成员化）；格位列经 plot_hist
-      !    的格位归属工具（lattice 参数化——surfcell HIST.f90:313-373 的
-      !    传参化形态，模块间接线 C8）
-      ! 3. flush(unit)；本例程只写行——单元开闭与文件名编排归 driver
-      !    （旧 VENUS.f90:572 CLOSE 位）
+      type(state_t), intent(in) :: sta   ! physical state (final-state snapshot - read-only)
+      integer, intent(in) :: unit        ! output unit number [-]
+      ! Pseudocode:
+      ! 1. When traj_i = 1 write the header line (old HIST.f90:18 - column-name order)
+      ! 2. Final-state row column values: e_rel/thta/z_min/v_fin/n_bnc/x0/y0/site - final
+      !    state quantities via
+      !    analysis/final_state's fin_t (column-extractor registration - C8 wiring;
+      !    the member-ization of the old record_all reading globals like AErelS directly);
+      !    the site column via plot_hist's
+      !    site-assignment tool (lattice parameterized - the parameterized form of surfcell
+      !    HIST.f90:313-373,
+      !    module-to-module wiring in C8)
+      ! 3. flush(unit); this routine only writes lines - unit opening/closing and file-name
+      !    layout belong to the driver
+      !    (the old VENUS.f90:572 CLOSE site)
    end subroutine rec_final
 end module recorder

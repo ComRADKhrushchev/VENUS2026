@@ -1,14 +1,20 @@
-# output/ — L4 记录与离线后处理
+# output/ - L4 recording and offline post-processing
 
-- **在线（演化环内）**：recorder.f90——轨迹序列化（rec_reg_col 列注册 +
-  rec_select/rec_frame/rec_final）。演化环内合法调用四类之一
-  （facade/propagator/recorder/predicate）。
-- **离线（不参与演化环）**：final_state.f90（广义 COM 相对能量/角动量/终态量）、
-  outcome.f90（结局分类执行——查 event%outcome_tbl 数据表）、density.f90
-  （Beyer-Swinehart 态密度 + 本征输出）、plot_hist.f90（五类直方图，模块名 hist）。
+- **Online (inside the evolution loop)**: recorder.f90 - trajectory serialization
+  (rec_reg_col column registry +
+  rec_select/rec_frame/rec_final). One of the four legal call classes inside the evolution loop
+(facade/propagator/recorder/predicate).
+  - **Offline (not part of the evolution loop)**: final_state.f90 (generalized COM relative
+  energies / angular momenta / final-state quantities),
+  outcome.f90 (outcome-classification execution - looks up the event%outcome_tbl data table),
+density.f90
+(Beyer-Swinehart density of states + eigenvalue output), plot_hist.f90 (five histogram kinds,
+  module name hist).
 
-边界约束：离线四件**不触物理态**（不修改 Q/P/s/F，不调 facade/propagator），
-只做表象→表象的变换与归约（记录→统计）。
+Boundary constraint: the four offline files **never touch the physical state** (they do not
+modify Q/P/s/F and do not call facade/propagator),
+they only do representation -> representation transforms and reductions (recording -> statistics).
 
-参考质料（旧库只读）：GWRITE.f90 / FINAL.f / GFINAL.f / VENUS.f90 结局块 /
-DENQ.f / EIGOUT.f / HIST.f90。
+Reference material (old library, read-only): GWRITE.f90 / FINAL.f / GFINAL.f / the VENUS.f90
+outcome blocks /
+DENQ.f / EIGOUT.f / HIST.f90.
