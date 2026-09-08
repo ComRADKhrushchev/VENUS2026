@@ -24,6 +24,7 @@
 !   Layering statute: NO module dependency on sysdef_facade - this module carries no use
 !   statement on it and never calls it (the sampler never uses sysdef_facade; the roster is
 !   the one and only geometry-knowledge channel into the B' family)
+!   (see previous line)
 !=====================================================================
 module sampler
    use state, only: state_t

@@ -37,7 +37,8 @@ module config
   end type
 
   ! Reactant provisions (spec §3.2-3: configuration provisions + initial-state statistical
-  ! distributions, both as input data)
+  ! distributions; E14: the configuration half is no longer wholly input data - composition
+  ! arrives from the blackbox folder and surface_model is derived, spec §6)
   type :: reactants_t
      integer :: n_frag = 1           ! number of fragments
      character(len=128) :: system_dir = '' ! blackbox folder path scanned by sysdef_load (E14 spec §6;

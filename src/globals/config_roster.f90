@@ -31,8 +31,10 @@ module config_roster
       integer :: nat_a = 0                     ! fragment-A atom count [count] (old NATOMA(1))
       real(8), allocatable :: q0(:)            ! whole-system equilibrium geometry [Å] (old QZ;
       ! assembled from fragment geometries by atom index - SELECT.f90:713-715)
-      real(8) :: skew = 0.0d0                  ! unit-cell skew angle [rad] (old SKEW; input
-      ! degrees -> radians, venus_input.f90:999)
+      real(8) :: skew = 0.0d0                  ! unit-cell skew angle [rad] (old SKEW; the degrees ->
+      ! radians conversion happens at fill time - the old-library input key :999 carried degrees;
+      ! E14: the value arrives from the sysdef products or the surface-atom derivation,
+      ! roster_load step 5)
       real(8) :: box_lx = 0.0d0                ! unit-cell x edge length [Å] (old BOXLX)
       real(8) :: box_ly = 0.0d0                ! unit-cell y edge length [Å] (old BOXLY)
       real(8) :: box_pad = 2.0d0               ! half-width of the random cluster drop box [Å]

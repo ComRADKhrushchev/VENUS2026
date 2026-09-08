@@ -34,7 +34,8 @@ module input
    public :: read_input
 
    ! Parse staging (KEYWORD=VALUE row table - module-private; the consumption interface for
-   ! roster_load and member init is finalized in C4)
+   ! member init and the a_lat-class residual keys is finalized in C4 - roster_load no longer
+   ! consumes this table: its data source is the sysdef facade products, E14 spec §6)
    type :: kv_row_t
       character(len=32)  :: key = ''   ! keyword (uppercased; shortened from old MAX_KEY_LEN)
       character(len=256) :: val = ''   ! value section (comma-separated; continuations already merged back)
@@ -44,7 +45,7 @@ module input
 contains
    !------------------------------------------------------------------
    ! read_input(file) - read and map the input (parse -> presets -> enumerations -> slot mapping ->
-   !                   roster staging -> member-parameter dispatch -> validation)
+   !                   member-parameter dispatch -> validation)
    ! Reference: venus_input.f90:187-269 (prototype of the read-in main flow); input_parser.f90:67-152
    subroutine read_input(file)
       character(len=*), intent(in) :: file  ! input file name (e.g. 'input_qct.txt' -
