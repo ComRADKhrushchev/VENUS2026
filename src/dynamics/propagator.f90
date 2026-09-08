@@ -15,7 +15,7 @@
 !       :130-148 (GLO/LDFA inlined forces), :179-270 (FRICFORCE/DIAG2 chain) - stochastic laws always go
 !       through force_facade member aggregation (P-D1/D4); the 'CALLING RADOUT' debug prints (RADAU.f:112/
 !       :380/:428) and the PRINFO comment remnants are not carried over (G4)
-! dt channel note (E9): the third argument of facade_force(sta, e, dt) is optional - fixed-step members
+! dt channel note (E9): the third argument of force_eval(sta, e, dt) is optional - fixed-step members
 !       (verlet/symple) pass prop_cfg%dt (the hop probability g_ij(dt) semantics are well-defined here);
 !       radau substep calls inside a sequence pass no dt (the default falls back to prop_cfg%dt, a
 !       placeholder only) - the nonadiabatic x radau conflict is caught by the class-B member itself
@@ -27,7 +27,7 @@ module propagator
    use config,        only: prop_cfg => propagator   ! alias to avoid clashing with the module name
                                                       ! (prop_cfg is the config instance 'propagator')
    use config_roster, only: roster
-   use force_facade,  only: facade_force
+   use force_facade,  only: force_eval
    implicit none
    private
    public :: hooks_t, prop_reg, prop_step
@@ -93,7 +93,7 @@ contains
       ! Pseudocode:
       ! 1. Look up reg_tbl by prop_cfg%id (unregistered id -> loud-stop naming the id)
       ! 2. Call the member proc(sta, hooks): advance sta by prop_cfg%dt
-      !    (radau = one adaptive sequence; the member calls facade_force as often as needed)
+      !    (radau = one adaptive sequence; the member calls force_eval as often as needed)
       ! 3. Checkpoint protocol (honored inside the member, out before term):
       !    call hooks%out only if attached - one frame written (recorder wiring);
       !    call hooks%term only if attached - true = terminate this trajectory (the termination flag is
@@ -113,15 +113,15 @@ contains
       ! Pseudocode:
       ! 1. dt = prop_cfg%dt, mass = roster%mass, order = prop_cfg%order
       ! 2. order=1 (velocity Verlet, old :31-79):
-      ! 2a. facade_force(sta, e) (force F(t) at step start - old :34-41 force site)
+      ! 2a. force_eval(sta, e) (force F(t) at step start - old :34-41 force site)
       ! 2b. p += f*dt/2 (half-step momentum, old :39-41)
       ! 2c. q += (p/m)*dt (full position step, old :52-56)
-      ! 2d. facade_force(sta, e) (force F(t+dt) at step end - old :60-62 force site)
+      ! 2d. force_eval(sta, e) (force F(t+dt) at step end - old :60-62 force site)
       ! 2e. p += f*dt/2 (completing the half step, old :65-67)
       ! 3. order=2 (third-order Beeman, old :90-170):
       ! 3a. position predictor: q += (p/m)*dt + dt^2*(4f(t)-f(t-dt))/(6m) (old :98-103)
       ! 3b. momentum predictor: p += dt*(3f(t)-f(t-dt))/2 (old :105-109)
-      ! 3c. stage force f(t)->f(t-dt) (old :111-114); facade_force(sta, e) (force re-evaluation, old :123-125)
+      ! 3c. stage force f(t)->f(t-dt) (old :111-114); force_eval(sta, e) (force re-evaluation, old :123-125)
       ! 3d. momentum corrector: p = m*(q-q_prev)/dt + dt*(2f(t+dt)+f(t))/(6m)
       !     (old :163-168; q_prev is the q before 3a, staged in the old QTP1)
       ! 4. The old ghost Langevin (:44-50/:71-79/:151-161) and GLO/LDFA inlined forces
@@ -141,10 +141,10 @@ contains
       ! 1. On first call load the Schlier coefficients per order (4/6/8, config%propagator%order)
       !    into a(0:2N) (N=5/8/17; symmetric second half mirror-copied, the FIRST block of old :14-86)
       ! 2. Alternating loop i=0..N-1 (old :88-97):
-      ! 2a. facade_force(sta, e) (force before the kick - old :94-96 force site)
+      ! 2a. force_eval(sta, e) (force before the kick - old :94-96 force site)
       ! 2b. p += dt*a(2i)*f (momentum kick, old :91)
       ! 2c. q += dt*a(2i+1)*p/m (position drift, old :92)
-      ! 3. Final beat: facade_force(sta, e); p += dt*a(2N)*f (old :98-100)
+      ! 3. Final beat: force_eval(sta, e); p += dt*a(2N)*f (old :98-100)
       ! 4. sta%t += dt; checkpoint callbacks at step end (out before term)
    end subroutine symple_step
 
@@ -167,7 +167,7 @@ contains
       !    (old :185, :419)
       ! 3. Substep loop within the sequence (iterations x 7 substeps, old :197-311):
       ! 3a. Predict substep coordinates yy from the seventh-order B-coefficient expansion (old :220-245)
-      ! 3b. facade_force evaluated at substep coordinates (old :250-260 force site; f_j = f/m fold)
+      ! 3b. force_eval evaluated at substep coordinates (old :250-260 force site; f_j = f/m fold)
       ! 3c. Difference correction: divided differences of the g coefficients + triangle accumulation of the
       !    B coefficients (old :262-311)
       ! 4. Sequence close-out: advance q/p by the sequence length tt (old :329-336); last-term hv estimate

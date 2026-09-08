@@ -44,14 +44,14 @@ module recorder
    use state,         only: state_t
    use config,        only: observables
    use config_roster, only: roster
-   use force_facade,  only: facade_force
+   use force_facade,  only: force_eval
    implicit none
    private
    public :: col_val_i, rec_reg_col, rec_select, rec_frame, rec_final
 
    ! Column-extractor interface: extract one scalar observable from the physical state
    ! (the measurement class consuming evolution services - energy columns obtain the potential
-   ! energy internally via facade_force, a legal direction; spec §2.2 measurement-class
+   ! energy internally via force_eval, a legal direction; spec §2.2 measurement-class
    ! definition)
    abstract interface
       real(8) function col_val_i(sta)
@@ -98,7 +98,7 @@ contains
       ! inits each register rows)
       ! 3. Framework-preregistered columns (called first when this module is assembled):
       !    t_kin (sum p^2/2*roster%mass/e_conv,
-      !    the old T convention ENERGY.f:58-66), v_pot/e_tot (via facade_force(sta, e)
+      !    the old T convention ENERGY.f:58-66), v_pot/e_tot (via force_eval(sta, e)
       !    - the observables%e_kin/e_pot/e_tot switches each map to a column, the old
       !    GWRITE.f90:31
       !    T/V/H line); member/analysis-quantity columns (e_rel, z_min, n_bnc etc.) are

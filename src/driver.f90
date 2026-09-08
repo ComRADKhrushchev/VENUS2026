@@ -38,8 +38,7 @@ program venus
    use predicate,      only: expr_t, pred_parse, pred_eval
    use propagator,     only: hooks_t, prop_reg, prop_step, &
                              verlet_step, symple_step, radau_step
-   use force_facade,   only: facade_reg_pes, facade_reg_elec, &
-                             facade_init, facade_force
+   use force_facade,   only: pes_reg, blackbox_init, force_eval
    use elec_adiabatic, only: ad_dsdt, ad_force_rule
    use sampler,        only: samp_reg, samp_run
    use recorder,       only: rec_select, rec_frame, rec_final

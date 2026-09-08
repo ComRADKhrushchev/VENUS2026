@@ -38,7 +38,7 @@ module final_state
    use config,        only: reactants
    use config_roster, only: roster
    use geometry,      only: cenmas, amom, angvel
-   use force_facade,  only: facade_force
+   use force_facade,  only: force_eval
    implicit none
    private
    public :: fin_t, fin_eval
@@ -89,7 +89,7 @@ contains
       !    j_mag_a folded to hbar units (divide hbar_code, old /C7); one-atom fragments all zero (old :24-33)
       ! 2. Fragment-A internal energy (old :113-129): internal kinetic = COM-frame
       !    sum p^2/(2*mass)/e_conv;
-      !    internal potential = v from facade_force at the fragment's equilibrium-arrangement
+      !    internal potential = v from force_eval at the fragment's equilibrium-arrangement
       !    coordinates (the old :49-62 QZB+QCMB
       !    staging-evaluation trick - the new version evaluates via the facade on a locally
       !    staged state, never writing back to sta) minus the reference

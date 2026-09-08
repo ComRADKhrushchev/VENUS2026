@@ -1,8 +1,9 @@
 !=====================================================================
-! force_facade.f90 - L2 interface-A facade: (Q,P,s)->(F,E). Inside: sum of class-A force members
-!                    (additive) x the single-selected class-B electron-law member; the unit-contract
-!                    fulfillment point (x23.0605 x e_conv appears only here)
-!                    (see previous line)
+! force_facade.f90 - L2 interface-A facade (E14 four-entry form): entry 1 - force_eval,
+!                    (Q,P,s)->(F,E) (inside: the sum of class-A force members (additive);
+!                    the unit-contract fulfillment point - x23.0605 x e_conv appears only
+!                    here) + the class-A member registry + blackbox_init, the single
+!                    assembly entry point spanning BOTH facades
 ! Reference: venus2026/DVDQ.f:10-22 (PDOT zeroing + DPESHON dispatch - the old form of additive composition);
 !       src_TEST/interface_TEST.f90:12-16 (POTPRE member-init hook), :18-30
 !       (POT0 energy conversion x23.0605), :32-44 (DPESHON gradient accumulation
@@ -55,17 +56,37 @@
 !   state (class A), evolve the electronic state (class B), and feed the electronic state back
 !   into the state to enforce quantum statistics (class B - surface switching, momentum rescaling);
 !   facade_force is the orchestration of the three.
+!
+! -- E14 four-entry rebuild (user rulings 2026-09-08; docs/superpowers/specs/
+!    2026-09-08-facade-e14-design.md §3) --
+!   The E13 closing sentence "facade_force is the orchestration of the three" is withdrawn: the
+!   three things the blackbox machine does (compute forces from the state (class A), evolve the
+!   electronic state, feed the electronic state back into the state to enforce quantum statistics)
+!   are now three DRIVER-orchestrated entries - force_eval (this module, entry 1), elec_prop /
+!   mqc_statistic (elec_facade, entries 2-3; spec §8 choreography: prop_step -> elec_prop ->
+!   mqc_statistic -> rec_frame -> pred_eval). Consequences here: facade_force-the-orchestrator is
+!   withdrawn (force_eval is a pure force entry - no electron-law consumption inside); the class-B
+!   slot (elec_proc_i / facade_reg_elec / elec_name / elec_proc) is excised from this module -
+!   that content now lives in elec_facade as method packages (method_reg / method_bind); the dt
+!   argument is removed from the entry signature (the E9 channel re-anchored onto elec_prop - the
+!   hop probability g_ij(dt) belongs to the electronic phases, not to the force evaluation); and ws
+!   is no longer a facade_force local variable - force_eval fills the elec_facade-held instance
+!   through ws_get and leaves it in place for the later electronic phases (one-integration-step
+!   lifetime; E10 axioms B/C as amended by E14). Entry names drop the facade_ prefix (spec §3
+!   naming statute - the module names the place, the entry names the action): facade_reg_pes ->
+!   pes_reg, facade_init -> blackbox_init, facade_force -> force_eval, facade_info ->
+!   blackbox_info; the module keeps its *_facade name (architectural position).
 !=====================================================================
 module force_facade
    use consts,        only: e_conv
-   use state,         only: state_t, elec_t
-   use config,        only: electronic, propagator
+   use state,         only: state_t
+   use config,        only: electronic
    use config_roster, only: roster
-   use elec_ws,       only: ws_t, r_scalar, r_diab, r_adiab
+   use elec_ws,       only: ws_t, r_scalar, r_diab, r_adiab, r_empty
+   use elec_facade,   only: ws_get, ws_reset, method_bind
    implicit none
    private
-   public :: facade_reg_pes
-   public :: facade_reg_elec, facade_init, facade_force, facade_info
+   public :: force_eval, pes_reg, blackbox_init, blackbox_info
 
    ! eV to kcal/mol conversion (unit-contract literal — T4: appears only in this file)
    real(8), parameter :: ev_kcal = 23.0605d0
@@ -81,36 +102,20 @@ module force_facade
          real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (used by stochastic/mass-law members;
                                           ! pure-PES members may ignore it)
          type(ws_t), intent(inout) :: ws  ! workspace (inout: the facade pre-writes the request field
-                                          ! i_want, the member reads it and fills per its own mode the
+                                          ! i_want(:) - the occupation set (E14: generalized from the
+                                          ! scalar; length 1 = the degenerate form), the member reads
+                                          ! it and fills per its own mode the
                                           ! delivery fields - scalar fills g_add/v_add;
                                           ! diab fills h_ij/dh_ij; adiab fills
-                                          ! v_surf/g_surf/d_ij [the i_want row];
+                                          ! v_surf/g_surf/d_ij [the i_want rows];
                                           ! see the container contract in elec_ws.f90)
       end subroutine pes_proc_i
       ! Note: stochastic-law members call rng internally (N1 - the signature acknowledges stochastic laws;
       ! the single stream is guaranteed by rng)
    end interface
 
-   ! Class-B member (single-select) interface: electron propagation law - electronic-state evolution +
-   ! nuclear-force modification (adiabatic = two degenerate points)
-   abstract interface
-      subroutine elec_proc_i(s, f, dt, ws)
-         import :: elec_t, ws_t
-         type(elec_t), intent(inout) :: s  ! electronic state (the law member evolves amp/i_surf/
-                                           ! n_hop per its law; adiabatic: unchanged)
-         real(8), intent(inout) :: f(:)    ! nuclear forces [internal energy/Å] (modified by the law member -
-                                           ! surface selection/averaging/switching and kinetic-energy
-         ! rescaling; adiabatic: identity)
-         real(8), intent(in)    :: dt      ! current actual step [10 fs] (needed for the hop probability
-         ! g_ij(dt) - E9; adiabatic members ignore it)
-         type(ws_t), intent(in)  :: ws     ! workspace (read-only consumption: interpret the container per
-                                           ! ws%repr - in-box wiring, E10; a repr the member does not
-                                           ! support -> loud-stop, e.g. adiab x iesh)
-      end subroutine elec_proc_i
-   end interface
-
-   ! Registries (additive class-A table + single-select class-B slot; registered in the assembly phase,
-   ! read-only during evolution)
+   ! Class-A member registry (additive table; registered in the assembly phase, read-only
+   ! during evolution - E14: the class-B slot lives in elec_facade now)
    integer, parameter :: max_pes = 16     ! class-A member-table capacity [row] (main PES + additive stochastic laws; filled in C2)
    type :: pes_entry_t
       character(len=32) :: name = ''      ! member name (the config%electronic%pes_main assembly key)
@@ -121,9 +126,6 @@ module force_facade
    end type pes_entry_t
    type(pes_entry_t) :: pes_tbl(max_pes)  ! class-A registry (module-private)
    integer :: n_pes = 0                   ! registered class-A row count [row]
-   character(len=32) :: elec_name = ''    ! class-B member name (module-private; single-select slot; empty = not assembled)
-   procedure(elec_proc_i), pointer :: elec_proc ! class-B routine (module-private; attached by
-                                                ! facade_init in the assembly phase; nopass is a component attribute only)
 
    ! E13 (user ruling 2026-09-08): no capability-combination table lives here - triad_tbl and the
    ! m_* electron-law codes are withdrawn. The facade is a purely formal authority;
@@ -140,13 +142,14 @@ module force_facade
 
 contains
    !------------------------------------------------------------------
-   ! facade_reg_pes(name, proc[, repr]) - register a class-A force member (additive: main PES + stochastic
+   ! pes_reg(name, proc[, repr]) - register a class-A force member (additive: main PES + stochastic
    ! laws / constraint potentials; E10-unified single entry - representation via the repr data tag, no
-   ! longer a registration fork)
+   ! longer a registration fork; renamed facade_reg_pes -> pes_reg by E14 - noun_reg per the
+   ! prop_reg/samp_reg convention)
    ! (see previous line)
    ! Reference: docs/final_completion_plan.md §5 N1 (registration spec); T2 (new member = new file +
    !       one registration line); E10 adjudication (single signature fully unified - E9 dual signatures withdrawn)
-   subroutine facade_reg_pes(name, proc, repr)
+   subroutine pes_reg(name, proc, repr)
       character(len=*), intent(in) :: name  ! member name (assembly key - config%electronic%pes_main)
       procedure(pes_proc_i) :: proc         ! member evaluation routine (single signature - scalar/diab/
                                             ! adiab unified, delivered via the ws container)
@@ -159,31 +162,22 @@ contains
       ! 1. Duplicate name or full table -> loud-stop
       ! 2. Register the row {name, kind=repr (present-check defaults to r_scalar), proc} (executed in the
       !    assembly phase by the driver; multi-surface pes members arrive with the elec_tsh consumers)
-   end subroutine facade_reg_pes
+   end subroutine pes_reg
 
    !------------------------------------------------------------------
-   ! facade_reg_elec(name, proc) - register a class-B electron-law member (single select)
-   ! Reference: docs/final_completion_plan.md §5 N1 (class-B single-select spec)
-   subroutine facade_reg_elec(name, proc)
-      character(len=*), intent(in) :: name  ! member name (the config%electronic%method mapping key)
-      procedure(elec_proc_i) :: proc        ! member routine
-      ! Pseudocode:
-      ! 1. Slot already occupied -> loud-stop (class B is single-select - duplicate registration is an
-      !    assembly error)
-      ! 2. Fill the slot {name, proc} (the elec_adiabatic degenerate member is registered in the assembly
-      !    phase)
-   end subroutine facade_reg_elec
-
-   !------------------------------------------------------------------
-   ! facade_init() - member assembly + formal validation (E13: purely formal - names resolve, slots
-   !                 filled, container-contract contradictions caught; physical-combination legality
-   !                 is the members' own affair)
+   ! blackbox_init() - member assembly + purely formal validation spanning BOTH facades (E13 form
+   !                 carried; E14: renamed facade_init -> blackbox_init - the single assembly
+   !                 entry point of the whole blackbox; physical-combination legality remains
+   !                 the members' own affair)
    ! Reference: docs/final_completion_plan.md §5 N1 (assembly spec; the negotiation-table clause is
-   !       superseded by E13); src_TEST/interface_TEST.f90:12-16 (POTPRE-type member-init hook - the D3
+   !       superseded by E13); docs/superpowers/specs/2026-09-08-facade-e14-design.md §3 (assembly-
+   !       phase entries: names resolve, main-PES slot filled, method slot filled, additive members
+   !       r_scalar, n_surf>=2 vs r_scalar contradiction, observable-vs-container delivery
+   !       contradiction); src_TEST/interface_TEST.f90:12-16 (POTPRE-type member-init hook - the D3
    !       ghost parameter assembly site); docs/design_spec_completeness.md §3.2-2
    !       (type-checking of capability and method legality; illegal combinations rejected
    !        explicitly with both conflicting axes named)
-   subroutine facade_init()
+   subroutine blackbox_init()
       ! Pseudocode:
       ! 1. Class-A assembly: freeze the main-PES member row from pes_tbl per config%electronic%pes_main
       !    + the additive member rows (additive member table - a config%electronic field left blank,
@@ -194,54 +188,57 @@ contains
       !    members are restricted to r_scalar
       !    (stochastic laws / constraint potentials are independent of the electronic state - they feed
       !    only the nuclear-force channel; the multi-surface construct channel is carried by the main PES
-      !    alone, see facade_force step 4')
+      !    alone, see force_eval step 4')
       !    (see previous line)
-      ! 2. Class-B assembly: select the law member per config%electronic%method (a name string,
-      !    same form as pes_main - E13; 'adiabatic' -> the elec_adiabatic degenerate member,
-      !    'tsh'/'iesh' arrive with their consumers); name not found in the slot -> loud-stop
-      !    (a formal check only)
+      ! 2. Method-slot assembly (E14 - the old class-B slot is now a method PACKAGE in elec_facade):
+      !    call method_bind(config%electronic%method) - a pure name lookup into method_tbl (formal; the
+      !    empty-table / not-found / already-bound loud-stops live in method_bind itself, ratified - no
+      !    duplicate here. The table lives in elec_facade; the init choreography stays here as the
+      !    single assembly entry point)
       ! 3. Member-init hooks (POTPRE type): call each assembled member's init (parameters arrive through
       !    the member's own params - D3; the hook-slot wiring shape is finalized in C2)
       !    (see previous line)
-      ! 4. Formal validation (E13 - physical-combination checks withdrawn to the members):
-      !    n_surf >= 2 with an r_scalar main-PES row -> loud-stop naming the conflict (derivable
-      !    from the container contract alone - r_scalar by definition delivers no multi-surface
-      !    constructs); integrator x electron-law legality is NOT checked here (a law's own
-      !    prerequisites are its author's knowledge - the member loud-stops at runtime, e.g. hop
-      !    probabilities g_ij(dt) losing their basis at adaptive sequence boundaries)
-   end subroutine facade_init
+      ! 4. Observable-vs-container formal check (spec §4): an observable column demanding a container
+      !    no assembled package member delivers (a/rho declared undelivered by the bound method row)
+      !    -> loud-stop naming the conflict (derivable from the container contract alone, E13);
+      !    integrator x electron-law legality is NOT checked here (a law's own prerequisites are its
+      !    author's knowledge - the member loud-stops at runtime, e.g. hop probabilities g_ij(dt)
+      !    losing their basis at adaptive sequence boundaries)
+   end subroutine blackbox_init
 
    !------------------------------------------------------------------
-   ! facade_force(sta, e_tot[, dt]) - (Q,P,s)->(F,E): members deliver via ws -> facade composes ->
-   !                            converts -> electron-law consumption; E = T(P) + V (the E10 unified path)
+   ! force_eval(sta, e_tot) - entry 1 (spec §3), (Q,P,s)->(F,E): class-A members deliver via ws ->
+   !                            facade composes -> converts (the unique unit-contract point, ev_kcal)
+   !                            -> writes sta%f, e_tot; E = T(P) + V (the E10 unified path; renamed
+   !                            facade_force -> force_eval by E14; dt removed from the signature -
+   !                            the E9 channel re-anchored onto elec_prop)
    ! Reference: venus2026/DVDQ.f:10-22 (zeroing + dispatch); src_TEST/interface_TEST.f90:32-44
-   !       (identical-form accumulation), :18-30 (energy convention); ENERGY.f:54-68 (T/H reporting convention)
-   subroutine facade_force(sta, e_tot, dt)
-      type(state_t), intent(inout) :: sta  ! physical state (q/p/s read in; f written out - the composed force)
+   !       (identical-form accumulation), :18-30 (energy convention); ENERGY.f:54-68 (T/H reporting
+   !       convention); spec §3 entry-1 contract (as a side effect the ws of the current geometry is
+   !       left in place for the later electronic phases)
+   subroutine force_eval(sta, e_tot)
+      type(state_t), intent(inout) :: sta  ! physical state (q/p/s/occ read in; f written out - the composed force)
       real(8), intent(out) :: e_tot        ! total energy H = T(P)+V [kcal/mol] (N1 convention;
                                            ! multi-surface mode V = current surface / law-member convention, see 4')
-      real(8), intent(in), optional :: dt  ! current actual step [10 fs] (the hop probability g_ij(dt)
-                                           ! channel - E9; the default takes config%propagator%dt,
-                                           ! fixed-step semantics; the adiabatic law ignores it)
-                                           ! (see previous line)
-      ! Facade-local workspace (E10 axioms B/C: declared in the box, dies in the box, one-step lifetime -
-      ! invisible outside the box (driver/propagator/output), zero footprint in the facade_force signature)
-      ! (see previous line)
-      type(ws_t) :: ws                     ! electronic workspace (main-PES multi-surface constructs +
-      ! scalar-member contribution container; member filling and law
-      ! consumption share one channel)
-      ! (see previous line)
+      ! Workspace (E10 axioms B/C as amended by E14): NOT a local variable of this routine anymore -
+      ! the elec_facade-held instance, obtained through ws_get (the fill site), composed into here,
+      ! and left in place for elec_prop / mqc_statistic (one-integration-step lifetime; still
+      ! invisible outside the box - never an argument of any public signature, zero footprint in
+      ! the force_eval signature)
       ! Pseudocode:
       ! 1. Zero the force-kernel workspace g(:), v_sum = 0 (old DVDQ.f:12-14 PDOT zeroing site);
-      !    ws%repr = r_empty (reset every step - axiom C one-step lifetime); dt_eff = the default
-      !    config%propagator%dt (alias prop_cfg) or the passed-in value
-      ! 2. Main-PES evaluation (the assembled main-PES member - one unified call): ws%i_want = sta%s%i_surf
-      !    (the current-surface coupling-row request in adiab mode - i_surf stays out of the class-A
-      !    signature and is conveyed through the request field, E10); proc(sta%q, roster%mass, ws) -
+      !    ws_reset() (the head reset - every evaluation begins from the empty container; with
+      !    elec_facade's step-end reset the two sites together make the one-step lifetime robust to
+      !    skipped phases); dt no longer appears here (E9 channel withdrawn - the hop probability
+      !    g_ij(dt) is consumed in elec_prop)
+      ! 2. Main-PES evaluation (the assembled main-PES member - one unified call): request the
+      !    occupation set - ws%i_want(:) = sta%occ (the adiab-mode delivery request, E14:
+      !    generalized from the scalar i_surf; length 1 = the single-active-surface degenerate
+      !    form; the occupation set stays out of the class-A signature and is conveyed through
+      !    the request field, E10); via the ws_get instance: proc(sta%q, roster%mass, ws) -
       !    the member fills ws per its own mode
-      !    (see previous line)
       !    (scalar: g_add/v_add; diab: h_ij/dh_ij; adiab: v_surf/g_surf/
-      !    d_ij [the i_want row])
+      !    d_ij [the i_want rows])
       ! 3. Fold scalar contributions into g(:)/v_sum: when the main PES is in scalar mode, fold its
       !    g_add/v_add;
       !    then for each additive member (restricted to r_scalar rows - stochastic laws / constraint
@@ -257,17 +254,10 @@ contains
       !    (character-for-character identical to the old DPESHON "PDOT(i)=PDOT(i)-g(i)*23.0605*C1" -
       !    N1.1 bit-comparable; e_conv is the old C1; how g is composed in multi-surface mode, see 4')
       !    (see previous line)
-      ! 5. Electron-law consumption: elec_proc(sta%s, sta%f, dt_eff, ws) (read-only consumption -
-      !    interpret the container per ws%repr; a repr the member does not support -> loud-stop. The
-      !    adiabatic member is the identity and ignores ws - under a single-surface representation the
-      !    composite collapses to a pure PES, spec §3.2-2; a nonadiabatic law completes the amplitude
-      !    propagation, the hop decision (single rng stream), and the force modification / kinetic-energy
-      !    rescaling after the i_surf switch here - consumption details are fixed with the elec_tsh/
-      !    elec_iesh members (phase C))
-      !    (see previous line)
-      !    (see previous line)
-      !    (see previous line)
-      !    (see previous line)
+      ! 5. NO electron-law consumption here (E14: withdrawn to elec_prop / mqc_statistic in
+      !    elec_facade) - the ws of the current geometry is left in place for the later phases
+      !    (the spec §3 side-effect contract: what force_eval writes into the holder is what
+      !    elec_prop / mqc_statistic next read)
       ! 6. Energy: v_pot = v_sum*ev_kcal [kcal/mol] (old POT0 :26 convention);
       !    t_kin = sum p^2/(2*roster%mass)/e_conv [kcal/mol] (per-atom fold -
       !    old ENERGY.f:58-66 convention); e_tot = t_kin + v_pot (old :68 H=T+V)
@@ -275,23 +265,26 @@ contains
       ! 4'. Multi-surface branch (main-PES row mode = r_diab/r_adiab - a composition swap of steps 3-6):
       !    a. Force-kernel composition: r_diab -> diagonalize ws%h_ij via utils/linalg to compute the
       !       adiabatic view on the spot (eigenvalues = per-surface V, eigenvectors = representation
-      !       transform U); the current-surface adiabatic force kernel takes the transformed current row;
-      !       the dh_ij.U product needed for the hop probability g_ij(dt) is fetched by the class-B member
-      !       itself (the facade does not pre-build it; the diagonalization itself is system-independent
-      !       generic physics and lawfully stays in the facade - not system-specific code. Delivery of U:
-      !       an adiab-view cache field in ws, written by the facade and read-only to the class-B member
-      !       (one-step lifetime, axiom C intact), or a re-diagonalization inside the class-B member -
-      !       fixed in phase C with the elec_tsh consumer, noting the double O(n_surf^3) cost of the
-      !       latter); r_adiab -> g = ws%g_surf(:, sta%s%i_surf) (the
-      !       current-surface row - after a hop the class-B member updates i_surf, and recomputing with
-      !       the new row belongs to the next evaluation)
+      !       transform U); the current-occupation adiabatic force kernel takes the transformed
+      !       current rows; the dh_ij.U product needed for the hop probability g_ij(dt) is fetched by
+      !       the electronic phases themselves (the facade does not pre-build it; the diagonalization
+      !       itself is system-independent generic physics and lawfully stays in the facade - not
+      !       system-specific code. Delivery of U: an adiab-view cache field in ws, written by the
+      !       facade and read-only to the electronic phases (one-step lifetime, axiom C intact),
+      !       or a re-diagonalization inside the consuming member - fixed in phase C with the
+      !       elec_tsh consumer, noting the double O(n_surf^3) cost of the latter; the consumer is
+      !       now elec_prop / mqc_statistic, no longer an in-force_eval call); r_adiab -> g(:) =
+      !       fold of the occupation-set rows ws%g_surf(:, occ) (the current-occupation force kernel,
+      !       E14 - generalized from the single current-surface row; length 1 = the degenerate
+      !       single-row form; after a hop mqc_statistic updates sta%occ, and recomputing with the
+      !       new rows belongs to the next evaluation)
       !       (see previous line)
       !       (see previous line)
       !       (see previous line)
       !       (see previous line)
-      !    b. v_pot convention: adiab -> v_surf(i_surf)*ev_kcal; diab -> population-weighted or
-      !       current-surface (class-B law-member convention, fixed by the consumer); scalar additive
-      !       contributions fold in as usual;
+      !    b. v_pot convention: adiab -> v_surf(occ)*ev_kcal (the current-occupation surfaces); diab ->
+      !       population-weighted or current-surface (class-B law-member convention, fixed by the
+      !       consumer); scalar additive contributions fold in as usual;
       !       (see previous line)
       !       e_tot = t_kin + v_pot
       !    c. radau note: fixed-step only on multi-surface paths (E13: enforced inside the class-B
@@ -299,21 +292,23 @@ contains
       !       well-defined "one step" dt semantics; this path only ever sees fixed steps (same source as
       !       the propagator header note)
       !       (see previous line)
-   end subroutine facade_force
+   end subroutine force_eval
 
    !------------------------------------------------------------------
-   ! facade_info() - diagnostic output: member list and capability combination
+   ! blackbox_info() - diagnostic output: member list and assembly state (renamed
+   !                   facade_info -> blackbox_info by E14)
    ! Reference: docs/final_completion_plan.md §5 N1 (facade_info - member list / capability levels)
-   subroutine facade_info()
+   subroutine blackbox_info()
       ! Pseudocode:
       ! 1. Print the class-A registered/assembled member list (name + main-PES/additive tag + ws fill
-      !    mode r_*) and the class-B member name
+      !    mode r_*) and the assembled method-package name (the bound row of the elec_facade method
+      !    table - E14: the old class-B member-name slot is gone)
       !    (see previous line)
-      ! 2. Print the current capability combination: H-capability n_surf x main-PES ws mode x electron
-      !    law x integrator (from the three config sources - descriptive output only; legality is
+      ! 2. Print the current capability combination: H-capability n_surf x main-PES ws mode x method
+      !    x integrator (from the config sources - descriptive output only; legality is
       !    the members' own affair, E13)
       !    (see previous line)
       ! 3. Print the unit-contract constants (ev_kcal/e_conv) and the assembly state - for debugging
       !    assembly errors
-   end subroutine facade_info
+   end subroutine blackbox_info
 end module force_facade
