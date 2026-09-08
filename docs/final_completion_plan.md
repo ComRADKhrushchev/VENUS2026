@@ -265,6 +265,18 @@ system, not this program; a facade-side table would also break E11 drag-in (a ne
 editing force_facade). config%electronic%method is a name string ('adiabatic'/'tsh'/'iesh'), same form as
 pes_main.
 
+[E14 revision 2026-09-08 — supersedes the single-entry orchestration; docs/superpowers/specs/2026-09-08-facade-e14-design.md
+§3/§8] The blackbox contract becomes four entries — `force_eval` (state→forces), `elec_prop` (electronic
+evolution, owns dt), `mqc_statistic` (electronic-state→state statistics), termination composed through
+predicate's two tracks — and the orchestration is explicit in the driver (the four-phase integration-loop
+step prop_step -> elec_prop -> mqc_statistic -> rec_frame -> pred_eval; hooks withdrawn). The
+signature/registration wording above is historical: facade_register_pes / facade_register_elec and
+facade_force(Q, P, s, F, E) are superseded by pes_reg / method_reg (method packages registered by thin
+reg_*.f90 files; the K3 prebuild aggregates every reg_*.f90 into registry_gen.f90) and by the state-based
+entries force_eval(sta, e_tot) / elec_prop(sta, dt) / mqc_statistic(sta), with blackbox_init /
+blackbox_info as the assembly entries. All negotiation/registration contract wording in this section now
+points to the spec as the ruling authority.
+
 - [ ] **N1.1** Write force_facade.f90: the member registry (name→procedure array), the additive composition
   loop, formal validation (E13 — no capability-negotiation table; physical-combination legality is checked
   by the members themselves). The conversion expression exactly matches DPESHON in form
@@ -291,6 +303,11 @@ pes_main.
 module predicate
   public :: predicate_parse(str, expr, ios, errmsg)  ! input-grammar expression → expr tree
   public :: predicate_eval(Q, P, W, roster, expr) → logical
+  ! [E14 annotation 2026-09-08] These signatures were never implemented as written: the landed module
+  ! (src/dynamics/predicate.f90, K2) exports pred_parse / pred_eval — pred_parse matches the first line's
+  ! argument list modulo the name; pred_eval is state-based, pred_eval(sta, expr [, i_step]) (one state_t
+  ! argument, no Q/P/W/roster dummies; i_step = the MAX_STEPS safety-net channel) — plus pred_reg_prim
+  ! (E14 track 1). Block kept for the historical interface intent.
 end module
 ```
 Input grammar (new keyword `TERMINATE =`, registered in param_mapping):
@@ -300,8 +317,18 @@ atom   := COM_DISTANCE(fragment A, fragment B, threshold Å[, recession-velocity
         | Z_HEIGHT(fragment, threshold Å[, OUTWARD])                  ← replaces the TEST.f:88-94 hardcoded criteria
         | MAX_STEPS(count)                                   ← replaces the NC magic number (always a safety net)
         | BOUND(fragment A, fragment B, lower, upper)        ← bounded window (constrained scattering)
+        | PRIM('name')                                       ← [E14] registered system primitive (two-track composition,
+                                                                  must match a pred_reg_prim row; quoting/argument
+                                                                  conventions finalized at C7)
 fragment   := roster fragment name (A/B/…) or ATOM(i)
 ```
+[E14 revision 2026-09-08 — supersedes the closed-primitive-set wording; spec §7] The primitive set is an
+open registered set: system termination primitives enter as `PRIM('name')` leaves (pred_reg_prim) composing
+with the four built-ins on equal footing (e.g. AND(PRIM('desorb_z'), MAX_STEPS(500000))); the boolean
+combinators (AND/OR/NOT) remain a closed set and MAX_STEPS stays the ever-present safety net. Nonterminal
+divergence note: the landed grammar (src/dynamics/predicate.f90) names the leaf nonterminal `primitive`
+(`expression := primitive | AND(e1,e2) | OR(e1,e2) | NOT(e)`) — this section's `atom :=` is the historical
+spelling of the same language.
 
 - [ ] **N2.1** Write the grammar data structures (atom/boolean-combination nodes) + parser + evaluator (the COM
   distance and recession-velocity algorithms taken line by line from TEST.f:106-146, guaranteeing numerical
