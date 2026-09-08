@@ -17,7 +17,7 @@
 | N2 "the predicate primitive set is closed (four primitives)" | The primitive set becomes an open registered set (system termination primitives as grammar leaves); the boolean combinators remain a closed set. |
 | E12 "interface_electronic/ remains the class-B home" | Role upgraded: the two interface_* directories are rebuilt as the flat built-in method library `methods/` (pre-stored generic methods, library-level registration, config-key dispatch). |
 | E11 "prebuild scans systems/*/reg_*.f90" | Scan rule generalized: prebuild aggregates every reg_*.f90 under methods/ and systems/ into registry_gen.f90. The reg file is the atomic unit of registration (drag in a new file = drag in a new method or system; zero edits to existing files). |
-| E12 "state.f90 n_surf/i_surf representation semantics" | i_surf is ruled a statistical variable, not an electronic one (the discrete output of mqc's stochastic sampling of the populations — an irreversible classical-side projection). i_surf and n_hop relocate from elec_t to state_t top level (classical-side statistical fields); elec_t becomes purely the quantum-state ontic layer {n_surf, a, rho}. |
+| E12 "state.f90 n_surf/i_surf representation semantics" | i_surf is ruled a statistical variable, not an electronic one — and, under the single-electron representation (multiple states occupied simultaneously), a single surface index is not general: it is generalized to the occupation vector occ(:). occ and n_hop live as classical-side statistical fields at state_t top level; elec_t becomes purely the quantum-state ontic layer {n_surf, a, rho}. |
 | (naming) facade_-prefixed entry names | Withdrawn. Entry names state the physical role: force_eval / elec_prop / mqc_statistic (evolution), blackbox_init / blackbox_info / sysdef_load (assembly), pes_reg / method_reg / pred_reg_prim (registration, noun_reg per the prop_reg/samp_reg convention). Module names keep *_facade (architectural position). |
 
 ## 1. Background and motivation
@@ -80,8 +80,9 @@ subroutine elec_prop(sta, dt)
 
 ! ---- elec_facade.f90 — entry 3: state-statistics matching (§4.1 layer 3) ----
 subroutine mqc_statistic(sta)
-   ! Input: the electronic state (+ ws statistics). Output: the state — writes sta%i_surf
-   ! (discrete reassignment — a classical-side statistical field, see §4), sta%p (momentum
+   ! Input: the electronic state (+ ws statistics). Output: the state — writes sta%occ
+   ! (occupation reassignment — a classical-side statistical field, see §4; a hop = one
+   ! component change of the occupation vector), sta%p (momentum
    ! projection), optionally sta%f (post-hop force refresh — the member decides and may call
    ! force_eval itself; intra-box calls are legal), optionally the propagation container
    ! (decay-of-mixing amplitude resets).
@@ -143,20 +144,32 @@ end type
 type :: state_t
    ! ... q/p/f/t unchanged ...
    type(elec_t) :: s                       ! electronic state (ontic: a / rho)
-   integer :: i_surf = 1                   ! RELOCATED from elec_t: active-surface index — a
-                                           ! CLASSICAL-SIDE STATISTICAL field, not an electronic
-                                           ! variable: the discrete output of mqc_statistic's
-                                           ! stochastic sampling of the populations (irreversible
-                                           ! projection of quantum statistics onto the classical
-                                           ! side). Read by force_eval (adiab-mode i_want
-                                           ! request source); written by mqc_statistic.
+   integer, allocatable :: occ(:)          ! RELOCATED from elec_t's i_surf and GENERALIZED:
+                                           ! occupation vector — a CLASSICAL-SIDE STATISTICAL
+                                           ! field, not an electronic variable (the discrete
+                                           ! output of mqc_statistic's stochastic sampling of
+                                           ! the populations — an irreversible projection of
+                                           ! quantum statistics onto the classical side). Under
+                                           ! the single-electron representation multiple states
+                                           ! are occupied simultaneously — a single surface
+                                           ! index is not general; a hop = one component change.
+                                           ! Semantics by method: independent-electron methods
+                                           ! occ(k) = the state of electron k; single-active-
+                                           ! surface methods (TSH): length 1; configuration-
+                                           ! representation methods: length-1 configuration
+                                           ! number; adiabatic: [1] constant. Dimension n_e set
+                                           ! at member init (reallocated together with a).
+                                           ! Read by force_eval (adiab-mode delivery-request
+                                           ! source — generalized from the scalar i_want to the
+                                           ! occupation set, length 1 = the degenerate form);
+                                           ! written by mqc_statistic.
    integer :: n_hop  = 0                   ! RELOCATED from elec_t: hop counter — same statistical
                                            ! nature (pure observable; read by recorder only).
 end type
 ```
 
 Conceptual gain: "mqc_statistic takes the electronic state as input and returns the state"
-now reads literally true — its outputs are classical-side fields of state_t (i_surf, p),
+now reads literally true — its outputs are classical-side fields of state_t (occ, p),
 while the electronic ontic state (a/rho) is touched only when a method lawfully resets it
 (decay-of-mixing).
 
@@ -236,6 +249,29 @@ System-specific method variants: the algorithm stays generic and single-copy; pa
                 arrive via config / system data at runtime (decoupling wins — E12 spirit).
 ```
 
+### Two exposure levels of the library ("ready-made semantics")
+
+```
+Level 1 — whole packages (the standard path, zero code): config%electronic%method = 'fssh'
+binds the assembled package at blackbox_init; the mqc_statistic / elec_prop facade dispatch
+lands directly in the package's match/prop members. The blackbox author writes no method
+code at all. Dispatch chain of mqc_statistic: facade table lookup -> match member (reads
+sta%s%a + sta%p + ws; g_ij from the library formula; rng-sampled hop; writes sta%occ/sta%p;
+optional force_eval self-call) -> sync tail.
+
+Level 2 — reusable components (the assembly path): the library modules expose
+algorithm-level public routines that a custom package's members may use to compose
+variants —
+  amp_rk / amp_expm          amplitude ODE integrators (propagation-layer components)
+  fssh_g_ij(a, d_ij, v, dt)  the fewest-switches probability matrix (generic formula)
+  hop_decide(g_ij)           the rng sampling decision (the sole evolution-phase rng point)
+  momentum_rescale(p, d_ij, dE)  the projection solve p' = p - beta*d_ij
+  dom_reset(a, ...)          decay-of-mixing amplitude reset
+A system-tuned variant (e.g. a custom decoherence schedule) = a thin match member that
+uses these components — the physics formulas stay single-copy; the author writes only the
+scheduling logic.
+```
+
 Method-package × ws coupling retains the E10 contract: a member loud-stops on a ws%repr it
 does not support (e.g. iesh rejects r_adiab), and on dt semantics it cannot live with (the
 E13 open point, carried to phase C unchanged).
@@ -302,9 +338,9 @@ end do
 | src/facade/force_facade.f90 | deleted and rewritten (force_eval entry + pes registry; all class-B content excised) |
 | src/facade/elec_facade.f90 | new (elec_prop / mqc_statistic entries, method-package registry, ws holder, sync tail calls) |
 | src/facade/sysdef_facade.f90 | new (system-definition contract: discovery/dispatch/roster fill/derivation/hand-off) |
-| src/facade/elec_ws.f90 | comments revised (one-step lifetime, holder wording) |
+| src/facade/elec_ws.f90 | comments revised (one-step lifetime, holder wording, request field generalized from the scalar i_want to the occupation set — length 1 = the degenerate form) |
 | src/facade/sampler.f90 | kept (comment: initial geometries arrive from sysdef hand-off) |
-| src/globals/state.f90 | amp(:) -> a(:,:); rho(:,:) added; i_surf/n_hop relocated from elec_t to state_t top level (classical-side statistical fields); comment statutes (symmetric ontic containers, member-defined semantics, statistical vs ontic distinction) |
+| src/globals/state.f90 | amp(:) -> a(:,:); rho(:,:) added; i_surf generalized to the occupation vector occ(:) and relocated (with n_hop) from elec_t to state_t top level (classical-side statistical fields); comment statutes (symmetric ontic containers, member-defined semantics, statistical vs ontic distinction, occupation-vector semantics) |
 | src/dynamics/propagator.f90 | hooks withdrawn; endpoint-force contract in header; dt-channel note rewritten |
 | src/dynamics/predicate.f90 | primitive registry (pred_reg_prim + k_prim leaf + PRIM grammar leaf) |
 | src/driver.f90 | four-phase orchestration pseudocode; hooks wiring removed; assembly phase gains sysdef step |
