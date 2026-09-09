@@ -84,7 +84,7 @@ contains
       ! never modifying sta itself)
       type(fin_t), intent(out) :: fin     ! final-state quantity receiver (the sole output of this routine)
       ! Pseudocode:
-      ! 1. Fragment-A properties (old :100-109): cenmas(sta, roster%mass, roster%list_a,
+      ! 1. Fragment-A properties (old :100-109): cenmas(sta, roster%mass, roster%frag(1)%list,
       !    q_cm_a, v_cm_a) builds the COM frame; amom(..., j_a, e_rot_a, omega_a) - j_a and
       !    j_mag_a folded to hbar units (divide hbar_code, old /C7); one-atom fragments all zero (old :24-33)
       ! 2. Fragment-A internal energy (old :113-129): internal kinetic = COM-frame

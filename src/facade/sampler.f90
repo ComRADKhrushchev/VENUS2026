@@ -85,7 +85,7 @@ contains
       !    instruments are usable internally - preparation members calling evolution
       !    services internally is legal, boundary 4)
       ! 3. Multi-fragment systems call the members in order per config%reactants%
-      !    dist_scheme (fragment A/B distributions) + the incident-channel member
+      !    dist_scheme (per-fragment distributions, frag-indexed; E15) + the incident-channel member
       !    (collision energy / impact parameter / orientation - the old setup_gas_collision
       !    :1337-1404 / setup_surface_collision :1300-1334 two routes merged)
       ! 4. The old SELECT master orchestration is excised: fragment placement and the DH

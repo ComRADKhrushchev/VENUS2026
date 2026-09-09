@@ -40,7 +40,7 @@ module config
   ! distributions; E14: the configuration half is no longer wholly input data - composition
   ! arrives from the blackbox folder and surface_model is derived, spec §6)
   type :: reactants_t
-     integer :: n_frag = 1           ! number of fragments
+     integer :: n_frag = 1           ! number of fragments (= size(roster%frag) after assembly)
      character(len=128) :: system_dir = '' ! blackbox folder path scanned by sysdef_load (E14 spec §6;
                                            ! grammar + default value finalized in C4)
      integer :: surface_model = 0    ! configuration paradigm (0 = gas phase / molecular; 1/2 = the two
@@ -49,7 +49,10 @@ module config
                                      ! definition file carries a cell -> surface paradigm (1/2); none
                                      ! -> 0); the 1-vs-2 surface-paradigm selection is not derivable
                                      ! from cell presence alone and arrives with further input (C4)
-     integer :: dist_scheme(2) = 0   ! per-fragment sampling scheme (pointing to dist_* members)
+     integer, allocatable :: dist_scheme(:) ! per-fragment sampling scheme (pointing to dist_* members;
+                                            ! E15: arrayed together with roster%frag - allocated at
+                                            ! input/assembly, size = n_frag; the K1 max_frag risk-note
+                                            ! extension direction landed early at the review gate)
      real(8) :: e_rel  = 0.0d0       ! collision energy (relative-motion distribution) [kcal/mol]
      real(8) :: b_max  = 0.0d0       ! maximum impact parameter [Å]
      real(8) :: r_sep  = 0.0d0       ! initial separation [Å]

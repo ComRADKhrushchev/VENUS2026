@@ -201,7 +201,7 @@ contains
       ! Result: center-of-mass distance >= r_th, and (when v_rec is present) radial receding velocity > v_rec
       ! Pseudocode:
       ! 1. Expand fragment references to atom lists: i_atom>0 -> a one-atom pseudo-fragment; otherwise the
-      !    roster fragment table (roster%list_a; the B-side table is deferred with the roster - phase C)
+      !    roster fragment table (roster%frag(i)%list; E15 arrayed - no B-side blank)
       ! 2. Per fragment compute the mass-weighted center of mass and its velocity: q_cm = sum(w.q)/sum(w),
       !    v_cm = sum(p)/sum(w) (per-atom accumulation, old :107-130; velocity = momentum aggregate over total mass)
       ! 3. r_cm = |q_cmA - q_cmB|; v_r = (q_cmA-q_cmB).(v_cmA-v_cmB)

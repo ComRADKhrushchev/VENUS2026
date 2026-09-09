@@ -84,7 +84,7 @@ contains
       !    electronic <- method/n_surf/pes_main (old CALTYP/NSURF/TEST_PES; method/pes_main remain
       !    NAME STRINGS - E14: method is the name-string lookup into the methods/ library registry
       !    (method_tbl in elec_facade, spec §5), pes_main the class-A assembly key, E13 form);
-      !    reactants <- n_frag/dist_scheme(2)/e_rel/b_max/r_sep
+      !    reactants <- n_frag/dist_scheme(:)/e_rel/b_max/r_sep
       !    (old NACTA.B/SEREL/BMAX/S) + system_dir (blackbox folder path - grammar finalized in
       !    C4, spec §6); surface_model is NOT mapped here (E14: derived by sysdef_load, see
       !    step 4);

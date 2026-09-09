@@ -166,7 +166,7 @@ program venus
    ! 1. samp_run(scheme, sta) - per-trajectory initial-state preparation (an operational-class call - spec §2.3
    !    boundary 4: actual calls in the assembly phase include distribution members, and preparation members
    !    count as assembly-like calls; located at the trajectory-loop head, outside the integration loop;
-   !    old :349 SELECT site. scheme takes the member name mapped from reactants%dist_scheme - C5 wiring)
+   !    old :349 SELECT site. scheme takes the member name mapped from reactants%dist_scheme(k) - C5 wiring)
    ! 2. force_eval(sta, e0) - initial force and total energy of the initial state (old :402-403
    !    DVDQ_1/ENERGY_1; E14 naming statute - the pure force entry names the action; no dt
    !    argument)

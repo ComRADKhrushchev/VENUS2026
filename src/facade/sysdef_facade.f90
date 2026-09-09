@@ -87,9 +87,9 @@ contains
       !    is config_roster's roster_t, assembly/validation staying in roster_load - the
       !    representation layer's own entry, its data source now the sysdef products,
       !    spec §9): per-atom roster%mass / roster%symb (files concatenated in name
-      !    order); fragment tables one file per fragment - roster%list_a / roster%nat_a /
-      !    roster%mass_a / roster%qz_a for the first file, the fragment-B table and the
-      !    multi-fragment extension being config_roster's own phase-C blanks (field note
+      !    order); fragment tables one file per fragment - roster%frag(i) for the i-th file
+      !    (the homogeneous frag_t row: list/nat/mass/qz; E15 arrayed, no A/B asymmetry -
+      !    the surface rows' extra content is config_roster's own phase-C blank, field note
       !    there); equilibrium geometry roster%q0 (fragment geometries placed by atom
       !    index); unit cell roster%box_lx / roster%box_ly / roster%skew for cell-carrying
       !    files (+ a_lat is a system parameter with no generic default - roster_load
