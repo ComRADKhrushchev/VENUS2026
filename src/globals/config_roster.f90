@@ -60,7 +60,8 @@ module config_roster
 
    type(roster_t) :: roster    ! roster instance (same instance pattern as the config module;
                                ! assembled by roster_load,
-                               ! state%natoms = size(roster%mass) - wiring in phase C driver/input)
+                               ! state dimensions = 3*size(roster%mass) (E16: no cached
+                               ! natoms/ndof fields - size-derived) - wiring in phase C driver/input)
 contains
    !------------------------------------------------------------------
    ! roster_load() - assemble and validate the roster (E14 spec §6/§9: data source = the sysdef

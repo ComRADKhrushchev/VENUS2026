@@ -54,7 +54,8 @@ module elec_ws
                                   ! delivery request: the set of currently occupied single-particle
                                   ! states whose coupling rows are requested; length 1 = the
                                   ! single-active-surface degenerate form; written by force_eval from
-                                  ! sta%occ, read by the member. The occupation set stays out of the
+                                  ! the held occ (occ_get, E16 statistics holder), read by the member.
+                                  ! The occupation set stays out of the
                                   ! class-A signature and is conveyed through this field)
       ! -- scalar-mode container --
       real(8), allocatable :: g_add(:)  ! force kernel -dV/dq [eV/Å] (an equivalent force kernel for stochastic laws)

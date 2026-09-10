@@ -232,7 +232,7 @@ contains
       !    skipped phases); dt no longer appears here (E9 channel withdrawn - the hop probability
       !    g_ij(dt) is consumed in elec_prop)
       ! 2. Main-PES evaluation (the assembled main-PES member - one unified call): request the
-      !    occupation set - ws%i_want(:) = sta%occ (the adiab-mode delivery request, E14:
+      !    occupation set - ws%i_want(:) = occ_get() (the adiab-mode delivery request, E16:
       !    generalized from the scalar i_surf; length 1 = the single-active-surface degenerate
       !    form; the occupation set stays out of the class-A signature and is conveyed through
       !    the request field, E10); via the ws_get instance: proc(sta%q, roster%mass, ws) -
@@ -276,7 +276,7 @@ contains
       !       now elec_prop / mqc_statistic, no longer an in-force_eval call); r_adiab -> g(:) =
       !       fold of the occupation-set rows ws%g_surf(:, occ) (the current-occupation force kernel,
       !       E14 - generalized from the single current-surface row; length 1 = the degenerate
-      !       single-row form; after a hop mqc_statistic updates sta%occ, and recomputing with the
+      !       single-row form; after a hop mqc_statistic updates the held occ (E16), recomputing with
       !       new rows belongs to the next evaluation)
       !       (see previous line)
       !       (see previous line)

@@ -31,8 +31,8 @@
 !   prop_step returns only after the endpoint force has been evaluated: the ws held by elec_facade
 !   corresponds to the returned sta%q. Under MQC the velocity-Verlet right-end force cannot be folded
 !   into the next step's left end - the amplitude propagation of phase 2 (elec_prop) needs the endpoint
-!   H - and between the two force sites the electronic phases run (a hop may change sta%occ), so each
-!   step evaluates its own left-end force afresh.
+!   H - and between the two force sites the electronic phases run (a hop may change the held
+!   occupation set, E16), so each step evaluates its own left-end force afresh.
 !
 ! -- dt channel note (E9, re-anchored by E14; spec §3) --
 !   dt is no longer a force_eval argument - force_eval(sta, e_tot) is the pure force entry (two

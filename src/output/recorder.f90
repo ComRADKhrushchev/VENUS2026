@@ -45,9 +45,10 @@
 !   the recorder NEVER touches the semantics of a (its row/column index semantics are
 !   method knowledge, E11/E12 route; rho is the observable face of the electronic state,
 !   refreshed to the method's declared deliverable state by sync_proc). The occupation / hop
-!   columns read the classical-side statistical fields sta%occ / sta%n_hop (spec §4:
-!   occ(k) = state of electron k - a hop = one component change of the occupation vector;
-!   n_hop is a recorder-only read)
+!   columns read the elec_facade statistics holder occ_get / n_hop_get (E16: the classical-
+!   side statistical constructs relocated out of state_t - sampled constructs have no
+!   thing-in-itself status; occ(k) = state of electron k - a hop = one component change
+!   of the occupation vector; n_hop is a recorder-only read)
 !=====================================================================
 module recorder
    use state,         only: state_t
@@ -113,9 +114,10 @@ contains
       !    T/V/H line); electronic observable columns (E14, spec §4 - the module-header
       !    observable-source statute): pop_i reads the diagonal sta%s%rho(i,i) (population),
       !    coh_ij the off-diagonal sta%s%rho(i,j) (coherence, reduced to a real scalar -
-      !    modulus or real part, a display convention), occ_k the component sta%occ(k)
-      !    (occupation vector - classical-side statistical field; a hop = one component
-      !    change), n_hop the counter sta%n_hop (recorder-only read) - these columns never
+      !    modulus or real part, a display convention), occ_k the component of the held
+      !    occupation set (occ_get, E16 statistics holder - classical-side statistical
+      !    construct; a hop = one component change), n_hop the counter n_hop_get()
+      !    (recorder-only read) - these columns never
       !    touch the semantics of a and form the demand side of the blackbox_init
       !    observable-vs-container formal check (spec §4: a column demanding a container no
       !    assembled package member delivers -> loud-stop); preset-group membership in the
@@ -181,7 +183,8 @@ contains
    subroutine rec_frame(sta, unit)
       type(state_t), intent(in) :: sta   ! physical state (read-only snapshot - the post-mqc
       ! self-consistent state: the driver four-phase loop calls rec_frame AFTER
-      ! mqc_statistic (spec §8 ordering - sta%occ already updated for the step and rho
+      ! mqc_statistic (spec §8 ordering - the held occupation set already updated for the
+      ! step (E16 statistics holder) and rho
       ! refreshed to the declared deliverable state, repairing the one-step occupation lag
       ! of the old checkpoint-timed frames)
       integer, intent(in) :: unit        ! output unit number [-] (driver orchestration - the

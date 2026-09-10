@@ -55,6 +55,21 @@
 !   method_bind(config%electronic%method) — the system author writes zero method
 !   registration lines (the method arrives as a config key).
 !   (see previous line)
+!
+! -- E16 statistics holder (review-gate ruling 2026-09-10) --
+!   The occupation vector occ(:) and the hop counter n_hop relocated here from state_t:
+!   sampled constructs have no thing-in-itself status (the E10 axiom family extended —
+!   occ is the discrete output of mqc_statistic's stochastic sampling, n_hop a pure
+!   observable accumulator; state_t is purely Q/P/s/F/t). Run-lifetime module-private
+!   holder, the ws sibling (ws = one-step representation construct, occ/n_hop = run-time
+!   statistical constructs — same privacy axioms, different lifetimes). Access: members
+!   read/write through the facade-internal conveyance channel (same vehicle as ws,
+!   wrapper shape C2); force_eval (the adiab-mode delivery-request source) and recorder
+!   (the n_hop column) read through the public read-only getter pair occ_get / n_hop_get.
+!   The degenerate occupation occ=[1] is seeded at method_bind — it arrives with the
+!   method declaration, not with the container (the adiabatic degenerate point is method
+!   knowledge); dimension n_e set at member init, reallocated together with a.
+!   (supersedes spec §4's "occ and n_hop relocate to state_t top level" clause)
 !=====================================================================
 module elec_facade
    use state,   only: state_t, elec_t
@@ -65,6 +80,7 @@ module elec_facade
    public :: elec_prop, mqc_statistic            ! evolution-phase entries (spec §3, entries 2-3)
    public :: method_reg, method_bind             ! package registration + assembly lookup (spec §5)
    public :: ws_get, ws_reset                    ! ws-holder accessor pair (spec §3 ws holding)
+   public :: occ_get, n_hop_get                  ! E16 statistics-holder read-only getters
    public :: elec_prop_i, mqc_match_i, sync_proc_i  ! member contract interfaces (E14 T5: made
    ! explicit for method-package authors - the members/ files use them as contract
    ! documentation; conformance is machine-checked at the method_reg call site)
@@ -88,8 +104,9 @@ module elec_facade
          import :: state_t
          type(state_t), intent(inout) :: sta  ! reads the electronic state + ws statistics (d_ij
          ! for the momentum projection — the one-step ws read this entry exists for); writes
-         ! sta%occ / sta%p (occupation reassignment + momentum projection — classical-side
-         ! statistical fields, spec §4; a hop = one component change of the occupation vector),
+         ! the held occ / sta%p (occupation reassignment through the conveyance channel,
+         ! E16 statistics holder + momentum projection — classical-side statistical
+         ! constructs; a hop = one component change of the occupation vector),
          ! optionally sta%f (post-hop force refresh: the member may call force_eval itself —
          ! intra-box calls are legal), optionally the ontic container (decay-of-mixing amplitude
          ! resets). Sole consumption point of the random stream during the evolution phase
@@ -138,6 +155,17 @@ module elec_facade
    ! signature; the accessor pair below is the only sanctioned handle)
    type(ws_t) :: ws
 
+   ! The statistics holder — E16: run-lifetime module-private (the ws sibling; see the
+   ! header note). occ written by mqc_statistic's member (through the conveyance channel),
+   ! read by force_eval / recorder through occ_get; n_hop incremented at hop detection,
+   ! read through n_hop_get. Seeded occ=[1] / n_hop=0 at method_bind (the degenerate
+   ! occupation arrives with the method declaration)
+   integer, allocatable :: occ(:)   ! occupation vector (E14 generalization of i_surf:
+                                    ! occ(k) = state of electron k / the configuration
+                                    ! index — length 1 = the degenerate single-active-
+                                    ! surface form; dimension n_e set at member init)
+   integer :: n_hop = 0             ! hop counter (pure observable, recorder-only read)
+
 contains
    !------------------------------------------------------------------
    ! ws_get(w) - hand the held ws instance to force_facade (the fill site of the one-step
@@ -148,7 +176,8 @@ contains
    subroutine ws_get(w)
       type(ws_t), intent(inout) :: w  ! the fill handle on the held instance (force_eval writes
                                       ! the step's composition through it — the request field
-                                      ! i_want from sta%occ, then the per-mode delivery fields
+                                      ! i_want from the held occ (E16: same module, direct
+                                      ! read — no getter round-trip), then the per-mode fields
                                       ! per the elec_ws.f90 container contract — and leaves it
                                       ! in place for the electronic phases)
       ! Pseudocode:
@@ -177,6 +206,30 @@ contains
       !    facade concretization (elec_ws.f90 tail note — the skeleton legislates the repr
       !    reset only)
    end subroutine ws_reset
+
+   !------------------------------------------------------------------
+   ! occ_get(occ) - read-only hand-out of the held occupation set (E16): force_eval's
+   !                adiab-mode delivery-request source + the recorder columns
+   ! Reference: this module's E16 header note (statistics holder); spec §4 occupation
+   !       semantics (the location clause superseded — the holder is here)
+   subroutine occ_get(occ)
+      integer, allocatable, intent(out) :: occ ! read-only copy of the held set (the
+                                               ! caller never receives the holder itself —
+                                               ! no allocation handle: the single writer
+                                               ! stays mqc_statistic's member)
+      ! Pseudocode:
+      ! 1. Unallocated holder (pre-assembly window — method_bind not yet run) ->
+      !    loud-stop; otherwise copy the held occ into the dummy (allocate + assign)
+   end subroutine occ_get
+
+   !------------------------------------------------------------------
+   ! n_hop_get() - read-only hand-out of the hop counter (E16): the recorder column
+   ! Reference: this module's E16 header note; spec §4 (n_hop a pure observable)
+   function n_hop_get() result(n)
+      integer :: n                            ! the current hop count [count]
+      ! Pseudocode:
+      ! 1. n = the held n_hop
+   end function n_hop_get
 
    !------------------------------------------------------------------
    ! method_reg(name, prop, match [, sync]) - register one method package into the table (the
@@ -225,6 +278,10 @@ contains
       ! 3. Bind i_assembled to the matched row index (single-select; from here the
       !    evolution entries dispatch through this row — the table is read-only during
       !    evolution)
+      ! 4. Seed the statistics holder (E16): occ = [1] (the degenerate occupation arrives
+      !    with the method declaration — the adiabatic degenerate point is method
+      !    knowledge, not container knowledge), n_hop = 0; larger occupation dimensions
+      !    (n_e) reallocated by the member-init hook together with a
    end subroutine method_bind
 
    !------------------------------------------------------------------
@@ -269,13 +326,14 @@ contains
    !       state — occ/p are classical-side statistical fields, spec §4; pure-form tail call
    !       sync_proc if registered), §4 (sync tail), §5 level 1 (the dispatch chain: facade
    !       table lookup -> match member — reads sta%s%a + sta%p + ws, g_ij from the library
-   !       formula, rng-sampled hop, writes sta%occ/sta%p, optional force_eval self-call ->
+   !       formula, rng-sampled hop, writes the held occ/sta%p (E16), optional force_eval self-call ->
    !       sync tail);
    !       docs/design_spec_completeness.md §4.1 (layer-3 semantics + the rng ruling)
    subroutine mqc_statistic(sta)
-      type(state_t), intent(inout) :: sta  ! physical state (sta%occ / sta%p written; sta%f
+      type(state_t), intent(inout) :: sta  ! physical state (sta%p written; sta%f
                                            ! and the ontic container optionally — the
-                                           ! member's declaration, see step 3; occ feeds the
+                                           ! member's declaration, see step 3; the held occ
+                                           ! (E16 statistics holder, this module) feeds the
                                            ! next force_eval's adiab-mode delivery request)
       ! Pseudocode:
       ! 1. Unassembled table (i_assembled = 0) -> loud-stop (same formal check as elec_prop)
@@ -284,8 +342,9 @@ contains
       !    under the old facade-local ws an independent matching entry had nothing to read)
       ! 3. Call the assembled row's match member: read the electronic statistics
       !    (populations / gaps / d_ij from ws + the ontic container), sample, and write the
-      !    classical side — sta%occ (a hop = one component change of the occupation vector,
-      !    spec §4), sta%p (momentum projection p' = p - beta*d_ij), optionally sta%f
+      !    classical side — the held occ (E16: the statistics holder through the
+      !    conveyance channel; a hop = one component change, n_hop incremented at
+      !    detection), sta%p (momentum projection p' = p - beta*d_ij), optionally sta%f
       !    (post-hop force refresh: the member may call force_eval itself — intra-box,
       !    legal) and optionally the ontic container (decay-of-mixing amplitude resets).
       !    Sole consumption point of the random stream during the evolution phase (§4.1
