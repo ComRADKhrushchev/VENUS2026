@@ -21,8 +21,8 @@
 !   hooks_t / hook_out_i / hook_term_i / the second prop_step argument are deleted: the propagator
 !   reverts to a pure integrator. The E7 clause "inside the integration loop the only direct call is
 !   prop_step" is withdrawn - the loop body directly calls prop_step and the facade phase entries
-!   (elec_prop / mqc_statistic) plus rec_frame / pred_eval, the four-phase orchestration being explicit
-!   in the driver (prop_step -> elec_prop -> mqc_statistic -> rec_frame -> pred_eval). Frame output
+!   (elec_prop / mqc_statistic) plus rec_frame / container_term, the four-phase orchestration being explicit
+!   in the driver (prop_step -> elec_prop -> mqc_statistic -> rec_frame -> container_term, E18). Frame output
 !   and termination move to the driver; this also repairs the latent timing defect of the hooks form -
 !   a hooks%term checkpoint fired after nuclear propagation but before the electronic phases, so a
 !   termination there skipped the step's electronic evolution and left an inconsistent state.

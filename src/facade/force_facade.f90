@@ -120,6 +120,24 @@
 !       legislates form; this is method-spectrum knowledge, not system knowledge; a new H
 !       form = a generic-program version step, the same precedent as a new predicate
 !       primitive class).
+!
+! -- E18 termination ownership (review-gate ruling 2026-09-12: "predicate is overcomplex -
+!    let the container write its own termination condition; the output being whether the
+!    trajectory terminates is enough") --
+!   The predicate grammar interpreter is WITHDRAWN (pred_parse expression trees / the four
+!   built-in primitives / PRIM open registration / the boolean closed combinators / the k_*
+!   node codes / frag_ref addressing - the whole file deleted; a small language built for
+!   one judgment is overengineering, the E17 singleton argument applied to the problem
+!   side). Termination is problem knowledge, equally system-specific (E17(4)'s lone non-H
+!   exception): the container registers ONE judgment function - container_bind_term(proc),
+!   the private contract logical term_i(sta) - and the driver phase-4 call becomes
+!   container_term(sta) (unbound slot = legal: the safety-net-only run). MAX_STEPS stays
+!   the ever-present safety net as control%max_steps - program safety, generic side, the
+!   only judgment never delegated. Geometry criteria (COM distance / recession velocity /
+!   height) are written container-side on utils/geometry instruments (cenmas etc.);
+!   TEST.f:106-146 remains their provenance, cited by the C2 container example. The
+!   outcome expression family (output/outcome.f90) is the same complexity question -
+!   flagged for its L4 review.
 !=====================================================================
 module force_facade
    use consts,        only: e_conv
@@ -131,6 +149,8 @@ module force_facade
    implicit none
    private
    public :: force_eval, container_bind_pes, container_init
+   public :: container_bind_term, container_term  ! E18: the termination slot + its phase-4
+                                                  ! evaluation entry
 
    ! eV to kcal/mol conversion (unit-contract literal — T4: appears only in this file)
    real(8), parameter :: ev_kcal = 23.0605d0
@@ -168,6 +188,19 @@ module force_facade
                                         ! 'scalar,adiab'; the assembly-time match target of
                                         ! the method row's h_form, E17(5))
 
+   ! The termination slot - E18: the container's own trajectory-termination judgment
+   ! (problem knowledge; the predicate grammar interpreter withdrawn). Contract: read-only
+   ! sta; geometry criteria written container-side with utils/geometry instruments.
+   ! Unbound slot = legal (the safety-net-only run: fixed-step adiabatic cases; the
+   ! ever-present net is control%max_steps, checked in the driver loop condition)
+   abstract interface
+      logical function term_i(sta)
+         import :: state_t
+         type(state_t), intent(in) :: sta  ! physical state (read-only snapshot)
+      end function term_i
+   end interface
+   procedure(term_i), pointer :: container_term_proc => null()
+
    ! E13/E17: the facade is a purely FORMAL authority - no capability-combination table
    ! lives here. The assembly-time checks kept in container_init are purely formal: the
    ! slot is bound; the method name resolves; n_surf >= 2 without a multi-surface mode in
@@ -200,6 +233,36 @@ contains
       ! 2. Bind the slot, store h_deliver (present-check defaults to '') - executed once
       !    in the assembly phase by the container's reg module
    end subroutine container_bind_pes
+
+   !------------------------------------------------------------------
+   ! container_bind_term(proc) - E18 single-slot assembly injection: bind the container's
+   !                 trajectory-termination judgment (the caller: the container's reg
+   !                 module, alongside container_bind_pes; no grammar, no table)
+   ! Reference: this file's E18 header note; E17(4) (termination = problem knowledge, the
+   !       lone non-H container exception)
+   subroutine container_bind_term(proc)
+      procedure(term_i) :: proc              ! the container termination judgment
+      ! Pseudocode:
+      ! 1. Already bound (associated(container_term_proc)) -> loud-stop
+      !    (assembly-choreography error, formal)
+      ! 2. Bind the slot - executed once in the assembly phase by the container's reg
+      !    module
+   end subroutine container_bind_term
+
+   !------------------------------------------------------------------
+   ! container_term(sta) - phase-4 evolution-loop entry (E18): the trajectory-termination
+   !                 boolean (the driver's fourth phase; supersedes pred_eval in the
+   !                 E7/E14 four-phase call list)
+   ! Reference: this file's E18 header note; control%max_steps (the ever-present safety
+   !       net - the driver loop's step_i < max_steps condition, the only judgment never
+   !       delegated)
+   logical function container_term(sta)
+      type(state_t), intent(in) :: sta       ! physical state (read-only snapshot)
+      ! Pseudocode:
+      ! 1. Unbound slot -> container_term = .false. (the safety-net-only run - legal;
+      !    MAX_STEPS in the driver condition remains the ever-present net)
+      ! 2. container_term = container_term_proc(sta)
+   end function container_term
 
    !------------------------------------------------------------------
    ! container_init() - assembly + purely formal validation spanning BOTH facades (E13

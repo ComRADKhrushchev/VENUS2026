@@ -62,12 +62,11 @@ module config
      ! owned by the dist_* members (member = code + data)
   end type
 
-  ! Event provisions (spec §3.2-3: termination predicate + outcome classification, data not code)
+  ! Event provisions (spec §3.2-3; E18: the termination half is container-side now - term_expr
+  ! and the TERMINATE= key withdrawn; the outcome half awaits the L4 review)
   type :: event_t
-     character(len=256)  :: term_expr   = '' ! termination-predicate expression (wired in C3)
-     character(len=1024) :: outcome_tbl = '' ! outcome-classification table (wired in C7)
-     ! Left blank: event-class extensions (constrained windows / coupled multi-events - added
-     ! when the predicate grammar is finalized)
+     character(len=1024) :: outcome_tbl = '' ! outcome-classification table (wired in C7; the
+                                             ! expression family flagged for the L4 review, E18)
   end type
 
   ! ===== Observables (generic energy terms and recording settings) =====

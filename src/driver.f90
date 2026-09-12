@@ -36,17 +36,16 @@
 !   - duplicated STOP/timing prints :243-301 (999/6 double channel, line-by-line repeats - merged into one statistics-section pass)
 !=====================================================================
 program venus
-   use control,        only: task, n_traj, title, i_seed
+   use control,        only: task, n_traj, title, i_seed, max_steps
    use config,         only: event, observables, reactants, &
                              prop_cfg => propagator  ! alias as in propagator.f90 - the config
                              ! instance 'propagator' clashes with the module name; the dt_eff source
    use config_roster,  only: roster, roster_load
    use state,          only: state_t, state_create, state_destroy
    use rng,            only: rng_init
-   use predicate,      only: expr_t, pred_parse, pred_eval
    use propagator,     only: prop_reg, prop_step, &
                              verlet_step, symple_step, radau_step
-   use force_facade,   only: container_init, force_eval
+   use force_facade,   only: container_init, force_eval, container_term
    use elec_facade,    only: elec_prop, mqc_statistic
    use sysdef_facade,  only: sysdef_load
    use reg_adiabatic,  only: reg_adiabatic_all   ! E14 T5: the thin reg module replaces the raw
@@ -63,10 +62,11 @@ program venus
 
    ! -- orchestration counters and flags (local variables - E7; the old global NTZ/NC/NX bookkeeping lands here) --
    integer :: traj_i        ! trajectory index [count] (old NTZ; 1..n_traj)
-   integer :: step_i        ! step index [step] (old NC - the MAX_STEPS channel of pred_eval)
-   logical :: term_flag     ! termination flag for this trajectory (written by the phase-4 pred_eval call of
-                            ! the integration loop - E7 termination channel; E14: the termination is
-                            ! driver-orchestrated, spec §8)
+   integer :: step_i        ! step index [step] (old NC; E18: the counter of the MAX_STEPS safety
+                            ! net - the driver loop condition step_i < max_steps, control side)
+   logical :: term_flag     ! termination flag for this trajectory (written by the phase-4
+                            ! container_term call of the integration loop - E7 termination
+                            ! channel; E18: the container's own judgment, spec §8/E18)
    real(8) :: e0            ! total energy of the initial state [kcal/mol] (force_eval output -
                             ! the reference for conservation drift, old E0)
    real(8) :: dt_eff        ! effective step length [10 fs] (staged once from prop_cfg%dt - the fixed-step
@@ -84,8 +84,8 @@ program venus
                                              ! written exclusively in the evolution phase, read-only in statistics)
    type(state_t), allocatable :: sta_fin(:)  ! final-state snapshots per trajectory [count] (evolution -> statistics
                                              ! hand-off; same source as the old QSAVE/PSAVE staging)
-   type(expr_t)  :: expr_term                ! termination-predicate tree (produced by pred_parse in the assembly phase)
-   type(outc_tbl_t) :: outc_tbl              ! outcome-classification table (parsed from outcome_tbl - C7)
+   type(outc_tbl_t) :: outc_tbl              ! outcome-classification table (parsed from outcome_tbl - C7; the
+                                             ! expression family flagged for the L4 review, E18)
    type(fin_t) :: fin                        ! final-state quantities (taken over per trajectory in statistics)
    type(hist_spec_t) :: spec_hist            ! histogram specification (assembled in statistics - C8)
    type(hist_data_t) :: data_hist            ! trajectory row table (aggregated from recorder final-state rows - C8)
@@ -147,10 +147,12 @@ program venus
    !    reallocated, spec §4 allocation timing)
    ! 8. rec_select(observables%rec_level) (or rec_select(observables%obs_list)
    !    list entry) - recording column-group selection (registration precedes column selection)
-   ! 9. pred_parse(event%term_expr, expr_term) - assemble the termination tree; with no TERMINATE key,
-   !    the default expression (same-parameter version - built by the assembly layer, predicate.f90 note 5);
-   !    event%outcome_tbl -> outc_tbl parsing (the C7 grammar deliverable); spec_hist /
-   !    lattice assembly (histogram specification and roster unit-cell mapping - C8)
+   ! 9. (E18: pred_parse withdrawn - termination is the container's own judgment, bound by
+   !    its reg module's container_bind_term at step 6; no program-side grammar remains)
+   !    remaining assembly parsing: event%outcome_tbl -> outc_tbl (the C7 grammar
+   !    deliverable; the outcome expression family awaits the L4 review - flagged as the
+   !    same complexity question); spec_hist / lattice assembly (histogram specification
+   !    and roster unit-cell mapping - C8)
    ! 10. allocate(sta_fin(n_traj), cnt_outc(outc_tbl%n_row), data_hist columns -
    !     assemble the inter-phase hand-off structures; dt_eff = prop_cfg%dt (staged once - the
    !     fixed-step source, see the local's note); timing start t_cpu(1)
@@ -161,7 +163,7 @@ program venus
    !    prop_step (propagator class), the facade phase entries elec_prop / mqc_statistic (facade
    !    class; force_eval runs inside the propagator member per the endpoint-force contract, and
    !    optionally inside mqc_statistic as an intra-box force refresh), rec_frame (recorder class),
-   !    and pred_eval (predicate class) - the four-phase orchestration is explicit in the driver.
+   !    and container_term (container judgment, E18) - the four-phase orchestration is explicit in the driver.
    !    No sampler / analysis / input / roster calls inside the loop; the orchestration counters
    !    traj_i/step_i are locals.
    ! Trajectory loop: do traj_i = 1, n_traj (old TRAJECTORY_LOOP :239)
@@ -174,7 +176,9 @@ program venus
    !    argument)
    ! 3. rec_frame(sta, u_out) - first frame (old :405 GWRITE site)
    ! 4. step_i = 0, term_flag = .false. (orchestration reset)
-   ! 5. Integration loop: do while (.not. term_flag) (old INTEGRATION_LOOP :419) - the spec §8
+   ! 5. Integration loop: do while (.not. term_flag .and. step_i < max_steps) (old
+   !    INTEGRATION_LOOP :419; E18: the MAX_STEPS safety net is the driver condition - the
+   !    only judgment never delegated to the container) - the spec §8
    !    four-phase step body, verbatim (the spec's dt dummy arrives here as dt_eff - the local
    !    staged from prop_cfg%dt; "occupation lag" per the landed T10 precedent - the spec's own
    !    "i_surf lag" wording is its historical citation):
@@ -187,8 +191,9 @@ program venus
    !                                         ! optional force refresh)
    !    call rec_frame(sta, u_out)           ! frame output (post-mqc self-consistent state -
    !                                         ! repairs the prior one-step occupation lag in frames)
-   !    term_flag = pred_eval(sta, expr_term, step_i)   ! phase 4: termination
-   !    (step_i doubles as the MAX_STEPS safety-net channel of pred_eval; end do)
+   !    term_flag = container_term(sta)               ! phase 4: termination (E18: the
+   !                                                  ! container's own judgment; unbound slot =
+   !                                                  ! .false., the safety-net-only run; end do)
    ! 6. Loop tail (outside the integration loop, at the trajectory-loop end): sta_fin(traj_i) = sta - archive
    !    the final-state snapshot (same source as old :411-413 QSAVE/PSAVE); rec_final(sta, u_out) -
    !    the final-state row (measurement class; recorder final-state rows carry system-diagnostic columns - bounce/z_min etc.,

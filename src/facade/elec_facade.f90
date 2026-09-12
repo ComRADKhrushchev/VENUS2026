@@ -18,7 +18,7 @@
 ! -- E14 four-entry rebuild (user rulings 2026-09-08; spec §3) --
 !   The E13 sentence "facade_force is the orchestration of the three" is withdrawn: the
 !   blackbox contract becomes four entries and the step choreography is explicit in the
-!   driver (prop_step -> elec_prop -> mqc_statistic -> rec_frame -> pred_eval, spec §8).
+!   driver (prop_step -> elec_prop -> mqc_statistic -> rec_frame -> container_term, spec §8/E18).
 !   This module owns the two electronic-phase entries; the dt argument retired from
 !   facade_force lands on elec_prop (the E9 channel re-anchored — the hop probability
 !   g_ij(dt) belongs to the electronic phases, not to the force evaluation).

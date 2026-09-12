@@ -294,6 +294,12 @@ points to the spec as the ruling authority.
 
 ### N2 predicate.f90 grammar interpreter (△2)
 
+[E18 withdrawn 2026-09-12, K2 review gate: the grammar interpreter is deleted — termination is
+the container's own judgment (container_bind_term / container_term, logical term_i(sta)); MAX_STEPS
+remains as control%max_steps in the driver loop condition. Section kept for the historical
+interface intent; phase C3 is withdrawn likewise — TEST.f:106-146 becomes the provenance of the
+C2 container example term function. The N2 block below is the pre-E14 historical text.]
+
 **Files:**
 - Create: `src/predicate.f90` (new tree L3 closed family)
 - Test: `scripts/check_predicate.f90`

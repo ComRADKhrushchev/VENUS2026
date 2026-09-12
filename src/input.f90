@@ -88,13 +88,10 @@ contains
       !    (old NACTA.B/SEREL/BMAX/S) + system_dir (container folder path - grammar finalized in
       !    C4, spec §6); surface_model is NOT mapped here (E14: derived by sysdef_load, see
       !    step 4);
-      !    event <- term_expr/outcome_tbl (TERMINATE=/OUTCOME= new grammar keys -
-      !    the predicate module-header grammar; wired in C3/C7; E14: TERMINATE gains the
-      !    PRIM('name') leaf - registered system primitives compose with the built-in four on
-      !    equal footing (two-track, spec §7); exact surface form per predicate.f90: uppercase
-      !    keyword, single-quoted name, stored verbatim into character(len=32) prim_name,
-      !    parse-time unknown-name errors riding the existing ios/errmsg channel (pred_parse
-      !    step 3); both-track example AND(PRIM('desorb_z'), MAX_STEPS(500000)));
+      !    event <- outcome_tbl only (OUTCOME= grammar key - wired in C7; E18: TERMINATE=
+      !    withdrawn - termination is the container's own judgment (container_bind_term),
+      !    no program-side grammar remains; the outcome expression family awaits the L4
+      !    review, flagged as the same complexity question);
       !    observables <- rec_level/obs_list/e_kin/e_pot/e_tot (old
       !    GWRITE_LEVEL -> rec_level)
       ! 7. Roster-section staging WITHDRAWN (E14 spec §6): system composition (mass table / element
@@ -108,6 +105,6 @@ contains
       !    NACTA branches in venus_input.f90:607-681 - the new version has one central dispatch table,
       !    filled in row by row with the members in C2/C5)
       ! 9. Validation: missing required keys / numeric-domain violations / illegal enumerations ->
-      !    loud-stop naming the key and line number (error channel same as pred_parse's ios/errmsg)
+      !    loud-stop naming the key and line number (the standard ios/errmsg channel)
    end subroutine read_input
 end module input
