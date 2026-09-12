@@ -22,9 +22,9 @@
 !   fragment := roster fragment name (A/B/...) or ATOM(i)
 !
 ! -- E14 two-track composition (user ruling 2026-09-08; docs/superpowers/specs/2026-09-08-facade-e14-design.md §7) --
-!   Track 1 (system material): each blackbox registers its termination primitives via
+!   Track 1 (system material): each container registers its termination primitives via
 !   pred_reg_prim(name, proc) - e.g. "adsorbate height above surface" written by the system author;
-!   system knowledge lives in the blackbox (the leaf set OPENS). Track 2 (program-side grammar):
+!   system knowledge lives in the container (the leaf set OPENS). Track 2 (program-side grammar):
 !   boolean composition (AND/OR/NOT, closed set) and the MAX_STEPS safety net stay in predicate -
 !   composition logic is program knowledge (pure Boolean algebra - the §3 closure argument survives
 !   verbatim; the old N2 wording that read the whole grammar as closed is hereby revised).
@@ -91,7 +91,7 @@ module predicate
    end interface
 
    ! System-primitive registry (E14 track 1: the leaf set opens - system knowledge registers through
-   ! pred_reg_prim, the same drag-in shape as pes_reg/method_reg; filled in the assembly phase by the
+   ! pred_reg_prim, the same drag-in shape as container_bind_pes/method_reg; filled in the assembly phase by the
    ! system's reg_*.f90, read-only at parse/eval time)
    integer, parameter :: max_prim = 16     ! system-primitive table capacity [row] (registered leaves;
                                            ! the four built-ins are not rows of this table)
@@ -104,11 +104,11 @@ module predicate
 contains
    !------------------------------------------------------------------
    ! pred_reg_prim(name, proc) - register a SYSTEM termination primitive (spec §7 track 1:
-   !                            system knowledge lives in the blackbox; the leaf set opens, the
+   !                            system knowledge lives in the container; the leaf set opens, the
    !                            boolean combinator set stays closed - N2 revision). Duplicate name
    !                            or full table -> loud-stop.
    ! Reference: docs/superpowers/specs/2026-09-08-facade-e14-design.md §7 (two-track composition:
-   !       track 1 - each blackbox registers its termination primitives, e.g. "adsorbate height
+   !       track 1 - each container registers its termination primitives, e.g. "adsorbate height
    !       above surface" written by the system author; TERMINATE= composes leaves of both tracks
    !       on equal footing); docs/final_completion_plan.md §5 N2 (the superseded closed-grammar
    !       wording); E11 drag-in shape (systems/<system>/reg_<system>_all carries the pred_reg_prim

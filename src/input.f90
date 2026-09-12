@@ -85,7 +85,7 @@ contains
       !    NAME STRINGS - E14: method is the name-string lookup into the methods/ library registry
       !    (method_tbl in elec_facade, spec §5), pes_main the class-A assembly key, E13 form);
       !    reactants <- n_frag/dist_scheme(:)/e_rel/b_max/r_sep
-      !    (old NACTA.B/SEREL/BMAX/S) + system_dir (blackbox folder path - grammar finalized in
+      !    (old NACTA.B/SEREL/BMAX/S) + system_dir (container folder path - grammar finalized in
       !    C4, spec §6); surface_model is NOT mapped here (E14: derived by sysdef_load, see
       !    step 4);
       !    event <- term_expr/outcome_tbl (TERMINATE=/OUTCOME= new grammar keys -
@@ -99,10 +99,10 @@ contains
       !    GWRITE_LEVEL -> rec_level)
       ! 7. Roster-section staging WITHDRAWN (E14 spec §6): system composition (mass table / element
       !    symbols / fragment tables / equilibrium geometries / unit cell) no longer rides the input
-      !    grammar - it arrives from the blackbox folder through sysdef_load (the sysdef facade
+      !    grammar - it arrives from the container folder through sysdef_load (the sysdef facade
       !    products, roster_load's data source; old ATOM_MASSES broadcast :248-256 / fragment table
       !    :508-518 / SKEW/BOXLX/BOXLY :996-1000 superseded as grammar); a_lat-class system
-      !    parameters with no generic default arrive via input or blackbox - decided in C4
+      !    parameters with no generic default arrive via input or container - decided in C4
       ! 8. Member-parameter dispatch: parameter keys owned by dist_*/pes_* members -> dispatched to each
       !    member's init (member = code + its own data; old TRV_A/TROT_A/AI_A etc. were scattered over the
       !    NACTA branches in venus_input.f90:607-681 - the new version has one central dispatch table,

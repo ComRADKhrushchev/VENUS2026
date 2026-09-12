@@ -62,7 +62,7 @@ contains
   ! longer seeded here — it arrives with the method declaration at method_bind, the
   ! elec_facade statistics holder; a/rho seeded at the degenerate 1x1 shape when n_surf
   ! present - larger ontic containers (e.g. IESH n_e x n_s) are reallocated by the method
-  ! member-init hook, blackbox_init step, spec §4 "Allocation timing"; n_surf defaults
+  ! member-init hook, container_init step, spec §4 "Allocation timing"; n_surf defaults
   ! to 1 - the adiabatic degenerate point; on failure write to stderr and stop)
   subroutine state_create(st, natoms, n_surf)
      type(state_t), intent(out) :: st

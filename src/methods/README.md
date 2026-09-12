@@ -22,9 +22,9 @@ code).
 ## Two exposure levels of the library ("ready-made semantics", spec §5)
 
 **Level 1 — whole packages** (the standard path, zero code):
-`config%electronic%method = 'fssh'` binds the assembled package at blackbox_init; the
+`config%electronic%method = 'fssh'` binds the assembled package at container_init; the
 mqc_statistic / elec_prop facade dispatch lands directly in the package's match/prop
-members. The blackbox author writes no method code at all. Dispatch chain of
+members. The container author writes no method code at all. Dispatch chain of
 mqc_statistic: facade table lookup -> match member (reads sta%s%a + sta%p + ws; g_ij
 from the library formula; rng-sampled hop; writes sta%occ/sta%p; optional force_eval
 self-call) -> sync tail.

@@ -17,7 +17,7 @@
 !       representation collapses the composite to a pure PES);
 !       docs/final_completion_plan.md §5 N1 (class-B member degenerate point - ~20 lines
 !       of explicit existence)
-! Registration: method_reg('adiabatic', ad_prop, ad_match) - ONE call in reg_adiabatic.f90
+! Registration: method_reg('adiabatic', '', ad_prop, ad_match) - ONE call in reg_adiabatic.f90
 !       (the thin reg file, spec §5 atomic registration unit); no optional sync - the null
 !       pointer is the legal "no deliverable cache" form. The members conform to
 !       elec_facade's abstract interfaces elec_prop_i / mqc_match_i - they take state_t

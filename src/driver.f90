@@ -13,8 +13,8 @@
 !       outcome summary and the five histogram calls :286-299 - prototype of the statistics phase);
 !       docs/superpowers/specs/2026-09-08-facade-e14-design.md §8 (driver orchestration - the
 !       four-phase integration-loop body, the wiring step deleted, the E7 phase-restriction
-!       restatement), §3 (assembly-phase entries: sysdef_load / pes_reg /
-!       blackbox_init), §6 (the sysdef step - system-definition materialization), §4 (allocation
+!       restatement), §3 (assembly-phase entries: sysdef_load / container_bind_pes /
+!       container_init), §6 (the sysdef step - system-definition materialization), §4 (allocation
 !       timing - the state_create 1x1-seed reconcile note)
 ! Excision list (do not carry over when referencing; K2 plan sourcing note - system branches / duplicated
 !   outcome blocks / dead blocks are all excised):
@@ -46,7 +46,7 @@ program venus
    use predicate,      only: expr_t, pred_parse, pred_eval
    use propagator,     only: prop_reg, prop_step, &
                              verlet_step, symple_step, radau_step
-   use force_facade,   only: pes_reg, blackbox_init, force_eval
+   use force_facade,   only: container_init, force_eval
    use elec_facade,    only: elec_prop, mqc_statistic
    use sysdef_facade,  only: sysdef_load
    use reg_adiabatic,  only: reg_adiabatic_all   ! E14 T5: the thin reg module replaces the raw
@@ -120,29 +120,31 @@ program venus
    !    (T1 reconcile, spec §4: the 1x1 seed is the degenerate-legal DEFAULT occupation -
    !    consistent with occ=[1]; "adiabatic/LZSH/MDEF allocate neither" governs the METHOD
    !    members, which never allocate larger ontic containers - the member-init step does that
-   !    (spec §4 allocation timing), at blackbox_init)
-   ! 6. member registration (one line each - the registry-family assembly-time convention; once
-   !    E11 is legislated this step is replaced by the build artifact registry_gen_all(): each
-   !    system-blackbox folder carries its own reg_<system>_all module and a prebuild step
+   !    (spec §4 allocation timing), at container_init)
+   ! 6. member registration (the registry-family assembly-time convention; once E11 is
+   !    legislated this step is replaced by the build artifact registry_gen_all(): each
+   !    system-container folder carries its own reg_<system>_all module and a prebuild step
    !    aggregates them - the driver's final form has zero registration lines; effective at
    !    K3, this pseudocode is the transitional form):
    !    prop_reg(1, verlet_step), prop_reg(2, symple_step),
    !    prop_reg(3, radau_step) (the closed three-member set - X4, unifying the old :423-465 three branches);
    !    reg_adiabatic_all() - the 'adiabatic' degenerate method package (E14: the thin reg file's one
-   !    method_reg(ad_prop, ad_match) call fills the whole package row - the member-signature freeze
-   !    lands in C2); pes_reg(main-PES name, ...) - pes_*
-   !    members are system material (E12: each systems/<system>/ folder carries self-contained functional
-   !    form + parameters; single-surface members register with the default r_scalar, multi-surface main
-   !    PES with optional repr=r_diab/r_adiab - the E10 unified single signature, still one registration
-   !    line per member, T2 unchanged); dist_* registration is absent by design - C5 per the T6 note
+   !    method_reg('adiabatic', '', ad_prop, ad_match) call fills the whole package row - '' the
+   !    empty Hamiltonian preset of the degenerate method, E17(5); the member-signature freeze
+   !    lands in C2); the container's class-A binding - the system reg module's ONE
+   !    container_bind_pes(container_pes [, h_deliver]) call (E17: the aggregate entry + its
+   !    H delivery declaration - the member sum executes inside the container; members are
+   !    system material, E12: each systems/<system>/ folder carries self-contained functional
+   !    form + parameters); dist_* registration is absent by design - C5 per the T6 note
    !    (no samp_reg lines in this transitional form: the batch-3 skeleton members boltzmann/ebk/
    !    incident wait for the sampler wiring window)
-   ! 7. blackbox_init() - member assembly + purely formal validation spanning BOTH facades (the
-   !    single assembly entry point of the whole blackbox, E14 naming statute - the entry names
-   !    the action; names resolve, main-PES slot filled, method slot
-   !    filled via method_bind, additive members r_scalar, the n_surf>=2-vs-r_scalar and
-   !    observable-vs-container contradictions loud-stop; the POTPRE-type member-init routines run
-   !    here - where larger ontic containers are reallocated, spec §4 allocation timing)
+   ! 7. container_init() - assembly + purely formal validation spanning BOTH facades (the
+   !    single assembly entry point of the whole container, E14/E17 naming - the entry names
+   !    the action; slot bound, H forms matched (h_form subset-of h_deliver, E17(5)), method
+   !    slot filled via method_bind, the n_surf>=2-vs-scalar-delivery and
+   !    observable-vs-container contradictions loud-stop; the POTPRE-type member-init
+   !    routines run container-side in its reg module - where larger ontic containers are
+   !    reallocated, spec §4 allocation timing)
    ! 8. rec_select(observables%rec_level) (or rec_select(observables%obs_list)
    !    list entry) - recording column-group selection (registration precedes column selection)
    ! 9. pred_parse(event%term_expr, expr_term) - assemble the termination tree; with no TERMINATE key,

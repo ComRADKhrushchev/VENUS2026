@@ -50,7 +50,7 @@ module config_roster
       ! (old RND_BOX, venus_input.f90:307)
       real(8) :: a_lat = 0.0d0                ! surface lattice constant [Å] (system parameter - no
       ! generic default: the old-library Au value 2.94998 from venus_data.f90:585 is a system bias and
-      ! is not carried over; surface paradigms must supply it via input/blackbox - roster_load
+      ! is not carried over; surface paradigms must supply it via input/container - roster_load
       ! validation intercepts a missing value)
       ! Left blank (content, not form - E15 settled the form): what the surface-paradigm fragment
       ! rows carry beyond the homogeneous shape (the old fragment-B table held the four surface

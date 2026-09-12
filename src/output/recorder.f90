@@ -118,7 +118,7 @@ contains
       !    occupation set (occ_get, E16 statistics holder - classical-side statistical
       !    construct; a hop = one component change), n_hop the counter n_hop_get()
       !    (recorder-only read) - these columns never
-      !    touch the semantics of a and form the demand side of the blackbox_init
+      !    touch the semantics of a and form the demand side of the container_init
       !    observable-vs-container formal check (spec §4: a column demanding a container no
       !    assembled package member delivers -> loud-stop); preset-group membership in the
       !    rec_level table deferred - selectable via obs_list, finalized in C4;

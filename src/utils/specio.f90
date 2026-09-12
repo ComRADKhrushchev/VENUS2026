@@ -1,7 +1,7 @@
 !=====================================================================
 ! specio.f90 - L5 instrument: system-definition file readers (POSCAR / .xyz) + the element
 !              mass table (E14 spec §6: parsers / mass table / derivation rule are generic
-!              code with zero system knowledge; the file CONTENTS are blackbox material)
+!              code with zero system knowledge; the file CONTENTS are container material)
 ! Reference: docs/superpowers/specs/2026-09-08-facade-e14-design.md §6 (formats: POSCAR
 !       (with cell) and .xyz (no cell) initially; a new format = a new parser member,
 !       grammar versioning; data flow: scan -> generic parser (utils) -> element symbols

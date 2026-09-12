@@ -4,13 +4,13 @@
 !                    lookup, roster fill, paradigm derivation, sampler hand-off
 ! Reference: docs/superpowers/specs/2026-09-08-facade-e14-design.md §6 (granularity: one
 !       file per reactant, file base name = reactant name; discovery: assembly-phase scan
-!       of the blackbox folder for known extensions, no manifest layer; formats: POSCAR
+!       of the container folder for known extensions, no manifest layer; formats: POSCAR
 !       (with cell) / .xyz (no cell) initially, a new format = a new parser member,
 !       grammar versioning; derivation rule: cell present -> surface, absent -> molecular
 !       - a generic formal rule lawfully in generic code; data flow: scan -> generic
 !       parser (utils) -> element symbols against the generic mass table -> fill roster
 !       (geometry / cell / masses) -> derive paradigm -> hand equilibrium geometries to
-!       sampler (B' placement); ownership: file contents = blackbox material, parsers /
+!       sampler (B' placement); ownership: file contents = container material, parsers /
 !       mass table / derivation rule = generic code), §3 (assembly-phase entries:
 !       sysdef_load is consumed by the driver assembly phase - no evolution-loop
 !       presence), §9 (affected-files rows: config surface_model derived-not-input;
@@ -25,7 +25,7 @@
 !   The evolution loop's four entries (force_eval / elec_prop / mqc_statistic / predicate)
 !   run per step; sysdef_load runs ONCE in the assembly phase and produces DATA (roster
 !   rows + the derived paradigm code), not callable physics. The geometric definition of
-!   the reactants is system knowledge - blackbox material in the E11/E12 sense: drag in a
+!   the reactants is system knowledge - container material in the E11/E12 sense: drag in a
 !   folder and the system is fully defined (no manifest to edit, no registration lines).
 !   (see previous line)
 !
@@ -39,7 +39,7 @@
 !
 ! -- Field notes (grammar lands C4; the field statutes are Task 11's) --
 !   scan_dir is a character dummy of this entry; the config-side path field (system_dir -
-!   the blackbox folder path as config data) is noted here in comments only. The paradigm
+!   the container folder path as config data) is noted here in comments only. The paradigm
 !   field reactants%surface_model is an integer code (config.f90: 0 = gas phase, 1/2 =
 !   the two surface paradigms): the molecular/surface fork is derivable from file shape
 !   and is written here (derived, not input - spec §9); the 1-vs-2 surface-paradigm
@@ -61,7 +61,7 @@ contains
    ! Reference: spec §6 (data flow row); §3 (assembly-phase entries); §9 (config_roster
    !       data source = sysdef facade products)
    subroutine sysdef_load(scan_dir)
-      character(len=*), intent(in) :: scan_dir  ! system-definition folder (the blackbox
+      character(len=*), intent(in) :: scan_dir  ! system-definition folder (the container
                                                 ! folder; the config-side path field
                                                 ! system_dir reaches this dummy at the C4
                                                 ! driver wiring - grammar lands C4)
@@ -70,7 +70,7 @@ contains
       !    (the exact name POSCAR and the extensions .poscar / .xyz, case-insensitive);
       !    file base name = reactant name (A.poscar, B.xyz, ...); multiple files per
       !    extension legal, one reactant each; zero known-extension files -> loud-stop
-      !    (no system defined - an empty blackbox folder is an assembly error, not an
+      !    (no system defined - an empty container folder is an assembly error, not an
       !    empty system)
       ! 2. Per-file dispatch by extension: POSCAR/.poscar -> read_poscar (the cell is
       !    retained), .xyz -> read_xyz (no cell - by format definition). Each file opened
@@ -79,7 +79,7 @@ contains
       !    formats -> loud-stop naming it; a reader soft failure (ok=.false.) ->
       !    loud-stop echoing errmsg with the file name (the ok/errmsg channel exists for
       !    the readers' own testability; the assembly phase converts a failure into a hard
-      !    stop - malformed blackbox material is unusable)
+      !    stop - malformed container material is unusable)
       !    (see previous line)
       ! 3. Masses: elem_mass(names(i)) per atom (symbol -> [amu]; an unknown symbol
       !    loud-stops inside elem_mass naming it)

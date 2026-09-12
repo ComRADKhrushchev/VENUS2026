@@ -70,6 +70,17 @@
 !   method declaration, not with the container (the adiabatic degenerate point is method
 !   knowledge); dimension n_e set at member init, reallocated together with a.
 !   (supersedes spec §4's "occ and n_hop relocate to state_t top level" clause)
+!
+! -- E17 container revision (review-gate rulings 2026-09-12; force_facade's E17 header
+!    block is the primary text - this note carries the method-row share only) --
+!   The method row gains h_form - the method's internal Hamiltonian PRESET (which H
+!   forms it consumes: comma-list over the r_* mode names; empty = consumes no H
+!   constructs, the degenerate method - 'adiabatic' registers ''). This is E14's
+!   deferred deliverable-declaration field activated early: container_init matches the
+!   bound row's h_form against the container's h_deliver (the container_bind_pes
+!   declaration) at assembly time - the E10 runtime repr-mismatch stop moves earlier,
+!   it does not go away. Terminology: blackbox -> container (blackbox_init ->
+!   container_init); historical blocks above keep their original wording.
 !=====================================================================
 module elec_facade
    use state,   only: state_t, elec_t
@@ -79,6 +90,8 @@ module elec_facade
    private
    public :: elec_prop, mqc_statistic            ! evolution-phase entries (spec §3, entries 2-3)
    public :: method_reg, method_bind             ! package registration + assembly lookup (spec §5)
+   public :: method_h_form                       ! E17: the bound row's H-form declaration (the
+                                                  ! assembly-time match source for container_init)
    public :: ws_get, ws_reset                    ! ws-holder accessor pair (spec §3 ws holding)
    public :: occ_get, n_hop_get                  ! E16 statistics-holder read-only getters
    public :: elec_prop_i, mqc_match_i, sync_proc_i  ! member contract interfaces (E14 T5: made
@@ -138,6 +151,10 @@ module elec_facade
                                           ! 'ehrenfest'/'fssh'/'iesh' land in phase C)
    type :: method_entry_t
       character(len=32) :: name = ''      ! package name (the config%electronic%method assembly key)
+      character(len=32) :: h_form = ''    ! the method's Hamiltonian preset - which H forms it
+                                          ! consumes (comma-list of r_* mode names; empty = no H
+                                          ! constructs, the degenerate method; E17(5) - matched
+                                          ! against the container's h_deliver at assembly)
       procedure(elec_prop_i), pointer, nopass :: prop  => null()  ! layer-2 member (propagation)
       procedure(mqc_match_i), pointer, nopass :: match => null()  ! layer-3 member (matching)
       procedure(sync_proc_i), pointer, nopass :: sync  => null()  ! container sync (null = the
@@ -146,7 +163,7 @@ module elec_facade
    type(method_entry_t) :: method_tbl(max_method)  ! method-package registry (module-private)
    integer :: n_method = 0                ! registered row count [row]
    integer :: i_assembled = 0             ! assembled row index [-] (0 = not bound; bound at
-                                          ! blackbox_init from config%electronic%method — the
+                                          ! container_init from config%electronic%method — the
                                           ! single assembly entry point stays in force_facade,
                                           ! spec §3 assembly-phase entries)
 
@@ -232,16 +249,20 @@ contains
    end function n_hop_get
 
    !------------------------------------------------------------------
-   ! method_reg(name, prop, match [, sync]) - register one method package into the table (the
-   !                 whole row at once — the row is the atomic registration unit, spec §5)
+   ! method_reg(name, h_form, prop, match [, sync]) - register one method package into the table
+   !                 (the whole row at once — the row is the atomic registration unit, spec §5)
    ! Reference: spec §5 (registration data flow: library level = each method file registered
    !       through its own thin reg_*.f90 in methods/; built-in set 'adiabatic' (all no-ops —
    !       the degenerate package) / 'ehrenfest' / 'fssh' / 'iesh'; new method = one new file
    !       + one thin reg file — drag in and it compiles); Corollary 1 (Ehrenfest and FSSH
-   !       share all electronic-propagation code — the same prop row, different match)
-   subroutine method_reg(name, prop, match, sync)
+   !       share all electronic-propagation code — the same prop row, different match);
+   !       E17(5) (the h_form Hamiltonian-preset field)
+   subroutine method_reg(name, h_form, prop, match, sync)
       character(len=*), intent(in) :: name  ! package name (the config%electronic%method key,
                                             ! e.g. 'adiabatic'/'ehrenfest'/'fssh'/'iesh')
+      character(len=*), intent(in) :: h_form ! the method's Hamiltonian preset - comma-list of
+                                            ! the r_* mode names it consumes (empty = no H
+                                            ! constructs, the degenerate method; E17(5))
       procedure(elec_prop_i) :: prop        ! layer-2 member (propagation)
       procedure(mqc_match_i) :: match       ! layer-3 member (matching)
       procedure(sync_proc_i), optional :: sync ! container sync (absent = the method declares
@@ -251,18 +272,31 @@ contains
       !    (purely formal name-table hygiene; the E13 statute: pairing legality is NOT
       !    checked here — one registration vouches for the whole package, the registering
       !    author knows their pairing is legal)
-      ! 2. Register the row {name, prop, match, sync} (sync absent -> null pointer, legal —
-      !    spec §4: null = no deliverable container to keep up to date); executed by the
-      !    reg_*.f90 files during the assembly phase (the driver calls the prebuilt
+      ! 2. Register the row {name, h_form, prop, match, sync} (sync absent -> null pointer,
+      !    legal — spec §4: null = no deliverable container to keep up to date); executed by
+      !    the reg_*.f90 files during the assembly phase (the driver calls the prebuilt
       !    registry_gen, which aggregates every reg file under methods/ and systems/ —
       !    zero registration lines in this file, E11)
    end subroutine method_reg
 
    !------------------------------------------------------------------
+   ! method_h_form() - read-only hand-out of the bound row's Hamiltonian preset (E17(5)):
+   !                   the match source consumed by container_init's assembly-time
+   !                   h_form-vs-h_deliver check (force_facade)
+   ! Reference: this module's E17 header note; force_facade's E17 header block (5)
+   function method_h_form() result(form)
+      character(len=32) :: form              ! the bound row's h_form (comma-list / empty)
+      ! Pseudocode:
+      ! 1. Unbound table (i_assembled = 0 - method_bind not yet run) -> loud-stop (a
+      !    match check before assembly is an assembly-order error, formal); otherwise
+      !    form = method_tbl(i_assembled)%h_form
+   end function method_h_form
+
+   !------------------------------------------------------------------
    ! method_bind(name) - assembly-time name lookup into method_tbl (single-select): bind
-   !                 i_assembled — called from blackbox_init, which stays in force_facade as
+   !                 i_assembled — called from container_init, which stays in force_facade as
    !                 the single assembly entry point spanning both facades
-   ! Reference: spec §3 (assembly-phase entries: blackbox_init spans both facades — names
+   ! Reference: spec §3 (assembly-phase entries: container_init spans both facades — names
    !       resolve, method slot filled); §5 (system level: the method arrives as
    !       config%electronic%method = 'fssh' — assembly is a pure name-lookup into the
    !       method table, zero method registration lines for the system author)
@@ -273,7 +307,7 @@ contains
       ! 1. Empty table (n_method = 0 — no library registered, registry_gen missing) or name
       !    not found -> loud-stop naming the requested method (a purely formal check: the
       !    name is data, its physical legality is not judged here, E13)
-      ! 2. Already bound (i_assembled /= 0) -> loud-stop (blackbox_init ran twice — an
+      ! 2. Already bound (i_assembled /= 0) -> loud-stop (container_init ran twice — an
       !    assembly-choreography error, formal)
       ! 3. Bind i_assembled to the matched row index (single-select; from here the
       !    evolution entries dispatch through this row — the table is read-only during
@@ -303,7 +337,7 @@ contains
                                            ! the propagator's actual step, not a config copy)
       ! Pseudocode:
       ! 1. Unassembled table (i_assembled = 0 — method_bind not yet run) -> loud-stop (an
-      !    evolution-phase entry called before blackbox_init — assembly-order error, formal)
+      !    evolution-phase entry called before container_init — assembly-order error, formal)
       ! 2. Convey the held ws into the member through the facade-internal channel (fetch
       !    the module instance; the internal wrapper signature carrying ws_t — the
       !    member-facing interface takes only (sta, dt), E10 axiom A intact; wrapper shape

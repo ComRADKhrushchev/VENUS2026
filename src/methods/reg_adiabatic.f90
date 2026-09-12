@@ -29,7 +29,7 @@ contains
    !       author's knowledge, the facade checks only name-table hygiene, E13 carried)
    subroutine reg_adiabatic_all()
       ! Pseudocode:
-      ! 1. call method_reg('adiabatic', ad_prop, ad_match) (no optional sync - adiabatic
+      ! 1. call method_reg('adiabatic', '', ad_prop, ad_match) (no optional sync - adiabatic
       !    allocates neither ontic container, nothing to synchronize; the null pointer is
       !    the legal "no deliverable cache" form, spec §4. Executed once in the assembly
       !    phase - transitional wiring from the driver pseudocode until the K3 prebuild

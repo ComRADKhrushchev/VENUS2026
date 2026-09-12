@@ -16,7 +16,7 @@
 ! -- E14 sysdef hand-off (user ruling 2026-09-08; spec §6 data-flow tail / §9: sampler KEPT,
 !    comment only - mechanism unchanged) --
 !   Initial geometries and fragment data arrive from the sysdef hand-off: sysdef_load parses
-!   the blackbox folder's system-definition files and hands the equilibrium geometries /
+!   the container folder's system-definition files and hands the equilibrium geometries /
 !   fragment masses over BY POPULATING THE ROSTER (spec §6: "hand equilibrium geometries to
 !   sampler (B' placement)"). The B' members (dist_boltzmann / dist_ebk / dist_incident)
 !   read equilibrium geometries and fragment masses THROUGH THE ROSTER - the data itself is

@@ -38,10 +38,10 @@ module config
 
   ! Reactant provisions (spec §3.2-3: configuration provisions + initial-state statistical
   ! distributions; E14: the configuration half is no longer wholly input data - composition
-  ! arrives from the blackbox folder and surface_model is derived, spec §6)
+  ! arrives from the container folder and surface_model is derived, spec §6)
   type :: reactants_t
      integer :: n_frag = 1           ! number of fragments (= size(roster%frag) after assembly)
-     character(len=128) :: system_dir = '' ! blackbox folder path scanned by sysdef_load (E14 spec §6;
+     character(len=128) :: system_dir = '' ! container folder path scanned by sysdef_load (E14 spec §6;
                                            ! grammar + default value finalized in C4)
      integer :: surface_model = 0    ! configuration paradigm (0 = gas phase / molecular; 1/2 = the two
                                      ! surface paradigms). E14: DERIVED, not an input key - sysdef_load
