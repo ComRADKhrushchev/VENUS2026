@@ -1,17 +1,49 @@
-# VENUS2026 completion rewrite - src/ build entry (P0 skeleton)
-# A single ifx invocation compiles and links, producing venus.e.
+# VENUS2026 completion rewrite - src/ build entry (K3: wildcard pickup + prebuild registry + build/ isolation)
+#
 # Usage:
-#   make          # build venus.e
-#   make clean    # remove the executable and build intermediates
-# Linux: load the oneAPI environment first (source setvars.sh) so ifx is visible.
-#        The new program has no MKL dependency; the old library's -qmkl link block is not carried over.
-# Windows: the path variables below can all be overridden with make VAR=... to match local oneAPI/MSVC versions.
-# (Platform block ported from venus2026/Makefile; only the three MKL library links were dropped.)
+#   make              # build build/venus.e with gfortran (default)
+#   make FC=ifx       # build with ifx (the project's conventional flags)
+#   make clean        # remove the whole build/ tree
+#
+# Drag-in (E11): a new methods/ or systems/ reg_*.f90 is picked up by the wildcard on the
+#   next make; ../scripts/prebuild.sh regenerates build/registry_gen.f90 (the aggregate
+#   registration module - registration is a BUILD ARTIFACT, the driver carries zero
+#   hand-written registration lines) and build/depend.mk (object-level use-dependencies;
+#   depending on the defining unit's .o sidesteps make's two-product (.o+.mod) problem and
+#   is parallel-safe). The Makefile never changes again.
+#
+# Layout: sources at src/*.f90, src/*/*.f90 and the repo-level systems/*/*.f90; ALL
+#   artifacts (.o/.mod/registry_gen.f90/depend.mk/venus.e) land in build/ - never the
+#   source tree (the K2 stale-mod shadowing lesson, E14 task-8 note).
 
+# := not ?= - FC is a make BUILT-IN variable whose default (f77) would survive ?=
+FC     := gfortran
+BUILD  := build
+EXE    := $(BUILD)/venus.e
+PREBUILD := ../scripts/prebuild.sh
+
+# ---- sources (wildcard, E11) ----
+# filter-out build/: the artifact directory sits inside the tree pattern (*/ *.f90 would
+# pick up the generated registry_gen.f90 twice - a ghost object and a circular dep)
+SRC_TREE := $(filter-out $(BUILD)/%,$(wildcard *.f90 */*.f90))
+SRC_SYS  := $(wildcard ../systems/*/*.f90)
+
+OBJ_TREE := $(patsubst %.f90,$(BUILD)/%.o,$(SRC_TREE))
+OBJ_SYS  := $(patsubst ../systems/%.f90,$(BUILD)/sys/%.o,$(SRC_SYS))
+OBJ_GEN  := $(BUILD)/registry_gen.o
+OBJS     := $(OBJ_TREE) $(OBJ_SYS) $(OBJ_GEN)
+
+# ---- compiler fork ----
+LDPOST :=
+ifeq ($(FC),ifx)
 IFX    ?= ifx
-FFLAGS ?= -r8 -double-size=64 -i8 -O2 -w
-EXE    := venus.e
+FFLAGS := -r8 -double-size=64 -i8 -O2 -w -c -module $(BUILD) $(LINKOPT)
+LDPOST := $(LINKOPT)
+else
+FFLAGS := -O2 -c -J$(BUILD)
+endif
 
+# ---- platform section (ported from the P0 skeleton; the ifx-Windows link path) ----
 ifeq ($(OS),Windows_NT)
 INTEL_BASE ?= C:/Program Files (x86)/Intel/oneAPI
 MSVC_BASE  ?= C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/MSVC/14.44.35207
@@ -21,23 +53,41 @@ WINKIT_LIB ?= C:/Program Files (x86)/Windows Kits/10/Lib/10.0.26100.0
 export PATH := $(INTEL_BASE)/compiler/2025.2/bin:$(PATH)
 export LIB  := $(MSVC_BASE)/lib/x64;$(WINKIT_LIB)/um/x64;$(WINKIT_LIB)/ucrt/x64;$(INTEL_BASE)/compiler/2025.2/lib
 LINKOPT := -Qlocation,link,"$(MSVC_BASE)/bin/Hostx64/x64"
-else
-LINKOPT :=
+ifeq ($(FC),ifx)
+FFLAGS := -r8 -double-size=64 -i8 -O2 -w -c -module $(BUILD) $(LINKOPT)
+endif
 endif
 
-# Source files are listed in module dependency order (L5->L1->L2->L3->L0).
-# P0 skeleton: SRC is an empty list for now; phase K3 (independent build of the new tree)
-# fills in the fixed skeleton list PLUS a wildcard pickup of systems/ (E11 "drag-in"
-# ruling: each system container sits in its own folder with a reg_<system>_all module;
-# a prebuild step scans systems/*/reg_*.f90 and generates registry_gen.f90, so dragging
-# a folder in is enough - zero edits to Makefile or driver; .mod dependencies let make
-# sort the compile order). Until then `make venus.e` only checks that the Makefile parses.
-SRC :=
+# ---- rules ----
+all: $(EXE)
 
-$(EXE): $(SRC)
-	$(IFX) $(FFLAGS) $(LINKOPT) $(SRC) -o $(EXE)
+# grouped target (make >= 4.3): one invocation emits both generated artifacts
+$(BUILD)/registry_gen.f90 $(BUILD)/depend.mk &: $(PREBUILD) $(SRC_TREE) $(SRC_SYS) | $(BUILD)
+	bash $(PREBUILD) . $(BUILD)
+
+$(BUILD)/%.o: %.f90 | $(BUILD)
+	@mkdir -p $(dir $@)
+	$(FC) $(FFLAGS) $< -o $@
+
+$(BUILD)/sys/%.o: ../systems/%.f90 | $(BUILD)
+	@mkdir -p $(dir $@)
+	$(FC) $(FFLAGS) $< -o $@
+
+# the generated unit gets an EXPLICIT rule - the wildcard pattern would resolve its
+# prerequisite to a nonexistent cwd-level registry_gen.f90 (circularity)
+$(BUILD)/registry_gen.o: $(BUILD)/registry_gen.f90 | $(BUILD)
+	$(FC) $(FFLAGS) $< -o $@
+
+$(EXE): $(OBJS)
+	$(FC) $(OBJS) -o $(EXE) $(LDPOST)
+
+$(BUILD):
+	mkdir -p $(BUILD)
 
 clean:
-	rm -f $(EXE) *.mod *.obj *.pdb *.ilk
+	rm -rf $(BUILD)
 
-.PHONY: clean
+.PHONY: all clean
+
+# object-level use-dependencies (regenerated with the sources; safe to be absent)
+-include $(BUILD)/depend.mk

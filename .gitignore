@@ -11,3 +11,7 @@ stdout*
 
 # SDD 草稿区
 .superpowers/
+
+# K3 build isolation (src/build/)
+build/
+__pycache__/

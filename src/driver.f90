@@ -48,9 +48,10 @@ program venus
    use force_facade,   only: container_init, force_eval, container_term
    use elec_facade,    only: elec_prop, mqc_statistic
    use sysdef_facade,  only: sysdef_load
-   use reg_adiabatic,  only: reg_adiabatic_all   ! E14 T5: the thin reg module replaces the raw
-                                   ! member use line (ad_dsdt/ad_force_rule withdrawn - one
-                                   ! method_reg call fills the whole 'adiabatic' package)
+   use registry_gen,   only: registry_gen_all   ! the BUILD-GENERATED aggregate (K3:
+                                   ! scripts/prebuild.sh emits build/registry_gen.f90 from
+                                   ! every reg_*.f90 under methods/ and systems/ - E11 drag-in;
+                                   ! the K2 transitional reg_adiabatic_all wiring withdrawn)
    use sampler,        only: samp_run
    use recorder,       only: rec_select, rec_frame, rec_final
    use final_state,    only: fin_t, fin_eval, container_classify
@@ -123,23 +124,18 @@ program venus
    !    consistent with occ=[1]; "adiabatic/LZSH/MDEF allocate neither" governs the METHOD
    !    members, which never allocate larger ontic containers - the member-init step does that
    !    (spec §4 allocation timing), at container_init)
-   ! 6. member registration (the registry-family assembly-time convention; once E11 is
-   !    legislated this step is replaced by the build artifact registry_gen_all(): each
-   !    system-container folder carries its own reg_<system>_all module and a prebuild step
-   !    aggregates them - the driver's final form has zero registration lines; effective at
-   !    K3, this pseudocode is the transitional form):
+   ! 6. registration (K3 final form - E11 landed): registry_gen_all() - the build-generated
+   !    aggregate (scripts/prebuild.sh scans methods/ and systems/ for reg_*.f90; the method
+   !    packages and the container's three single-slot bindings container_bind_pes /
+   !    bind_term / bind_classify all arrive through it - the driver carries ZERO
+   !    hand-written method/container registration lines; dragging a folder in is the whole
+   !    installation act). The one remaining hand-written registration is the CLOSED-family
+   !    set the drag-in surface does not cover:
    !    prop_reg(1, verlet_step), prop_reg(2, symple_step),
-   !    prop_reg(3, radau_step) (the closed three-member set - X4, unifying the old :423-465 three branches);
-   !    reg_adiabatic_all() - the 'adiabatic' degenerate method package (E14: the thin reg file's one
-   !    method_reg('adiabatic', '', ad_prop, ad_match) call fills the whole package row - '' the
-   !    empty Hamiltonian preset of the degenerate method, E17(5); the member-signature freeze
-   !    lands in C2); the container's class-A binding - the system reg module's ONE
-   !    container_bind_pes(container_pes [, h_deliver]) call (E17: the aggregate entry + its
-   !    H delivery declaration - the member sum executes inside the container; members are
-   !    system material, E12: each systems/<system>/ folder carries self-contained functional
-   !    form + parameters); dist_* registration is absent by design - C5 per the T6 note
-   !    (no samp_reg lines in this transitional form: the batch-3 skeleton members boltzmann/ebk/
-   !    incident wait for the sampler wiring window)
+   !    prop_reg(3, radau_step) (the integrator closed three-member set - X4, unifying the
+   !    old :423-465 three branches; fixed program stock, not drag-in material);
+   !    dist_* registration is absent by design - C5 per the T6 note (the batch-3 skeleton
+   !    members boltzmann/ebk/incident wait for the sampler wiring window)
    ! 7. container_init() - assembly + purely formal validation spanning BOTH facades (the
    !    single assembly entry point of the whole container, E14/E17 naming - the entry names
    !    the action; slot bound, H forms matched (h_form subset-of h_deliver, E17(5)), method
