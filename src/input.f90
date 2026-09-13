@@ -22,9 +22,10 @@
 !       dual-track fallback - prototype of member-parameter dispatch), :495-506 (NACTA branch printout -
 !       dispatch-site embryo), :607-681 (per-branch reading of TRV_A and other member parameters), :996-1000 (SKEW /
 !       BOXLX/BOXLY unit-cell section);
-!       grammar finalized in C4 (K2 plan §1 batch-4 table note) - the new key set, the TERMINATE=/OUTCOME=
-!       table grammar and the old-integer-key compatibility table are finalized in C4; this skeleton sets up
-!       the frame and mapping slots without locking the key set
+!       grammar finalized in C4 (K2 plan §1 batch-4 table note) - the new key set and the
+!       old-integer-key compatibility table are finalized in C4 (E18/E19: TERMINATE=/OUTCOME=
+!       withdrawn - termination and classification are container-side judgments); this skeleton
+!       sets up the frame and mapping slots without locking the key set
 !=====================================================================
 module input
    use control, only: task, n_traj, title, i_seed
