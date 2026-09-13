@@ -3,8 +3,8 @@
 module config
   implicit none
   private
-  public :: propagator_t, electronic_t, reactants_t, event_t, observables_t
-  public :: propagator, electronic, reactants, event, observables
+  public :: propagator_t, electronic_t, reactants_t, observables_t
+  public :: propagator, electronic, reactants, observables
 
   ! ===== Input provisions derived by freezing (spec §3.1-3.2) =====
 
@@ -62,12 +62,9 @@ module config
      ! owned by the dist_* members (member = code + data)
   end type
 
-  ! Event provisions (spec §3.2-3; E18: the termination half is container-side now - term_expr
-  ! and the TERMINATE= key withdrawn; the outcome half awaits the L4 review)
-  type :: event_t
-     character(len=1024) :: outcome_tbl = '' ! outcome-classification table (wired in C7; the
-                                             ! expression family flagged for the L4 review, E18)
-  end type
+  ! (E18/E19: the event provisions type is WITHDRAWN - termination is the container's own
+  ! judgment (container_bind_term, force_facade) and classification likewise
+  ! (container_bind_classify, final_state); neither event grammar key remains)
 
   ! ===== Observables (generic energy terms and recording settings) =====
   type :: observables_t
@@ -83,6 +80,5 @@ module config
   type(propagator_t) :: propagator
   type(electronic_t) :: electronic
   type(reactants_t)  :: reactants
-  type(event_t)      :: event
   type(observables_t) :: observables
 end module

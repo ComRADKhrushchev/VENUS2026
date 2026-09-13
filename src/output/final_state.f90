@@ -31,6 +31,22 @@
 !   Same source, also not carried over: the FINAL.f:616-625 NZDOWN==1 branch hardwires the B
 !   velocity as P(7:9)/W(3) -
 !   the surface final-state velocity channel is specified via roster fragments
+!
+! -- E19 outcome-classification ownership (review-gate ruling 2026-09-13: the outcome
+!    expression family of output/outcome.f90 withdrawn - the L4-review symmetry ruling
+!    promised by E18) --
+!   Same family, same verdict as E18: classification criteria (what counts as reactive /
+!   scattering / adsorbed / long-lived) are problem knowledge, equally system-specific -
+!   the container registers ONE classification function, container_bind_classify(proc),
+!   private contract classify_i(fin) -> name, called by the driver statistics phase
+!   through container_classify(fin). outcome.f90 is DELETED (the expression trees / the
+!   o_* leaf keys / the combinators / the outcome_tbl grammar key all withdrawn with it);
+!   the generic per-name counting stays in the driver. THIS module hosts the slot - the
+!   home of the contract's argument type fin_t (hosting it in force_facade would close a
+!   cycle: final_state use force_facade (fin_eval's staged evaluation) -> force_facade
+!   use final_state). Unbound slot + a call = loud-stop (classification is a
+!   statistics-phase contract - unlike termination there is no safety-net-only form; not
+!   calling it is the legal no-classification run).
 !=====================================================================
 module final_state
    use consts,        only: hbar_code, e_conv, dtor
@@ -42,12 +58,14 @@ module final_state
    implicit none
    private
    public :: fin_t, fin_eval
+   public :: container_bind_classify, container_classify  ! E19: the outcome-classification
+                                                          ! slot + its statistics-phase entry
 
    ! Final-state quantity receiver type (fin_eval output; fields = the old global final-state
    ! quantities turned into members)
    type :: fin_t
       real(8) :: e_int_a(3) = 0.0d0   ! fragment-A internal energy [kcal/mol]: (1) internal kinetic (2) internal potential - reference (3) total (old EA(1..3))
-      real(8) :: e_int_b(3) = 0.0d0   ! fragment-B internal energy [kcal/mol] (old EB(1..3); B table deferred with the roster - phase C)
+      real(8) :: e_int_b(3) = 0.0d0   ! fragment-B internal energy [kcal/mol] (old EB(1..3); the roster%frag(2) row, E15)
       real(8) :: j_a(3)     = 0.0d0   ! fragment-A angular momentum vector [hbar] (old AMA(1:3), /C7 conversion)
       real(8) :: j_mag_a    = 0.0d0   ! fragment-A angular momentum magnitude [hbar] (old AMA(4))
       real(8) :: e_rot_a    = 0.0d0   ! fragment-A rotational energy [kcal/mol] (old EROTA)
@@ -70,8 +88,23 @@ module final_state
       ! assembles, the hand-off channel
       ! finalized in phase C); rotational-energy sampling fluctuations SDA/SDB (old NCROT
       ! resampling average -
-      ! to the statistics phase); fragment-B table (same-source roster blank)
+      ! to the statistics phase); the *_b fields' content: the roster%frag(2) row (E15 arrayed)
    end type fin_t
+
+   ! The outcome-classification slot - E19: the container's own classification judgment
+   ! (problem knowledge; the outcome expression family withdrawn). Contract: read-only fin,
+   ! the outcome name out. Hosted HERE - the home of the argument type fin_t (see the E19
+   ! header note for the cycle argument). Unbound slot + a call = loud-stop (the legal
+   ! no-classification run simply never calls the entry)
+   abstract interface
+      function classify_i(fin) result(name)
+         import :: fin_t
+         type(fin_t), intent(in) :: fin    ! final-state quantities (read-only)
+         character(len=32) :: name         ! the outcome name [-] (e.g. 'nonreact'/'react'/
+                                           ! 'long' - data chosen by the container author)
+      end function classify_i
+   end interface
+   procedure(classify_i), pointer :: container_classify_proc => null()
 contains
    !------------------------------------------------------------------
    ! fin_eval(sta, fin) - final-state quantity computation: fragment internal energies /
@@ -136,4 +169,32 @@ contains
       !     the hardwired EREL overwrite (GFINAL.f:78-81) is not carried over - e_rel keeps the
       !     step-5 generalized form
    end subroutine fin_eval
+   !------------------------------------------------------------------
+   ! container_bind_classify(proc) - E19 single-slot assembly injection: bind the
+   !                 container's outcome-classification judgment (the caller: the
+   !                 container's reg module, alongside container_bind_pes / bind_term)
+   ! Reference: this file's E19 header note; E17(4)/E18 (problem knowledge, same family)
+   subroutine container_bind_classify(proc)
+      procedure(classify_i) :: proc       ! the container classification judgment
+      ! Pseudocode:
+      ! 1. Already bound (associated(container_classify_proc)) -> loud-stop
+      !    (assembly-choreography error, formal)
+      ! 2. Bind the slot - executed once in the assembly phase by the container's reg
+      !    module
+   end subroutine container_bind_classify
+
+   !------------------------------------------------------------------
+   ! container_classify(fin) - statistics-phase entry (E19): the outcome name of one
+   !                 trajectory's final state (the driver statistics step 1b; supersedes
+   !                 outc_classify(fin, tbl))
+   ! Reference: this file's E19 header note; VENUS.f90:252-284 (the old outcome summary
+   !       printout - the generic per-name counting stays in the driver)
+   function container_classify(fin) result(name)
+      type(fin_t), intent(in) :: fin      ! final-state quantities (read-only)
+      character(len=32) :: name           ! the outcome name [-]
+      ! Pseudocode:
+      ! 1. Unbound slot -> loud-stop (a classification call without a bound judgment is
+      !    an assembly error; the legal no-classification run simply never calls this)
+      ! 2. name = container_classify_proc(fin)
+   end function container_classify
 end module final_state

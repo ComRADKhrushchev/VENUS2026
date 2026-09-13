@@ -28,7 +28,7 @@
 !=====================================================================
 module input
    use control, only: task, n_traj, title, i_seed
-   use config,  only: propagator, electronic, reactants, event, observables
+   use config,  only: propagator, electronic, reactants, observables
    implicit none
    private
    public :: read_input
@@ -88,10 +88,9 @@ contains
       !    (old NACTA.B/SEREL/BMAX/S) + system_dir (container folder path - grammar finalized in
       !    C4, spec §6); surface_model is NOT mapped here (E14: derived by sysdef_load, see
       !    step 4);
-      !    event <- outcome_tbl only (OUTCOME= grammar key - wired in C7; E18: TERMINATE=
-      !    withdrawn - termination is the container's own judgment (container_bind_term),
-      !    no program-side grammar remains; the outcome expression family awaits the L4
-      !    review, flagged as the same complexity question);
+      !    (E18/E19: the event section is withdrawn entirely - termination AND classification
+      !    are the container's own judgments (container_bind_term / container_bind_classify);
+      !    neither TERMINATE= nor OUTCOME= remains in the grammar);
       !    observables <- rec_level/obs_list/e_kin/e_pot/e_tot (old
       !    GWRITE_LEVEL -> rec_level)
       ! 7. Roster-section staging WITHDRAWN (E14 spec §6): system composition (mass table / element

@@ -37,7 +37,7 @@
 !=====================================================================
 program venus
    use control,        only: task, n_traj, title, i_seed, max_steps
-   use config,         only: event, observables, reactants, &
+   use config,         only: observables, reactants, &
                              prop_cfg => propagator  ! alias as in propagator.f90 - the config
                              ! instance 'propagator' clashes with the module name; the dt_eff source
    use config_roster,  only: roster, roster_load
@@ -53,8 +53,7 @@ program venus
                                    ! method_reg call fills the whole 'adiabatic' package)
    use sampler,        only: samp_run
    use recorder,       only: rec_select, rec_frame, rec_final
-   use final_state,    only: fin_t, fin_eval
-   use outcome,        only: outc_tbl_t, outc_classify
+   use final_state,    only: fin_t, fin_eval, container_classify
    use density,        only: dens_states, eig_out
    use hist,           only: hist_spec_t, hist_data_t, lat_t, plot_hist
    use input,          only: read_input
@@ -78,20 +77,23 @@ program venus
    real(8) :: t_cpu(2)      ! timing pair [s] (old START_TIME/FINISH_TIME - printed in the statistics section)
    integer :: u_out         ! recording unit number [-] (shared by frames and final-state rows; old 6/8/1000+NTZ
                             ! family of unit assignments, finalized in C4)
-   character(len=32) :: outc_name  ! outcome name of this trajectory [-] (statistics phase - outc_classify output)
+   character(len=32) :: outc_name  ! outcome name of this trajectory [-] (statistics phase - the
+                                   ! container's container_classify output, E19)
    ! -- data structures handed between phases --
    type(state_t) :: sta                      ! physical state (held by the driver - K1 D1;
                                              ! written exclusively in the evolution phase, read-only in statistics)
    type(state_t), allocatable :: sta_fin(:)  ! final-state snapshots per trajectory [count] (evolution -> statistics
                                              ! hand-off; same source as the old QSAVE/PSAVE staging)
-   type(outc_tbl_t) :: outc_tbl              ! outcome-classification table (parsed from outcome_tbl - C7; the
-                                             ! expression family flagged for the L4 review, E18)
-   type(fin_t) :: fin                        ! final-state quantities (taken over per trajectory in statistics)
+   type(fin_t) :: fin                        ! final-state quantities (taken over per trajectory in statistics;
+                                              ! the argument type of the container-classification slot, E19)
+   integer, allocatable :: cnt_outc(:)       ! per-outcome counts [count] (name-keyed over the names
+                                             ! container_classify returns, E19; replaces the old
+                                             ! NONREACT/NREACT/NLONG counters; the counting shape -
+                                             ! name-keyed vs the container declaring its outcome-name
+                                             ! list - decided at C2 with the first real container)
    type(hist_spec_t) :: spec_hist            ! histogram specification (assembled in statistics - C8)
    type(hist_data_t) :: data_hist            ! trajectory row table (aggregated from recorder final-state rows - C8)
    type(lat_t) :: lattice                    ! lattice constants (mapped from the roster unit cell - statistics phase)
-   integer, allocatable :: cnt_outc(:)       ! per-outcome counts [count] (aligned with outc_tbl rows;
-                                             ! replaces the old NONREACT/NREACT/NLONG counters)
 
    ! Pseudocode (three phases - E7; spec §2.5 phase restriction table: assembly = operational class +
    !    initializing measurements, evolution = evolution class + measurement class, statistics = post-processing class):
@@ -148,13 +150,15 @@ program venus
    ! 8. rec_select(observables%rec_level) (or rec_select(observables%obs_list)
    !    list entry) - recording column-group selection (registration precedes column selection)
    ! 9. (E18: pred_parse withdrawn - termination is the container's own judgment, bound by
-   !    its reg module's container_bind_term at step 6; no program-side grammar remains)
-   !    remaining assembly parsing: event%outcome_tbl -> outc_tbl (the C7 grammar
-   !    deliverable; the outcome expression family awaits the L4 review - flagged as the
-   !    same complexity question); spec_hist / lattice assembly (histogram specification
-   !    and roster unit-cell mapping - C8)
-   ! 10. allocate(sta_fin(n_traj), cnt_outc(outc_tbl%n_row), data_hist columns -
-   !     assemble the inter-phase hand-off structures; dt_eff = prop_cfg%dt (staged once - the
+   !    its reg module's container_bind_term at step 6; E19: outcome_tbl parsing withdrawn
+   !    likewise - classification is the container's container_bind_classify; no
+   !    program-side grammar remains at all) remaining assembly: spec_hist / lattice
+   !    assembly (histogram specification and roster unit-cell mapping - C8)
+   ! 10. allocate(sta_fin(n_traj), data_hist columns -
+   !     assemble the inter-phase hand-off structures; the cnt_outc counting shape: name-keyed
+   !     over the names container_classify returns (the fixed-bucket alternative - the
+   !     container declaring its outcome-name list - decided at C2 with the first real
+   !     container); dt_eff = prop_cfg%dt (staged once - the
    !     fixed-step source, see the local's note); timing start t_cpu(1)
    !
    ! ===== Phase 2: evolution (trajectory loop x integration loop) =====
@@ -204,7 +208,8 @@ program venus
    ! ===== Phase 3: statistics (post-processing class - outcome/analysis calls) =====
    ! 1. Per trajectory: do traj_i = 1, n_traj
    ! 1a. fin_eval(sta_fin(traj_i), fin) - final-state quantities (the generalized part of old FINAL)
-   ! 1b. outc_name = outc_classify(fin, outc_tbl); increment cnt_outc for the matched row
+   ! 1b. outc_name = container_classify(fin) (E19: the container's own judgment); count by
+   !     name into cnt_outc
    !     (old :552-571/:645-657 reaction counting and :669-685 long-time counting - now data-driven)
    ! 1c. data_hist aggregation (fin / recorder final-state rows -> e_rel/thta/x0/y0/z_min/
    !     v_fin/n_bnc/site columns - the assembly site of old GFINAL.f:199-202 and record_all,
@@ -214,6 +219,6 @@ program venus
    !    dens_states/eig_out (density of states / eigenvalue output)
    ! 3. Summary printout: outcome count table / valid-trajectory count / energy-conservation drift summary /
    !    timing (old
-   !    :243-284 double channel merged into one pass; the conservation-gate verdict goes to an outcome-table row)
+   !    :243-284 double channel merged into one pass; the conservation-gate verdict goes to the container's classification)
    ! 4. state_destroy(sta), deallocate sta_fin/cnt_outc/data_hist - wrap up
 end program venus

@@ -32,7 +32,7 @@ src/
                                                   elec_* method packages (one method_reg row each, filled by a
                                                   thin reg_*.f90) + dist_* initial-state distribution members;
                                                   README.md = the library charter
-  output/      recorder  final_state  outcome  density  plot_hist
+  output/      recorder  final_state  density  plot_hist
                                                   online recording (column registry) + offline post-processing
   utils/       rng  linalg  geometry  specio     instruments (single random stream, diagonalization, rotations,
                                                   POSCAR/.xyz system-definition readers)
@@ -46,7 +46,7 @@ src/
 | L2 facades & frameworks | facade/ | the E14 four-entry container contract (force_eval / elec_prop / mqc_statistic; termination two-track through predicate) + method-package registry (method_reg; E13 purely formal authority - name->pointer dispatch, physical-combination legality left to the members) + ws holder (E10 container, lifetime one integration step) + system-definition contract sysdef_facade (E14) + sampling framework |
 | L3 closed families | dynamics/ | propagators only (fixed choices, not extension points; E18: the predicate grammar interpreter withdrawn - termination is the container-side container_term slot in force_facade) |
 | L3 method library | methods/ | flat built-in library (E14, rebuilt from the two former interface_* homes): elec_* MQC method packages - parameter-free generic algorithms bound by the config method key (level 1) or consumed as reusable components via use (level 2) - and dist_* initial-state distributions; a new method = one file + one thin reg_*.f90 (drag in and it compiles). System-specific members (pes_* PES + termination primitives) are system material, self-contained under systems/ (E12) |
-| L4 recording & post-processing | output/ | trajectory serialization (column registry), final state/outcome/density of states/plotting (offline-capable) |
+| L4 recording & post-processing | output/ | trajectory serialization (column registry), final state + the container classification slot (E19)/density of states/plotting (offline-capable) |
 | L5 instruments | utils/ | random stream (single), diagonalization, rotations |
 
 Layering essentials: each layer depends only downward, and registry-family members never depend on each other
