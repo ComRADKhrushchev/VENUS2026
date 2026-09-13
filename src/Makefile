@@ -18,7 +18,11 @@
 
 # := not ?= - FC is a make BUILT-IN variable whose default (f77) would survive ?=
 FC     := gfortran
-BUILD  := build
+# PER-COMPILER build trees: .mod and .o formats are mutually INCOMPATIBLE between
+# compilers - sharing one build/ made a `make FC=ifx` followed by a plain `make` read
+# ifx .mod files with the gfortran reader ("Unexpected EOF"). gfortran and ifx each
+# get their own subtree; `make clean` removes both.
+BUILD  := build/$(FC)
 EXE    := $(BUILD)/venus.e
 PREBUILD := ../scripts/prebuild.sh
 
@@ -37,7 +41,15 @@ OBJS     := $(OBJ_TREE) $(OBJ_SYS) $(OBJ_GEN)
 LDPOST :=
 ifeq ($(FC),ifx)
 IFX    ?= ifx
-FFLAGS := -r8 -double-size=64 -i8 -O2 -w -c -module $(BUILD) $(LINKOPT)
+# Windows ifx takes the module dir as -module:DIR (colon); the space-separated
+# -module DIR form is SILENTLY ignored and the .mod files land in the CWD (= src/,
+# poisoning later gfortran runs) - the root cause behind every "Unexpected EOF" round
+ifeq ($(OS),Windows_NT)
+MODDIR := -module:$(BUILD)
+else
+MODDIR := -module $(BUILD)
+endif
+FFLAGS := -r8 -double-size=64 -i8 -O2 -w -c $(MODDIR)
 LDPOST := $(LINKOPT)
 else
 FFLAGS := -O2 -c -J$(BUILD)
@@ -98,7 +110,7 @@ $(BUILD):
 	mkdir -p $(BUILD)
 
 clean:
-	rm -rf $(BUILD)
+	rm -rf build
 	rm -f *.mod
 # the second rm is DEFENSIVE: in gfortran's module search the CURRENT directory precedes
 # the -J directory - a stale cwd-level .mod (left by an ad-hoc compile) shadows the
