@@ -12,6 +12,12 @@ set -euo pipefail
 SRC="$1"; BLD="$2"
 mkdir -p "$BLD"
 
+# sync-protect: emit through <name>.tmp; overwrite the target ONLY when content differs
+# (stable timestamps when unchanged - the Makefile runs this every make, phony)
+sync_out() { # $1 target, $2 tmp
+   if [ ! -f "$1" ] || ! cmp -s "$1" "$2"; then mv -f "$2" "$1"; else rm -f "$2"; fi
+}
+
 # ---------- gather sources ----------
 tree_files=$(cd "$SRC" && ls -1 *.f90 */*.f90 2>/dev/null || true)
 sys_files=$(cd "$SRC/.." && ls -1 systems/*/*.f90 2>/dev/null || true)
@@ -57,7 +63,8 @@ done
    for m in $mods; do echo "      call ${m}_all()"; done
    echo "   end subroutine registry_gen_all"
    echo "end module registry_gen"
-} > "$BLD/registry_gen.f90"
+} > "$BLD/registry_gen.f90.tmp"
+sync_out "$BLD/registry_gen.f90" "$BLD/registry_gen.f90.tmp"
 
 # the generated unit defines a module too - it must enter the module->owner map BEFORE
 # dependency emission (a driver `use registry_gen` resolves through this entry)
@@ -92,4 +99,5 @@ objpath() { # tree: globals/state.f90 -> build/globals/state.o ; sys: systems/x/
       emit_deps "../$f" "$SRC/../$f"
    done <<< "$sys_files"
    emit_deps registry_gen "$BLD/registry_gen.f90"
-} > "$BLD/depend.mk"
+} > "$BLD/depend.mk.tmp"
+sync_out "$BLD/depend.mk" "$BLD/depend.mk.tmp"
