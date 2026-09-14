@@ -57,6 +57,9 @@
 !   (l) illegal level loud-stop (child: rec_select(3) - the domain is {0,1,2,5},
 !       the C4.4 GWRITE_LEVEL set)
 !   (m) rec_frame before any rec_select loud-stop (child - assembly-order error)
+!   (n) state-larger-than-roster loud-stop (child, fix round 1): a 3-atom state against
+!       a 2-atom roster hits the named size-mismatch stop - the equality guard fires
+!       BEFORE col_tkin's roster%mass walk could read out of bounds
 !=====================================================================
 program check_recorder
    use recorder,     only: col_val_i, rec_reg_col, rec_select, rec_frame, rec_final
@@ -97,6 +100,13 @@ program check_recorder
          call rec_select(3)
       case ('c-noselect')                 ! frame before any selection
          call state_create(sta, 1)
+         call rec_frame(sta, 11)
+      case ('c-big')                      ! state LARGER than the roster (fix round 1:
+         allocate (roster%mass(2), roster%symb(2)) ! the old one-way guard let this read
+         roster%mass = [ 1.5d0, 3.0d0 ]          ! roster%mass out of bounds in col_tkin)
+         roster%symb = [ character(4) :: 'H', 'He' ]
+         call rec_select(0)
+         call state_create(sta, 3)
          call rec_frame(sta, 11)
       case default
          print '(a)', 'child: unknown mode '//trim(mode)
@@ -173,7 +183,7 @@ program check_recorder
    if (nfail == nfail0) print '(a)', &
       '(a) registration + level 0/1: PASS (energy three in registry order, header exact, no sections)'
 
-   ! ---------- (c) sec_qp gate + content ----------
+   ! ---------- (b) sec_qp gate + content ----------
    nfail0 = nfail
    call expect_frame(1, 3, 0.7d0, tol)
    call expect_cols([character(16) :: 't_kin','v_pot ','e_tot '])
@@ -184,7 +194,7 @@ program check_recorder
    if (nfail == nfail0) print '(a)', &
       '(b) sec_qp: PASS (level-2 gate open, 2 six-tuple rows numerically exact, symb labels)'
 
-   ! ---------- (d) sec_frc gate ----------
+   ! ---------- (c) sec_frc gate ----------
    nfail0 = nfail
    call expect_frame(1, 4, 0.7d0, tol)
    call expect_cols([character(16) :: 't_kin','v_pot ','e_tot '])
@@ -197,14 +207,14 @@ program check_recorder
    if (nfail == nfail0) print '(a)', &
       '(c) sec_frc: PASS (level-5 gate open, marker pair + natoms lines, values unasserted per S1)'
 
-   ! ---------- (e) list entry + union semantics ----------
+   ! ---------- (d) list entry + union semantics ----------
    nfail0 = nfail
    call expect_frame(1, 5, 0.7d0, tol)
    call expect_cols([character(16) :: 't_kin','v_pot ','e_tot ','n_hop ','occ   '])
    if (nfail == nfail0) print '(a)', &
       '(d) list entry + union: PASS (preset 3 + n_hop/occ appended in list order, no duplicate)'
 
-   ! ---------- (f) reserved section names ----------
+   ! ---------- (e) reserved section names ----------
    nfail0 = nfail
    call expect_frame(1, 6, 0.7d0, tol)
    call expect_cols([character(16) :: 't_kin','v_pot ','e_tot '])
@@ -223,13 +233,13 @@ program check_recorder
    if (nfail == nfail0) print '(a)', &
       '(e) reserved names: PASS (all_qp/all_frc open the gates, column set stays the preset 3)'
 
-   ! ---------- (h) final-state line ----------
+   ! ---------- (g) final-state line ----------
    nfail0 = nfail
    call expect_final(1, 0.7d0, 3, tol)
    if (nfail == nfail0) print '(a)', &
       '(g) final line: PASS (name header once, row traj=1 t exact, values parse)'
 
-   ! ---------- (g) frame-header numeric channel across trajectories ----------
+   ! ---------- (f) frame-header numeric channel across trajectories ----------
    ! the gates/selection of frame 7 carry into trajectory 2 (module state persists
    ! across rec_final - documented semantics: only the counters reset)
    nfail0 = nfail
@@ -242,11 +252,11 @@ program check_recorder
    lp = lp + 2
    call expect_pref('# sec_frc end')
    call expect_final_row_only(2, 1.4d0, 3, tol)   ! selection carries into traj 2; NO header
-   if (lp <= nlines) call fail('(g) unexpected trailing lines in the frame file')
+   if (lp <= nlines) call fail('(f) unexpected trailing lines in the frame file')
    if (nfail == nfail0) print '(a)', &
       '(f) header channel: PASS (step 1..7, t exact per frame, traj/step advance past rec_final)'
 
-   ! ---------- (i)+ loud-stop criteria (child processes) ----------
+   ! ---------- (h)+ loud-stop criteria (child processes) ----------
    call expect_loudstop('c-dup',     'duplicate',            'rec_reg_col', &
                         '(h) duplicate-name registration loud-stop')
    call expect_loudstop('c-full',    'full',                 'rec_reg_col', &
@@ -259,6 +269,8 @@ program check_recorder
                         '(l) illegal-level loud-stop (domain 0/1/2/5)')
    call expect_loudstop('c-noselect','rec_select',           'rec_frame', &
                         '(m) frame-before-selection loud-stop')
+   call expect_loudstop('c-big',     'size mismatch',        'rec_frame', &
+                        '(n) state-larger-than-roster loud-stop (fix round 1)')
 
    call state_destroy(sta)
    print '(a,i0,a)', '=== check_recorder: ', nfail, ' failure(s) ==='

@@ -96,8 +96,10 @@
 !   name header once, at traj_i = 1 - old HIST.f90:18 shape). The member columns of the
 !   old record_all (e_rel/z_min/site ...) are C8 wiring through final_state/fin_t.
 !   Assembly-order guards (loud-stop, formal): recording before any rec_select; recording
-!   with an unassembled roster (mass/symb unallocated or size mismatched against sta) -
-!   the two checks cover every extractor / section read the frame path makes.
+!   with an unassembled roster (mass/symb unallocated) or a state whose size is not an
+!   EXACT fit to the roster (both directions - col_tkin walks roster%mass up to
+!   size(sta%p)/3, so an oversized state would otherwise read mass out of bounds) - the
+!   two checks cover every extractor / section read the frame path makes.
 !=====================================================================
 module recorder
    use state,         only: state_t
@@ -418,7 +420,10 @@ contains
    end function col_lookup
 
    ! check_ready(sta, who) - the two formal assembly-order guards of the write path:
-   ! selection made, roster assembled and size-consistent with the state
+   ! selection made, roster assembled and size-EXACTLY-matched to the state (equality,
+   ! not a one-way lower bound: col_tkin walks roster%mass(k) for k = 1..size(sta%p)/3,
+   ! so a state LARGER than the roster would read mass out of bounds - the guard must
+   ! fire by name ahead of that, in both directions; exact fit stays legal)
    subroutine check_ready(sta, who)
       type(state_t), intent(in) :: sta
       character(len=*), intent(in) :: who
@@ -431,11 +436,19 @@ contains
          call stop_rec(who, 'roster not assembled (roster_load must run before recording)')
       end if
       nat = size(roster%mass)
-      if (size(sta%q) < 3*nat .or. size(sta%p) < 3*nat .or. size(sta%f) < 3*nat) then
-         call stop_rec(who, 'state/roster size mismatch (state carries fewer degrees of '// &
-                       'freedom than 3*n_atoms)')
+      if (size(sta%q) /= 3*nat .or. size(sta%p) /= 3*nat .or. size(sta%f) /= 3*nat) then
+         call stop_rec(who, 'state/roster size mismatch (state carries '//trim(i8_str(size(sta%q)))// &
+                       ' q-dofs, the roster carries '//trim(i8_str(nat))//' atoms - exact fit required)')
       end if
    end subroutine check_ready
+
+   ! i8_str(i) - integer rendered as a string (the size-mismatch loud-stop names both sides)
+   pure function i8_str(i) result(s)
+      integer, intent(in) :: i
+      character(len=12) :: s
+      write (s, '(i0)') i
+      s = trim(adjustl(s))
+   end function i8_str
 
    ! stop_rec(who, msg) - the loud-stop channel (same semantics as config_roster /
    ! sysdef_facade: name the caller, print the named message, STOP 1)
