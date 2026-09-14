@@ -129,6 +129,10 @@ contains
          call fail(errmsg, 'POSCAR scaling-factor line: non-numeric: '//trim(line))
          return
       end if
+      if (s == 0.0d0) then
+         call fail(errmsg, 'POSCAR scaling-factor line: zero scaling factor (all-zero cell)')
+         return
+      end if
 
       ! 3. three lattice-vector rows -> vec; cell = effective scale * vectors (row-wise)
       do i = 1, 3
@@ -241,11 +245,14 @@ contains
          return
       end select
 
-      ! 6. one coordinate row per atom: Direct -> xyz(:,i) = fractional_i * cell (the
-      !    fractional components contract the scaled lattice rows); Cartesian ->
-      !    xyz(:,i) = s_eff * cartesian_i (the universal factor scales Cartesian
-      !    coordinates too, per the format definition); trailing per-coordinate T/F flags
-      !    read past; the block stops here - any velocity block is never read
+      ! 6. one coordinate row per atom: Direct -> xyz(:,i) = fr_i * cell (the
+      !    fractional components LINEARLY COMBINE the row-stored lattice vectors:
+      !    r = fr(1)*a1 + fr(2)*a2 + fr(3)*a3 = matmul(fr, cell) - matmul(cell, fr)
+      !    would contract row 1 with fr instead, coinciding only for diagonal cells);
+      !    Cartesian -> xyz(:,i) = s_eff * cartesian_i (the universal factor scales
+      !    Cartesian coordinates too, per the format definition); trailing
+      !    per-coordinate T/F flags read past; the block stops here - any velocity
+      !    block is never read
       do iat = 1, nat
          read (u, '(a)', iostat=ios) line
          if (ios /= 0) then
@@ -260,7 +267,7 @@ contains
             return
          end if
          if (direct) then
-            xyz(:,iat) = matmul(cell, fr)
+            xyz(:,iat) = matmul(fr, cell)
          else
             xyz(:,iat) = s_eff * fr
          end if

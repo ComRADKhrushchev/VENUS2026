@@ -24,8 +24,13 @@
 !   (h) bad samples -> ok = .false. + non-blank errmsg:
 !       xyz    - non-numeric count / zero count / short coordinate row / non-numeric
 !                coordinate field / symbol longer than 4 characters / file ends early
-!       POSCAR - non-numeric scaling factor / symbols-counts field mismatch /
-!                zero atoms / unknown mode tag / short coordinate row
+!       POSCAR - non-numeric scaling factor / zero scaling factor / symbols-counts
+!                field mismatch / zero atoms / unknown mode tag / short coordinate row
+!   (i) read_poscar skewed (non-diagonal) cell with Direct coordinates: the row-stored
+!       lattice vectors a1=(1,0,0), a2=(0.5,2,0), a3=(0.2,0.3,1.5) combined as
+!       r = 0.25*a1 + 0.50*a2 + 0.75*a3 = (0.65, 1.225, 1.125) - distinguishes
+!       matmul(fr, cell) (correct linear combination) from matmul(cell, fr)
+!       (row-contraction, coincides only for diagonal cells; fix-round-1 regression)
 !=====================================================================
 program check_specio
    use specio, only: read_poscar, read_xyz, elem_mass
@@ -49,6 +54,7 @@ program check_specio
    real(8), parameter :: wxyz_e(3,2) = reshape( [ 1.0d0,1.0d0,1.0d0, &
       2.0d0,4.0d0,6.0d0 ], [ 3,2 ])
    real(8), parameter :: wxyz_g(3,1) = reshape( [ 1.0d0,1.0d0,1.0d0 ], [ 3,1 ])
+   real(8), parameter :: wxyz_i(3,1) = reshape( [ 0.65d0,1.225d0,1.125d0 ], [ 3,1 ])
 
    ! ---------- sample files (all written under build/) ----------
    call write_sample('build/specio_xyz_ok.xyz', [ character(len=64) :: &
@@ -91,6 +97,15 @@ program check_specio
       '1', 'comment', 'Dummy 0.0 0.0 0.0' ])
    call write_sample('build/specio_xyz_beof.xyz', [ character(len=64) :: &
       '3', 'comment', 'C 0.0 0.0 0.0' ])
+   call write_sample('build/specio_poscar_skew.poscar', [ character(len=64) :: &
+      'c4.1 skewed-cell Direct sample', '1.0', &
+      '1.0 0.0 0.0', '0.5 2.0 0.0', '0.2 0.3 1.5', &
+      'H', '1', 'Direct', &
+      '0.25 0.50 0.75' ])
+   call write_sample('build/specio_poscar_bscale0.poscar', [ character(len=64) :: &
+      'c4.1 bad: zero scaling factor', '0.0', &
+      '1.0 0.0 0.0', '0.0 1.0 0.0', '0.0 0.0 1.0', &
+      'H', '1', 'Direct', '0.0 0.0 0.0' ])
    call write_sample('build/specio_poscar_bscale.poscar', [ character(len=64) :: &
       'c4.1 bad: non-numeric scaling factor', '2.oops', &
       '1.0 0.0 0.0', '0.0 1.0 0.0', '0.0 0.0 1.0', &
@@ -249,11 +264,34 @@ program check_specio
    call expect_bad_xyz('build/specio_xyz_bnum.xyz',   '(h4) xyz non-numeric coordinate field')
    call expect_bad_xyz('build/specio_xyz_bsymb.xyz',  '(h5) xyz symbol longer than 4 characters')
    call expect_bad_xyz('build/specio_xyz_beof.xyz',   '(h6) xyz file ends early')
-   call expect_bad_poscar('build/specio_poscar_bscale.poscar', '(h7) POSCAR non-numeric scaling factor')
-   call expect_bad_poscar('build/specio_poscar_bmism.poscar',  '(h8) POSCAR symbols-counts field mismatch')
-   call expect_bad_poscar('build/specio_poscar_bzero.poscar',  '(h9) POSCAR zero atoms')
-   call expect_bad_poscar('build/specio_poscar_bmode.poscar',  '(h10) POSCAR unknown mode tag')
-   call expect_bad_poscar('build/specio_poscar_bcoord.poscar', '(h11) POSCAR short coordinate row')
+   call expect_bad_poscar('build/specio_poscar_bscale.poscar',  '(h7) POSCAR non-numeric scaling factor')
+   call expect_bad_poscar('build/specio_poscar_bscale0.poscar', '(h8) POSCAR zero scaling factor')
+   call expect_bad_poscar('build/specio_poscar_bmism.poscar',   '(h9) POSCAR symbols-counts field mismatch')
+   call expect_bad_poscar('build/specio_poscar_bzero.poscar',   '(h10) POSCAR zero atoms')
+   call expect_bad_poscar('build/specio_poscar_bmode.poscar',   '(h11) POSCAR unknown mode tag')
+   call expect_bad_poscar('build/specio_poscar_bcoord.poscar',  '(h12) POSCAR short coordinate row')
+
+   ! ---------- (i) skewed cell, Direct coordinates (fix-round-1 regression) ----------
+   ! r = 0.25*a1 + 0.50*a2 + 0.75*a3 with a1=(1,0,0), a2=(0.5,2,0), a3=(0.2,0.3,1.5):
+   ! x = 0.25 + 0.25 + 0.15 = 0.65;  y = 1.00 + 0.225 = 1.225;  z = 1.125
+   ! (matmul(cell, fr) would instead give the row contractions (0.25, 1.125, 1.325))
+   nfail0 = nfail
+   open (newunit=u, file='build/specio_poscar_skew.poscar', status='old', action='read')
+   call read_poscar(u, title, cell, names, xyz, ok, errmsg=emsg)
+   close (u)
+   res = -1.0d0
+   if (allocated(xyz)) then
+      if (size(xyz,2) == 1) res = maxval(abs(xyz - wxyz_i))
+   end if
+   if (.not. ok .or. len_trim(emsg) /= 0 .or. res /= 0.0d0 .or. &
+       .not. allocated(names) .or. size(names) /= 1 .or. names(1) /= 'H' .or. &
+       abs(cell(2,1) - 0.5d0) > 0.0d0 .or. abs(cell(3,1) - 0.2d0) > 0.0d0 .or. &
+       abs(cell(3,2) - 0.3d0) > 0.0d0) then
+      print '(a,es10.2)', 'FAIL (i) skewed-cell Direct: max coord deviation ', res
+      nfail = nfail + 1
+   end if
+   if (nfail == nfail0) print '(a)', &
+      '(i) skewed-cell Direct: PASS (r = 0.65/1.225/1.125, off-diagonal cell rows verified)'
 
    print '(a,i0,a)', '=== check_specio: ', nfail, ' failure(s) ==='
    if (nfail > 0) stop 1
