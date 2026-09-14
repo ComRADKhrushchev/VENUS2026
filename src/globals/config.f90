@@ -13,7 +13,10 @@ module config
      integer :: id    = 1     ! integrator code (the closed three-member set verlet/symple/radau)
      integer :: order = 0     ! order/variant parameter
      real(8) :: dt    = 0.01d0 ! step [10 fs]
-     ! Left blank: adaptive step bounds dt_min/dt_max (introduced when RADAU is concretized, C6)
+     real(8) :: dt_min = 0.0d0 ! adaptive sequence-length lower bound [10 fs] (magnitude
+                               ! bound; 0 = unclamped - consumed by the adaptive member only)
+     real(8) :: dt_max = 0.0d0 ! adaptive sequence-length upper bound [10 fs] (magnitude
+                               ! bound; 0 = unclamped - consumed by the adaptive member only)
   end type
 
   ! Electronic layer (spec §3.2-2: two independent axes - H representation capability x

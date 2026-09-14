@@ -93,6 +93,63 @@
 !   either way). Criteria (s-b)/(s-d) of check_propagator anchor the fourth-order
 !   behavior; (s-a4) anchors the loaded values bit-level against an independently
 !   transcribed copy of the CORRECTED table.
+!
+! -- radau sequence cache (module-private staging - the Gauss-Radau adaptive member,
+!    legislated by the family design) --
+!   Algorithm: Everhart's RA15 - the 8-point left Gauss-Radau collocation sequence
+!   integrator (node 0 plus seven interior nodes of [0,1]; positions and velocities
+!   carry the sequence solution to 15th order). One prop_step call = ONE SEQUENCE:
+!   a trial length tt is consumed, the seven interior substep geometries are solved
+!   by iterated prediction and divided-difference correction (B = the per-sequence
+!   MONOMIAL coefficients of the acceleration in the node variable; the substep
+!   predictor is the seventh-order B expansion, the corrector differences the folded
+!   substep forces through the ra triangle), and the close-out advances q/p by the
+!   exact integrals of the B polynomial (w/u weights - exact moments of s^j, no
+!   quadrature error in the close-out itself). dt seeds ONLY the first sequence;
+!   from the second on, the length is member-internal (the header dt-channel note).
+!
+!   CONSTANTS (loaded once, pure functions of nothing): the nodes hh, the weights
+!   w(j) = 1/(n(n+1)) and u(j) = 1/n (n = j+1), and the 21-entry triangles cc/d/ra
+!   built by Everhart's column recurrences over the nodes. COEFFICIENT VERIFICATION:
+!   the node values are the canonical published RA15 set; the check program anchors
+!   them independently both through the Gauss-Radau defining identity (the mapped
+!   nodes are roots of the Legendre combination P8+P7) and through the observed
+!   substep geometries of a first sequence; the w/u closed forms are re-derived in
+!   the check; the ra triangle is anchored entry-by-entry as reciprocals of node
+!   differences; the cc/d inner entries have no closed form observable through the
+!   frozen public face and are anchored by the machinery-exactness criterion (one
+!   sequence on a harmonic branch reproduces the closed-form map to roundoff - a
+!   wrong triangle coefficient anywhere breaks the corrector convergence and the
+!   error jumps above the window by orders of magnitude).
+!
+!   CROSS-SEQUENCE CARRY (the registered semantics this member exists to keep):
+!   bb/ee/bd are the Newton-type carry across sequences - at each accepted close-out
+!   the converged B is extrapolated onto the NEXT sequence's scale through the
+!   binomial shift ee(j) = q^j sum_{l>=j} C(l,j) B(l) (q = next/old length ratio),
+!   and the running correction bd = B_converged - ee_previous is added on top; the
+!   next sequence iterates only twice against this predictor. FIRST SEQUENCE BOOT
+!   (mirroring the Beeman rule): no staging yet, a size change of the state, or a
+!   fresh trajectory (sta%t = 0) - the staging starts at zero, the length seeds from
+!   dt (clamped), the first sequence iterates SIX times (later sequences two).
+!   RESTART TEST (first sequence only): after the trial, the adaptive length is
+!   computed from the error estimate; if it does not exceed the trial (tp/tt <= 1)
+!   the sequence is DISCARDED and retried at 0.8*tp - the trial's converged B is
+!   retained as the retry's predictor (the published structure; it makes the retry
+!   converge, and the retry re-evaluates the head force afresh at the same origin).
+!
+!   ADAPTIVITY: hv = max_k |B7_k| * w(7) / tval^7 estimates the error coefficient
+!   (tval = |tt| truncated to single precision - the historical noise floor of the
+!   estimator, kept); the next length is tp = (ss/hv)^(1/9) with ss = 10^(-order)
+!   (order = the accuracy exponent, legal domain 1..15 - below that ss loses all
+!   accuracy meaning, above it the target sinks under machine resolution), signed
+!   by the integration direction taken from dt's sign; growth is limited to 1.4*tt
+!   per sequence. dt_min/dt_max (the deferred fields this member lands) are
+!   MAGNITUDE bounds on the accepted sequence length, applied to every adaptive
+!   assignment AND to the boot seed; <=0 = unclamped. The 0.8 restart probe itself
+!   is not clamped (a retry is not an accepted length - the floor applies at the
+!   accept decision, where the retried sequence's own adaptive tp is clamped and
+!   then exceeds the shrunk trial); a positive pair with dt_min > dt_max is
+!   contradictory and loud-stops at boot, named.
 !=====================================================================
 module propagator
    use state,         only: state_t
@@ -135,6 +192,30 @@ module propagator
                                               ! (k = 0..2N; 2N = 10/16/34 at orders 4/6/8)
    integer :: sym_n = 0                       ! stage count N [stage]
    integer :: sym_order_cached = 0            ! order key of the loaded table [order]
+
+   ! radau constants (see the header note): loaded once, pure functions of nothing -
+   ! nodes, w/u weights, the 21-entry triangle tables, and the triangular index map
+   integer, parameter :: rad_nw(8) = [ 0, 0, 1, 3, 6, 10, 15, 21 ]  ! column-start map:
+                                              ! entries nw(k)+1..nw(k+1) form triangle column k
+   real(8) :: rad_hh(8) = 0.0d0               ! Gauss-Radau nodes hh(1..8), hh(1) = 0 [s]
+   real(8) :: rad_w(7) = 0.0d0                ! position close-out weights 1/(n(n+1)), n = j+1
+   real(8) :: rad_u(7) = 0.0d0                ! velocity close-out weights 1/n, n = j+1
+   real(8) :: rad_cc(21) = 0.0d0              ! triangle: B-corrector accumulation coefficients
+   real(8) :: rad_d(21) = 0.0d0               ! triangle: monomial-B -> differenced-g conversion
+   real(8) :: rad_ra(21) = 0.0d0              ! triangle: difference recursion = 1/(node diffs)
+   logical :: rad_const_ok = .false.          ! constants loaded [flag]
+
+   ! radau cross-sequence carry (see the header note): the B-coefficient staging and
+   ! the folded working state of the upcoming sequence - trajectory state, carried
+   ! across prop_step calls (rebuilt on every boot)
+   real(8), allocatable :: rad_bb(:, :)       ! monomial B coefficients (7, n_dof)
+   real(8), allocatable :: rad_ee(:, :)       ! binomial extrapolation onto the next scale
+   real(8), allocatable :: rad_bd(:, :)       ! running correction B_converged - ee_previous
+   real(8), allocatable :: rad_f1(:)          ! left-end folded acceleration of the sequence
+   real(8), allocatable :: rad_v(:)           ! folded velocity (the working representation)
+   real(8) :: rad_tp = 0.0d0                  ! upcoming sequence length [10 fs]
+   logical :: rad_seq_ok = .false.            ! a sequence has been accepted (restart test off)
+   integer :: rad_ns = 0                      ! accepted-sequence counter (bd rule: 1st keeps 0)
 contains
    !------------------------------------------------------------------
    ! prop_reg(id, proc) - register an integrator member into the closed-family registry
@@ -272,26 +353,188 @@ contains
    end subroutine symple_step
 
    !------------------------------------------------------------------
-   ! radau_step(sta) - one RA15 Gauss-Radau sequence (adaptive step)
-   ! Not yet realized - the adaptive member arrives with its own concretization task;
-   ! the legislated sequence is kept as the roadmap:
-   ! 1. On first call load the constants: Radau nodes hh(2:8); w/u weights; triangle
-   !    coefficients c/d/ra
-   ! 2. Fold velocities v = p/m; iteration count 6 for the first sequence, 2 afterwards
-   ! 3. Substep loop within the sequence (iterations x 7 substeps): predict substep
-   !    coordinates from the seventh-order B-coefficient expansion; force_eval at the
-   !    substep coordinates (f_j = f/m fold); difference correction - divided differences
-   !    of the g coefficients + triangle accumulation of the B coefficients
-   ! 4. Sequence close-out: advance q/p by the sequence length tt; last-term hv estimate;
-   !    restart test - if tp/tt <= 1 discard the sequence and restart
-   ! 5. Adaptive step: tp = tcorr*(ss/hv)^(1/9) (ss = 10^(-order), direction follows tf);
-   !    step clamping dt_min/dt_max through the deferred config fields
-   ! 6. sta%t += sequence length tt
-   ! 7. Endpoint-force close-out: force_eval(sta, e) at the returned sta%q - the substep
-   !    force sites sit at interior node coordinates, not the sequence endpoint, so the
-   !    member closes with an explicit endpoint evaluation (the header contract)
+   ! radau_step(sta) - one RA15 Gauss-Radau sequence (adaptive step; the roadmap of
+   !                   the skeleton realized - constants load, velocity fold and
+   !                   iteration counts, substep predictor-difference-corrector,
+   !                   sequence close-out with restart test, adaptive length with
+   !                   dt_min/dt_max clamping, endpoint-force close-out)
+   ! The legislated sequence (the header note carries the full semantics): boot as
+   ! needed, then ONE accepted sequence per call - q/p/t advance by the sequence
+   ! length tt, the substep force sites sit at interior node geometries so the close-out
+   ! evaluates the endpoint force explicitly (the header contract, sta%f on return is
+   ! the force at the returned sta%q), and the B-carry/next length are staged for the
+   ! following call. q/p/mass per the unit contract (masses from the roster, folded
+   ! per component; p is written back from the folded working velocity at close-out).
    subroutine radau_step(sta)
       type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
+      integer :: m, j, k, l, i, jd, ni, nq
+      real(8) :: e, s, gk, acc, temp, tt, t2, tval, hv, dir, ss, tpn, qr
+      real(8) :: gg(7, size(sta%q))         ! differenced g coefficients of the sequence
+      real(8) :: yy(size(sta%q))            ! predicted substep geometry
+      real(8) :: fj(size(sta%q))            ! folded substep force (f/m)
+      real(8) :: qs(size(sta%q))            ! sequence-origin geometry save/restore
+      e = 0.0d0                             ! force_eval fills it; the integrator does not consume it
+
+      ! order is the accuracy exponent (ss = 10^-order); dt gives the direction and
+      ! the first-sequence seed - both illegal values are named loud-stops
+      if (prop_cfg%order < 1 .or. prop_cfg%order > 15) then
+         call stop_propi('radau_step', 'illegal propagator order for radau', prop_cfg%order, &
+                         '(1..15 - the accuracy exponent of ss = 10^-order)')
+      end if
+      if (prop_cfg%dt == 0.0d0) then
+         call stop_prop('radau_step', 'dt = 0 (dt seeds the first sequence and gives '// &
+                        'the integration direction - a zero seed has neither)')
+      end if
+      dir = 1.0d0
+      if (prop_cfg%dt < 0.0d0) dir = -1.0d0
+      ss = 10.0d0**(-prop_cfg%order)
+
+      call beeman_forget()                  ! hygiene: this member builds no Beeman history
+      if (.not. rad_const_ok) call radau_load()
+      if (radau_boot_needed(sta)) call radau_boot(sta)
+      nq = size(sta%q)
+      ni = 6                                ! first sequence iterates six times,
+      if (rad_seq_ok) ni = 2                ! later sequences twice (the B-carry)
+
+      ! ---- sequence trial loop (restart-capable; the accept test fires on the first
+      ! sequence only - once a sequence has been accepted the carried B makes rejection
+      ! pointless, the published structure) ----
+      do
+         ! g coefficients from the carried B (the triangle-d conversion): gg(i) =
+         ! bb(i) + sum_{j>i} d(column j, offset i)*bb(j)
+         do k = 1, nq
+            do i = 1, 7
+               acc = rad_bb(i, k)
+               do j = i + 1, 7
+                  acc = acc + rad_d(rad_nw(j) + i)*rad_bb(j, k)
+               end do
+               gg(i, k) = acc
+            end do
+         end do
+         tt = rad_tp
+         t2 = tt*tt
+         tval = real(abs(tt), 4)            ! the historical single-precision floor of hv
+         hv = 0.0d0
+         do m = 1, ni
+            do j = 2, 8
+               jd = j - 1
+               s = rad_hh(j)
+               do k = 1, nq
+                  ! predictor: the seventh-order B expansion at the node s (Horner form)
+                  acc = rad_w(3)*rad_bb(3, k) + s*(rad_w(4)*rad_bb(4, k) &
+                        + s*(rad_w(5)*rad_bb(5, k) + s*(rad_w(6)*rad_bb(6, k) + s*rad_w(7)*rad_bb(7, k))))
+                  yy(k) = sta%q(k) + s*(tt*rad_v(k) + t2*s*(rad_f1(k)*0.5d0 &
+                          + s*(rad_w(1)*rad_bb(1, k) + s*(rad_w(2)*rad_bb(2, k) + s*acc))))
+               end do
+               ! force at the predicted substep geometry (the geometry swap rides sta%q;
+               ! sta%f is the force workspace, restored before the fold consumes it)
+               qs = sta%q
+               sta%q = yy
+               call force_eval(sta, e)
+               do k = 1, nq
+                  sta%q(k) = qs(k)
+                  fj(k) = sta%f(k)/roster%mass((k + 2)/3)
+               end do
+               do k = 1, nq
+                  ! corrector: difference the folded substep force against the head value,
+                  ! walk the ra recursion (jd-1 factors), then accumulate the correction
+                  ! through the cc triangle into every lower B coefficient
+                  temp = gg(jd, k)
+                  gk = (fj(k) - rad_f1(k))/s
+                  if (jd == 1) then
+                     gg(1, k) = gk
+                  else
+                     acc = gk - gg(1, k)
+                     do i = 2, jd - 1
+                        acc = acc*rad_ra(rad_nw(jd) + i - 1) - gg(i, k)
+                     end do
+                     gg(jd, k) = acc*rad_ra(rad_nw(jd) + jd - 1)
+                  end if
+                  temp = gg(jd, k) - temp
+                  rad_bb(jd, k) = rad_bb(jd, k) + temp
+                  do l = 1, jd - 1
+                     rad_bb(l, k) = rad_bb(l, k) + rad_cc(rad_nw(jd) + l)*temp
+                  end do
+               end do
+            end do
+            if (m == ni) then               ! last-iteration error estimate (hv)
+               do k = 1, nq
+                  hv = max(hv, abs(rad_bb(7, k)))
+               end do
+               hv = hv*rad_w(7)/tval**7
+            end if
+         end do
+
+         ! ---- first-sequence accept test: adapt from hv, clamp, and either accept or
+         ! discard-and-retry at 0.8*tp (the trial's converged B survives as the retry's
+         ! predictor - the header-note semantics) ----
+         if (rad_seq_ok) exit               ! an accepted past sequence: no restart path
+         tpn = (ss/hv)**(1.0d0/9.0d0)*dir
+         call rad_clamp(tpn, dir)
+         rad_tp = tpn
+         if (rad_tp/tt > 1.0d0) exit        ! accept
+         rad_tp = 0.8d0*rad_tp
+         ni = 6                             ! the retry runs the full iteration count
+         call force_eval(sta, e)            ! head force afresh at the same origin
+         do k = 1, nq                       ! (the retry's f1; the state never advanced)
+            rad_f1(k) = sta%f(k)/roster%mass((k + 2)/3)
+         end do
+      end do
+
+      ! ---- sequence close-out: advance by tt through the exact B moments (w/u), fold
+      ! the endpoint force (the header contract - the LAST force evaluation of the step
+      ! sits at the returned sta%q) and stage the next sequence's head values ----
+      do k = 1, nq
+         sta%q(k) = sta%q(k) + rad_v(k)*tt + t2*(rad_f1(k)*0.5d0 + rad_bb(1, k)*rad_w(1) &
+                    + rad_bb(2, k)*rad_w(2) + rad_bb(3, k)*rad_w(3) + rad_bb(4, k)*rad_w(4) &
+                    + rad_bb(5, k)*rad_w(5) + rad_bb(6, k)*rad_w(6) + rad_bb(7, k)*rad_w(7))
+         rad_v(k) = rad_v(k) + tt*(rad_f1(k) + rad_bb(1, k)*rad_u(1) + rad_bb(2, k)*rad_u(2) &
+                    + rad_bb(3, k)*rad_u(3) + rad_bb(4, k)*rad_u(4) + rad_bb(5, k)*rad_u(5) &
+                    + rad_bb(6, k)*rad_u(6) + rad_bb(7, k)*rad_u(7))
+      end do
+      sta%t = sta%t + tt
+      rad_seq_ok = .true.
+      rad_ns = rad_ns + 1
+      call force_eval(sta, e)               ! the endpoint force (header contract)
+      do k = 1, nq
+         rad_f1(k) = sta%f(k)/roster%mass((k + 2)/3)   ! next sequence's head acceleration
+         sta%p(k) = rad_v(k)*roster%mass((k + 2)/3)    ! p written back from the working velocity
+      end do
+
+      ! ---- adaptive length of the next sequence: (ss/hv)^(1/9), growth-limited to
+      ! 1.4*tt, then clamped (the header-note order: the limiter shapes the adaptive
+      ! request, the bounds are hard) ----
+      tpn = dir*(ss/hv)**(1.0d0/9.0d0)
+      if (tpn/tt > 1.4d0) tpn = tt*1.4d0
+      call rad_clamp(tpn, dir)
+      rad_tp = tpn
+
+      ! ---- the B-carry onto the next scale: binomial shift of the converged B by the
+      ! length ratio, plus the running correction (bd stays zero through the first
+      ! accepted sequence - there is no earlier extrapolation to difference against) ----
+      qr = rad_tp/tt
+      do k = 1, nq
+         if (rad_ns /= 1) then
+            do l = 1, 7
+               rad_bd(l, k) = rad_bb(l, k) - rad_ee(l, k)
+            end do
+         end if
+         rad_ee(1, k) = qr*(rad_bb(1, k) + 2.0d0*rad_bb(2, k) + 3.0d0*rad_bb(3, k) &
+                          + 4.0d0*rad_bb(4, k) + 5.0d0*rad_bb(5, k) + 6.0d0*rad_bb(6, k) &
+                          + 7.0d0*rad_bb(7, k))
+         rad_ee(2, k) = qr*qr*(rad_bb(2, k) + 3.0d0*rad_bb(3, k) + 6.0d0*rad_bb(4, k) &
+                              + 10.0d0*rad_bb(5, k) + 15.0d0*rad_bb(6, k) + 21.0d0*rad_bb(7, k))
+         rad_ee(3, k) = (qr**3)*(rad_bb(3, k) + 4.0d0*rad_bb(4, k) + 10.0d0*rad_bb(5, k) &
+                               + 20.0d0*rad_bb(6, k) + 35.0d0*rad_bb(7, k))
+         rad_ee(4, k) = (qr**4)*(rad_bb(4, k) + 5.0d0*rad_bb(5, k) + 15.0d0*rad_bb(6, k) &
+                               + 35.0d0*rad_bb(7, k))
+         rad_ee(5, k) = (qr**5)*(rad_bb(5, k) + 6.0d0*rad_bb(6, k) + 21.0d0*rad_bb(7, k))
+         rad_ee(6, k) = (qr**6)*(rad_bb(6, k) + 7.0d0*rad_bb(7, k))
+         rad_ee(7, k) = (qr**7)*rad_bb(7, k)
+         do l = 1, 7
+            rad_bb(l, k) = rad_ee(l, k) + rad_bd(l, k)
+         end do
+      end do
    end subroutine radau_step
 
    !------------------------------------------------------------------
@@ -401,6 +644,111 @@ contains
       end do
       sym_order_cached = order
    end subroutine symple_load
+
+   ! radau_load() - fill the constant cache once: the Gauss-Radau nodes (the canonical
+   ! published values, hh(1) = 0), the closed-form w/u weights, and the 21-entry
+   ! cc/d/ra triangles from Everhart's column recurrences - column k (k = 3..7) fills
+   ! entries nw(k)+1..nw(k+1) from column k-1; entry 1 (column 2) is seeded first.
+   ! The ra entries are reciprocals of node differences by construction, the cc/d
+   ! recurrences are the published differencing algebra (the header-note verification
+   ! anchors: ra entry-by-entry, cc/d through the machinery-exactness criterion)
+   subroutine radau_load()
+      integer :: k, l, la, lb, lc, ld, le, n
+      rad_hh(1) = 0.0d0
+      rad_hh(2) = 0.05626256053692215d0
+      rad_hh(3) = 0.18024069173689236d0
+      rad_hh(4) = 0.35262471711316964d0
+      rad_hh(5) = 0.54715362633055538d0
+      rad_hh(6) = 0.73421017721541053d0
+      rad_hh(7) = 0.88532094683909577d0
+      rad_hh(8) = 0.97752061356128750d0
+      do n = 2, 8                           ! w(j) = 1/(n(n+1)), u(j) = 1/n (n = j+1) -
+         rad_w(n - 1) = 1.0d0/(n + n*n)    ! exact moments of s^j on [0,1]
+         rad_u(n - 1) = 1.0d0/n
+      end do
+      rad_cc(1) = -rad_hh(2)                ! column 2 seed
+      rad_d(1) = rad_hh(2)
+      rad_ra(1) = 1.0d0/(rad_hh(3) - rad_hh(2))
+      la = 1
+      lc = 1
+      do k = 3, 7                           ! columns 3..7
+         lb = la
+         la = lc + 1
+         lc = rad_nw(k + 1)
+         rad_cc(la) = -rad_hh(k)*rad_cc(lb)
+         rad_cc(lc) = rad_cc(la - 1) - rad_hh(k)
+         rad_d(la) = rad_hh(2)*rad_d(lb)
+         rad_d(lc) = -rad_cc(lc)
+         rad_ra(la) = 1.0d0/(rad_hh(k + 1) - rad_hh(2))
+         rad_ra(lc) = 1.0d0/(rad_hh(k + 1) - rad_hh(k))
+         do l = 4, k                        ! column interior
+            ld = la + l - 3
+            le = lb + l - 4
+            rad_cc(ld) = rad_cc(le) - rad_hh(k)*rad_cc(le + 1)
+            rad_d(ld) = rad_d(le) + rad_hh(l - 1)*rad_d(le + 1)
+            rad_ra(ld) = 1.0d0/(rad_hh(k + 1) - rad_hh(l - 1))
+         end do
+      end do
+      rad_const_ok = .true.
+   end subroutine radau_load
+
+   ! radau_boot(sta) - first-call staging: zero the B-carry, fold the working velocity
+   ! from p, seed the sequence length from dt (clamped - the bounds are hard on the
+   ! accepted lengths, the seed included), and evaluate the head force at the current
+   ! geometry (the first sequence's f1; later sequences take it from the close-out).
+   ! A positive dt_min/dt_max pair with dt_min > dt_max is contradictory - named here
+   subroutine radau_boot(sta)
+      type(state_t), intent(inout) :: sta
+      integer :: k
+      real(8) :: e, dir
+      e = 0.0d0
+      if (prop_cfg%dt_min > 0.0d0 .and. prop_cfg%dt_max > 0.0d0 .and. &
+          prop_cfg%dt_min > prop_cfg%dt_max) then
+         call stop_prop('radau_step', 'dt_min exceeds dt_max (both clamps positive - '// &
+                        'no sequence length can satisfy the pair)')
+      end if
+      if (allocated(rad_bb)) deallocate (rad_bb, rad_ee, rad_bd, rad_f1, rad_v)
+      allocate (rad_bb(7, size(sta%q)), rad_ee(7, size(sta%q)), rad_bd(7, size(sta%q)), &
+                rad_f1(size(sta%q)), rad_v(size(sta%q)))
+      rad_bb = 0.0d0
+      rad_ee = 0.0d0
+      rad_bd = 0.0d0
+      rad_seq_ok = .false.
+      rad_ns = 0
+      dir = 1.0d0
+      if (prop_cfg%dt < 0.0d0) dir = -1.0d0
+      rad_tp = prop_cfg%dt                  ! the seed (clamped - a bound on lengths)
+      call rad_clamp(rad_tp, dir)
+      do k = 1, size(sta%q)                 ! fold the working velocity
+         rad_v(k) = sta%p(k)/roster%mass((k + 2)/3)
+      end do
+      call force_eval(sta, e)               ! head force at the boot geometry
+      do k = 1, size(sta%q)
+         rad_f1(k) = sta%f(k)/roster%mass((k + 2)/3)
+      end do
+   end subroutine radau_boot
+
+   ! radau_boot_needed(sta) - the registered boot condition (the Beeman-rule form): no
+   ! staging yet, a size change of the state, or a fresh trajectory (sta%t = 0).
+   ! allocated() is unconditionally safe; the size probe runs only under it (the
+   ! short-circuit discipline of beeman_boot_needed)
+   logical function radau_boot_needed(sta)
+      type(state_t), intent(in) :: sta
+      radau_boot_needed = .true.
+      if (allocated(rad_bb)) then
+         if (size(rad_bb, 2) == size(sta%q) .and. sta%t /= 0.0d0) radau_boot_needed = .false.
+      end if
+   end function radau_boot_needed
+
+   ! rad_clamp(tp, dir) - apply the dt_min/dt_max MAGNITUDE bounds to one sequence
+   ! length (either sign; <=0 bound = unclamped). Applied to every adaptive assignment
+   ! and the boot seed; the 0.8 restart probe stays unclamped (header note)
+   subroutine rad_clamp(tp, dir)
+      real(8), intent(inout) :: tp
+      real(8), intent(in) :: dir
+      if (prop_cfg%dt_max > 0.0d0 .and. abs(tp) > prop_cfg%dt_max) tp = dir*prop_cfg%dt_max
+      if (prop_cfg%dt_min > 0.0d0 .and. abs(tp) < prop_cfg%dt_min) tp = dir*prop_cfg%dt_min
+   end subroutine rad_clamp
 
    ! loud-stop channel (name the caller; value variant; STOP 1)
    subroutine stop_prop(who, msg)

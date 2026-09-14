@@ -129,7 +129,11 @@ module input
       integer :: code = 0
    end type enum_row_t
 
-   type(key_spec_t), parameter :: key_tab(23) = [ &
+   ! DT_MIN/DT_MAX (the adaptive member's sequence-length bounds): kind_real, NOT
+   ! kind_posreal - a clamp value <= 0 is the LEGAL unclamped default (0 = off), so
+   ! the domain carries no positivity requirement; the bounds are consumed by the
+   ! radau member only (fixed-step members ignore them, as with any unused key)
+   type(key_spec_t), parameter :: key_tab(25) = [ &
       key_spec_t('TASK',         blk_flow,   kind_enum,  enum_task,  .false., 'TRAJECTORY'), &
       key_spec_t('N_TRAJ',       blk_flow,   kind_int,   enum_none,  .false., '1'), &
       key_spec_t('TITLE',        blk_flow,   kind_char,  enum_none,  .false., '', slotw=80), &
@@ -138,6 +142,8 @@ module input
       key_spec_t('INTEGRATOR',   blk_flow,   kind_enum,  enum_integ, .false., 'VERLET'), &
       key_spec_t('DT',           blk_flow,   kind_real,  enum_none,  .true.,  ''), &
       key_spec_t('ORDER',        blk_flow,   kind_int,   enum_none,  .false., '1'), &
+      key_spec_t('DT_MIN',       blk_flow,   kind_real,  enum_none,  .false., '0.0'), &
+      key_spec_t('DT_MAX',       blk_flow,   kind_real,  enum_none,  .false., '0.0'), &
       key_spec_t('ELEC_METHOD',  blk_flow,   kind_char,  enum_none,  .false., 'ADIABATIC', slotw=32), &
       key_spec_t('N_SURF',       blk_flow,   kind_int,   enum_none,  .false., '0'), &
       key_spec_t('PES_MAIN',     blk_flow,   kind_char,  enum_none,  .false., '1', slotw=32), &
@@ -547,6 +553,10 @@ contains
             propagator%dt = rval
          case ('ORDER')
             propagator%order = ival
+         case ('DT_MIN')
+            propagator%dt_min = rval
+         case ('DT_MAX')
+            propagator%dt_max = rval
          case ('ELEC_METHOD')
             electronic%method = to_lower(sval)           ! package-name string (E13/E14:
                                                          ! lookup at the facade, not here)
