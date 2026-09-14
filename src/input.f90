@@ -141,11 +141,13 @@ module input
       enum_row_t('TRAJECTORY', 1) ]
    type(enum_row_t), parameter :: integ_tbl(3) = [ &
       enum_row_t('VERLET', 1), enum_row_t('SYMPLECTIC', 2), enum_row_t('RADAU', 3) ]
-   type(enum_row_t), parameter :: dist_tbl(7) = [ &
+   type(enum_row_t), parameter :: dist_tbl(10) = [ &
       enum_row_t('BOLTZMANN', 1), enum_row_t('EBK', 2), &
       enum_row_t('ROTATION', 3), enum_row_t('J', 4), &
       enum_row_t('SURFACE_OSCILLATOR', 5), enum_row_t('NORMALMODE', 6), &
-      enum_row_t('BARRIER_EXCITATION', 7) ]
+      enum_row_t('BARRIER_EXCITATION', 7), &
+      enum_row_t('THERMOSTAT', 8), enum_row_t('GLO_TARGET', 9), &
+      enum_row_t('THERMALIZE', 10) ]
 
    ! GWRITE_LEVEL recording-level set (the four-level semantics, N3.1 - the formal
    ! domain of observables%rec_level; recorder opens sec_qp/sec_frc at >=2/>=5)
@@ -155,14 +157,15 @@ module input
    ! owning member's init). Key names are the SEMANTIC uppercase of the member's
    ! field names (T_VIB_A for boltzmann's t_vib_a, N_E_REL for incident's n_e_rel,
    ! ...); the old TRV_A-style names are not revived (E21 no-fallback). Rows
-   ! admitted so far: the boltzmann temperatures and the full incident mode/shape
-   ! set; a member key outside this table is an unknown key at parse time (no
-   ! silent swallowing)
+   ! admitted so far: the boltzmann temperatures, the full incident mode/shape
+   ! set, and the bath/equilibration members' parameters; a member key
+   ! outside this table is an unknown key at parse time (no silent
+   ! swallowing)
    type :: dispatch_row_t
       character(len=key_len) :: key = ''    ! member parameter key (e.g. 'T_VIB_A')
       character(len=32) :: member = ''      ! owning member name (init target)
    end type dispatch_row_t
-   type(dispatch_row_t), parameter :: dispatch_tbl(22) = [ &
+   type(dispatch_row_t), parameter :: dispatch_tbl(30) = [ &
       dispatch_row_t('T_VIB_A',  'boltzmann'), &
       dispatch_row_t('T_VIB_B',  'boltzmann'), &
       dispatch_row_t('N_E_REL',  'incident'), &
@@ -184,7 +187,15 @@ module input
       dispatch_row_t('E_STAB',   'barrier_excitation'), &
       dispatch_row_t('N_E_BAR',  'barrier_excitation'), &
       dispatch_row_t('E_BAR',    'barrier_excitation'), &
-      dispatch_row_t('T_BAR',    'barrier_excitation') ]
+      dispatch_row_t('T_BAR',    'barrier_excitation'), &
+      dispatch_row_t('T_BATH',   'thermostat'), &
+      dispatch_row_t('NU_COLL',  'thermostat'), &
+      dispatch_row_t('T_GLO',    'glo_target'), &
+      dispatch_row_t('GAMMA_GLO','glo_target'), &
+      dispatch_row_t('W_GHOST',  'glo_target'), &
+      dispatch_row_t('T_EQ',     'thermalize'), &
+      dispatch_row_t('N_EQ',     'thermalize'), &
+      dispatch_row_t('DT_EQ',    'thermalize') ]
 contains
    !------------------------------------------------------------------
    ! read_input(file) - read and map the input (parse -> required check -> per-key

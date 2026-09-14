@@ -51,13 +51,14 @@
 !       every staged row carries its key-table block (16 block-one rows, 5
 !       block-two rows; line numbers of the source preserved)
 !   (j) member-key admission (the central dispatch table's rows): a file with
-!       all 22 member keys (T_VIB_A/T_VIB_B boltzmann; N_E_REL/T_TRANS/V_WIDTH/
+!       all 30 member keys (T_VIB_A/T_VIB_B boltzmann; N_E_REL/T_TRANS/V_WIDTH/
 !       N_THTA/THTA_MAX/N_CHI/CHI/N_B/N_AIM incident; T_ROT j; J_ROT rotation;
 !       N_OSC/T_OSC/N_LEVEL/K_OSC surface_oscillator; E_VIB normalmode;
-!       E_STAB/N_E_BAR/E_BAR/T_BAR barrier_excitation) parses WITHOUT a stop -
-!       no longer unknown keys - and every key stages in block two with its
-!       value VERBATIM (the raw trimmed string: '350.0', '2', ...) and the
-!       source line number kept
+!       E_STAB/N_E_BAR/E_BAR/T_BAR barrier_excitation; T_BATH/NU_COLL
+!       thermostat; T_GLO/GAMMA_GLO/W_GHOST glo_target; T_EQ/N_EQ/DT_EQ
+!       thermalize) parses WITHOUT a stop - no longer unknown keys - and every
+!       key stages in block two with its value VERBATIM (the raw trimmed
+!       string: '350.0', '2', ...) and the source line number kept
 !   (k) Ruling F (the INCIDENT word withdrawal): DIST_SCHEME = incident ->
 !       illegal-value loud-stop (child) naming DIST_SCHEME (the incident
 !       channel is selected by the samp_run scheme argument, never by a
@@ -67,8 +68,11 @@
 !   (m) the five new per-fragment scheme words parse to their codes:
 !       DIST_SCHEME = rotation, j, surface_oscillator, normalmode,
 !       barrier_excitation -> reactants%dist_scheme = [3,4,5,6,7] (the same
-!       word/code pairing the sampler scheme-code table carries, now seven
-!       words)
+!       word/code pairing the sampler scheme-code table carries)
+!   (n) the three bath-member scheme words parse to their codes:
+!       DIST_SCHEME = thermostat, glo_target, thermalize ->
+!       reactants%dist_scheme = [8,9,10] (the word/code pairing shared with
+!       the sampler scheme-code table, now ten words)
 ! Sweep-along note: the map_slots key-kind select's case-default guard
 !       (the stale-ok leak fix, fourth site of the family) is UNREACHABLE
 !       from any input file - every key in the table carries kind 1..7, so
@@ -87,7 +91,7 @@ program check_input
    character(len=32) :: kname
    logical :: ok_arr, ok_part
    character(len=16) :: blk1(16), blk2(5)
-   character(len=16) :: mkey(22), mval(22)
+   character(len=16) :: mkey(30), mval(30)
 
    ! ---------- child dispatch: one bad case per spawn, must loud-stop ----------
    ! bad-file naming convention: build/input_case_<mode>.txt (bad-nofile excepted)
@@ -205,7 +209,15 @@ program check_input
       'E_STAB = 8.0', &
       'N_E_BAR = 0', &
       'E_BAR = 5.0', &
-      'T_BAR = 900.0' ])
+      'T_BAR = 900.0', &
+      'T_BATH = 475.0', &
+      'NU_COLL = 0.137', &
+      'T_GLO = 550.0', &
+      'GAMMA_GLO = 0.09', &
+      'W_GHOST = 0.0021', &
+      'T_EQ = 325.0', &
+      'N_EQ = 250', &
+      'DT_EQ = 0.0413' ])
    ! (m) the five new per-fragment scheme words in one list (order kept)
    call write_sample('build/input_case_newdist.txt', [ character(len=64) :: &
       'SYSTEM_DIR = build/sysdef_case_mol', &
@@ -215,6 +227,14 @@ program check_input
       'DT = 0.01', &
       'DIST_SCHEME = rotation, j, surface_oscillator,', &
       '   normalmode, barrier_excitation' ])
+   ! (n) the three bath-member scheme words in one list (order kept)
+   call write_sample('build/input_case_bathdist.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/sysdef_case_mol', &
+      'E_REL = 5.0', &
+      'B_MAX = 3.0', &
+      'R_SEP = 8.0', &
+      'DT = 0.01', &
+      'DIST_SCHEME = thermostat, glo_target, thermalize' ])
 
    ! ---------- bad sample files (one per child loud-stop case) ----------
    ! (e) one required key removed each time
@@ -375,11 +395,13 @@ program check_input
    mkey = [ character(len=16) :: 'T_VIB_A', 'T_VIB_B', 'N_E_REL', 'T_TRANS', 'V_WIDTH', &
             'N_THTA', 'THTA_MAX', 'N_CHI', 'CHI', 'N_B', 'N_AIM', 'T_ROT', 'J_ROT', &
             'N_OSC', 'T_OSC', 'N_LEVEL', 'K_OSC', 'E_VIB', 'E_STAB', 'N_E_BAR', &
-            'E_BAR', 'T_BAR' ]
+            'E_BAR', 'T_BAR', 'T_BATH', 'NU_COLL', 'T_GLO', 'GAMMA_GLO', 'W_GHOST', &
+            'T_EQ', 'N_EQ', 'DT_EQ' ]
    mval = [ character(len=16) :: '350.0', '300.0', '2', '0.0', '0.3', &
             '0', '1.1', '0', '0.9', '0', '0', '300.0', '2', '1', '180.0', &
-            '3', '42.0', '12.5', '8.0', '0', '5.0', '900.0' ]
-   ok_part = (staging_n_rows() == 43)      ! 28 user rows (six registry + 22 member
+            '3', '42.0', '12.5', '8.0', '0', '5.0', '900.0', '475.0', '0.137', &
+            '550.0', '0.09', '0.0021', '325.0', '250', '0.0413' ]
+   ok_part = (staging_n_rows() == 51)      ! 36 user rows (six registry + 30 member
                                             ! keys) + the 15 injected per-key defaults
    do i = 1, size(mkey)
       k = staged_row(trim(mkey(i)))
@@ -391,7 +413,7 @@ program check_input
    k = staged_row('T_VIB_A')               ! line numbers preserved (line 7 of the file)
    if (k == 0 .or. staging_line(k) /= 7) ok_part = .false.
    if (ok_part) then
-      print '(a)', '(j) member-key admission: PASS (22 dispatch keys staged block two, values verbatim)'
+      print '(a)', '(j) member-key admission: PASS (30 dispatch keys staged block two, values verbatim)'
    else
       print '(a)', 'FAIL (j) member-key admission: a member key missing, wrong block, or value altered'
       nfail = nfail + 1
@@ -414,6 +436,20 @@ program check_input
          'normalmode/barrier_excitation -> codes 3,4,5,6,7)'
    else
       print '(a)', 'FAIL (m) new scheme words: DIST_SCHEME list did not map to codes 3..7'
+      nfail = nfail + 1
+   end if
+
+   ! ---------- (n) the three bath-member scheme words parse to codes 8..10 ----------
+   nfail0 = nfail
+   call read_input('build/input_case_bathdist.txt')
+   ok_arr = allocated(reactants%dist_scheme)
+   if (ok_arr) ok_arr = size(reactants%dist_scheme) == 3 .and. &
+                        all(reactants%dist_scheme == [ 8, 9, 10 ])
+   if (ok_arr) then
+      print '(a)', '(n) bath-member scheme words: PASS (thermostat/glo_target/'// &
+         'thermalize -> codes 8,9,10)'
+   else
+      print '(a)', 'FAIL (n) bath-member scheme words: DIST_SCHEME list did not map to codes 8..10'
       nfail = nfail + 1
    end if
 
