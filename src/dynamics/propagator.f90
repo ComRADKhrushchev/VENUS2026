@@ -156,7 +156,7 @@ contains
          sta%t = sta%t + dt
 
       case (2)                              ! third-order Beeman
-         if (.not. f_prev_ok .or. size(f_prev) /= size(sta%q) .or. sta%t == 0.0d0) then
+         if (beeman_boot_needed(sta)) then
             ! FIRST-STEP BOOT (registered semantics, header note): no usable history - run
             ! the velocity-Verlet sequence, staging its left-end force as the next step's
             ! history (the extra head evaluation is deterministic and unused by the update)
@@ -263,6 +263,21 @@ contains
       if (allocated(f_prev)) deallocate (f_prev)
       f_prev_ok = .false.
    end subroutine beeman_forget
+
+   ! beeman_boot_needed(sta) - the registered boot condition: no usable history
+   ! (nothing staged yet, or a size change of the state) or a fresh trajectory
+   ! (sta%t = 0). Split into its own function so size(f_prev) is evaluated ONLY
+   ! when the staging flag says the array is allocated - Fortran does not
+   ! guarantee short-circuit .or., and a size() on an unallocated array is
+   ! nonconforming (the flag and the allocation move together: forget clears
+   ! both, the boot sets both)
+   logical function beeman_boot_needed(sta)
+      type(state_t), intent(in) :: sta
+      beeman_boot_needed = .true.
+      if (f_prev_ok) then
+         beeman_boot_needed = (size(f_prev) /= size(sta%q) .or. sta%t == 0.0d0)
+      end if
+   end function beeman_boot_needed
 
    ! loud-stop channel (name the caller; value variant; STOP 1)
    subroutine stop_prop(who, msg)
