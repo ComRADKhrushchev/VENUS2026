@@ -59,8 +59,9 @@
 !   -> cell-carrying POSCAR format; a recognized extension wins over the prefix rule.
 !   File base name (extension stripped) = reactant name; n_frag = file count (NOT an
 !   input key - E14 "one reactant one file"). An empty folder, an unknown-extension
-!   file, a duplicate reactant name, a reader soft failure, or more than one
-!   cell-carrying file is an ASSEMBLY ERROR -> loud-stop (the ok/errmsg channel belongs
+!   file, an extension-only (empty-reactant-name) file, a duplicate reactant name
+!   (fold-case - the comparison matches the sort key), a reader soft failure, or more
+!   than one cell-carrying file is an ASSEMBLY ERROR -> loud-stop (the ok/errmsg channel belongs
 !   to the specio readers; this facade converts a bad return into a hard stop).
 !
 ! -- Field notes (grammar lands C4; the field statutes are Task 11's) --
@@ -251,9 +252,10 @@ contains
       end do
 
       ! 5. duplicate reactant names (one reactant one file - the same name in two
-      !    formats would define the reactant twice)
+      !    formats would define the reactant twice); the comparison is fold-case LIKE
+      !    THE SORT KEY - Co.xyz + co.xyz is one reactant spelled twice, not two
       do i = 2, n_entry
-         if (trim(mat(i)%name) == trim(mat(i-1)%name)) then
+         if (fold_case(trim(mat(i)%name)) == fold_case(trim(mat(i-1)%name))) then
             errmsg = 'duplicate reactant name: '//trim(mat(i)%name)// &
                      ' ('//trim(mat(i-1)%file)//' and '//trim(mat(i)%file)//')'
             return
@@ -468,6 +470,13 @@ contains
             return
          end if
       end select
+      ! the extension-only name has no reactant identity on ANY path - recognized
+      ! extensions included (a hidden file named '.xyz' reaches here with fmt set but
+      ! an empty base; loud-stop rather than staging an anonymous fragment)
+      if (len_trim(base) == 0) then
+         err = 'empty reactant name (extension-only file name): '//trim(entry)
+         return
+      end if
       rname = base
    end subroutine classify_entry
 

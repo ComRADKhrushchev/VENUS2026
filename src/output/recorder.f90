@@ -100,6 +100,10 @@
 !   EXACT fit to the roster (both directions - col_tkin walks roster%mass up to
 !   size(sta%p)/3, so an oversized state would otherwise read mass out of bounds) - the
 !   two checks cover every extractor / section read the frame path makes.
+!   Input-key consumption note: the E_KIN / E_POT / E_TOT input keys land in
+!   observables%e_kin / e_pot / e_tot (C4.4 map_slots) and no code reads them yet - the
+!   energy columns here register at lvl_min >= 0 regardless of those flags; their
+!   consumption destination is the C8 / run-statistics wiring (routed keys, not dead).
 !=====================================================================
 module recorder
    use state,         only: state_t

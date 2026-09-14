@@ -41,6 +41,13 @@
 !   (j) re-load resets staging: after the surface load of (b), a molecular re-load
 !       leaves exactly the second system (frag count back to 2, surface_model 0,
 !       no cell) - no cross-load leakage
+!   (k) fold-case duplicate name (Co.xyz + co.poscar - case differs only in spelling)
+!       -> loud-stop (child) naming the duplicate (the comparison folds case like the
+!       sort key, C4 final-review fix)
+!   Not exercised by a child: the empty-reactant-name loud-stop on a RECOGNIZED
+!   extension (a hidden '.xyz') shares the classify_entry guard but its sample is
+!   unlistable cross-platform ('ls -1' skips dot-prefixed entries on POSIX) - the
+!   same-code (g)/(k) duplicate path carries the criterion
 !=====================================================================
 program check_sysdef
    use sysdef_facade
@@ -71,6 +78,7 @@ program check_sysdef
       case ('bad-parse');  call sysdef_load('build/sysdef_case_parse')
       case ('bad-dup');    call sysdef_load('build/sysdef_case_dup')
       case ('bad-2cell');  call sysdef_load('build/sysdef_case_2cell')
+      case ('bad-dupcs');  call sysdef_load('build/sysdef_case_dupcs')
       case ('bad-symbol'); call sysdef_load('build/sysdef_case_symb')
       case default
          print '(a)', 'child: unknown mode '//trim(mode)
@@ -132,6 +140,16 @@ program check_sysdef
    call make_dir('build/sysdef_case_symb')
    call write_sample('build/sysdef_case_symb/odd.xyz', [ character(len=64) :: &
       '1', 'check_sysdef unknown-symbol sample', 'Zz 0.0 0.0 0.0' ])
+   ! fold-case duplicate: names 'Co' / 'co' differ only in spelling (both file names
+   ! coexist everywhere - they differ in extension)
+   call make_dir('build/sysdef_case_dupcs')
+   call write_sample('build/sysdef_case_dupcs/Co.xyz', [ character(len=64) :: &
+      '2', 'check_sysdef fold-case duplicate sample (xyz side)', &
+      'C 0.00 0.00 0.00', 'O 1.20 0.00 0.00' ])
+   call write_sample('build/sysdef_case_dupcs/co.poscar', [ character(len=64) :: &
+      'check_sysdef fold-case duplicate sample (poscar side)', '1.0', &
+      '3.0 0.0 0.0', '0.0 3.0 0.0', '0.0 0.0 3.0', &
+      'C O', '1 1', 'Direct', '0.00 0.00 0.00', '0.10 0.10 0.10' ])
 
    ! ---------- (a) molecular folder ----------
    nfail0 = nfail
@@ -216,6 +234,8 @@ program check_sysdef
                         '(h) two-cell loud-stop')
    call expect_loudstop('bad-symbol', 'Zz', 'elem_mass', &
                         '(i) unknown-symbol loud-stop')
+   call expect_loudstop('bad-dupcs', 'duplicate reactant name', 'sysdef_load', &
+                        '(k) fold-case duplicate-name loud-stop')
 
    ! ---------- (j) re-load resets staging ----------
    nfail0 = nfail

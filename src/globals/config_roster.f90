@@ -112,8 +112,10 @@ contains
    !      loud-stop naming the missing lattice constant (a system parameter with no
    !      generic default - the 2026-09-08 audit removed the old-library Au bias 2.94998)
    ! Ownership note: roster_load re-fills only the DERIVED members (mass/symb/frag/q0/
-   ! skew/box_lx/box_ly); a_lat and box_pad are input-owned (the residual input keys,
-   ! C4.4) and carried through untouched - a_lat is validated in step 5, never written
+   ! skew/box_lx/box_ly); a_lat and box_pad are input-owned but C4 has NO input key for
+   ! them (the C4.4 key table carries neither A_LAT nor BOXPAD) - they arrive with the
+   ! C5 surface-window keys (A_LAT/BOXPAD) and are carried through untouched here until
+   ! then; a_lat is validated in step 5, never written
    ! Phase-C blanks (field notes, not fill): the rigid-surface huge-mass fixing (~1d30,
    ! old :752) and the surface-row extra content - the staging API records the cell as a
    ! single system-level fact without per-fragment provenance, so which rows are surface

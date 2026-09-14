@@ -307,6 +307,17 @@ contains
          else
             blk = blk_system   ! member-parameter keys sit in block two (the E21 table's last row)
          end if
+         ! capacity guard (the known tripwire of C4.4's deferred list): kv_tbl is sized
+         ! to the key table - the moment dispatch rows go real (C2/C5), member keys
+         ! reach here too and must NOT write past the table (same defect class as the
+         ! phase's other OOB bugs; loud-stop, never a silent overflow)
+         if (n_kv >= size(kv_tbl)) then
+            errmsg = 'staging capacity exhausted at key '//trim(kw)//' (line '//trim(i2s(kln))// &
+                     '): distinct staged keys exceed size(kv_tbl) (sized to the key table - '// &
+                     'member-parameter keys need their dispatch rows counted, C2/C5)'
+            close (u)
+            return
+         end if
          n_kv = n_kv + 1
          kv_tbl(n_kv)%key = trim(kw)
          kv_tbl(n_kv)%val = trim(vals)
@@ -349,6 +360,17 @@ contains
       do r = 1, size(key_tab)
          if (key_tab(r)%required) cycle
          if (staged_index(trim(key_tab(r)%name)) > 0) cycle
+         ! capacity guard (defensive, the phase's fail-safe stance): unreachable while
+         ! the user table holds fewer rows than the registry (a full user table has no
+         ! absent keys to inject) - guarded anyway so no future fill route writes past
+         ! the table (same defect class as the parse_file tripwire above)
+         if (n_kv >= size(kv_tbl)) then
+            write (0, '(a)') 'inject_defaults: staging capacity exhausted at key '// &
+                             trim(key_tab(r)%name)//': rows would exceed size(kv_tbl)'
+            write (0, '(a)') 'inject_defaults: loud-stop (defensive capacity guard - '// &
+                             'unreachable through the current fill routes)'
+            stop 1
+         end if
          n_kv = n_kv + 1
          kv_tbl(n_kv)%key = key_tab(r)%name
          kv_tbl(n_kv)%val = key_tab(r)%def
@@ -630,7 +652,10 @@ contains
    subroutine reset_staging()
       if (allocated(kv_tbl)) deallocate (kv_tbl)
       allocate (kv_tbl(size(key_tab)))   ! one row per registry key at most (unknown
-      n_kv = 0                           ! keys rejected, duplicates rejected)
+      n_kv = 0                           ! keys rejected, duplicates rejected); BOTH
+                                         ! fill sites (parse_file / inject_defaults)
+                                         ! guard their increment with a capacity
+                                         ! loud-stop - capacity is code, not memory
    end subroutine reset_staging
 
    ! key_index(key) - registry row of a key (0 = not a key-table key)

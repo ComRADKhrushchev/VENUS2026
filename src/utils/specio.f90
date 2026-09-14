@@ -26,7 +26,8 @@ module specio
 
    ! Element mass table (module-private paired arrays; pure physical-constant data, zero
    ! system knowledge): symbol + standard atomic weight per row, H..Og. Values are the
-   ! IUPAC 2013 standard atomic weights [amu]; elements without a stable isotope carry the
+   ! IUPAC standard atomic weights, current values incl. CIAAW revisions (not the frozen
+   ! 2013 list - e.g. Yb/Hg) [amu]; elements without a stable isotope carry the
    ! mass number of the recognized isotope (the bracketed entries of the source table).
    ! DATA-initialized constant table: written once at program start, never mutated (not
    ! module state in the E12 sense)
