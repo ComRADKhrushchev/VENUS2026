@@ -133,14 +133,19 @@ Phase K skeleton generation (all L0-L5 files as placeholders in the new tree)
    ↓ [review gate: show only the skeleton outline (file tree + one-line routine list per file);
         release after layer-by-layer confirmation; pseudocode expanded per file under the presentation protocol]
 Phase C concretization (file by file; per file, outline first then expand after confirmation; component-level old-vs-new cross-checks)
-   C1 L5 instruments: rng (single random stream) / linalg / geometry   ← reference RAND0 family/gasdev/EIGN/ROTATE family
-   C2 force_facade + elec_adiabatic + pes_* members       ← reference interface_TEST/emt_nn/rst/VERLET embedded forces
-   C3 predicate grammar + termination-criteria assembly   ← reference TEST.f:106-146
-   C4 recorder + config_roster + input grammar            ← reference GWRITE/HIST (stripping the violations listed in the audit)
+[E20 order revision 2026-09-14 — user ruling "build the whole program first, then handle
+ the interface part": the BODY phases run first against the no-op adiabatic skeleton,
+ the INTERFACE phase (the former C2) runs LAST as a replacement part. Numbering is
+ historical — only the sequence changed. Execution order: C1 → C4 → C5 → C6 → C7 → C8
+ → C2(interface) → V → S. sysdef_facade joins C4 (the assembly-chain data entry).]
+   C1 L5 instruments: rng (single random stream) / linalg / geometry   ← DONE 2026-09-13 (bfc0289)
+   C4 recorder + config_roster + input grammar + sysdef   ← reference GWRITE/HIST/input_parser/param_mapping/presets/venus_input (stripping the violations listed in the audit)
    C5 sampler + dist_* member table                       ← reference SELECT/THRMAN/INITEBK/SURF/…
    C6 propagator closed family (verlet/symple/radau)      ← reference VERLET/SYMPLE/RADAU (orchestration stripped)
-   C7 driver + outcome-classification data                ← reference VENUS.f90 three-phase orchestration
+   C7 driver assembly-chain concretization                ← reference VENUS.f90 three-phase orchestration (outcome classification is container-side since E19)
    C8 analysis/ offline family                            ← reference FINAL/GFINAL/EIGOUT/plot_*
+   C2(interface) force_facade + elec_facade + the ws freeze + the first real container ← reference interface_TEST/test_potentials; docs/plans/C2.md (content stands, window moved — E20)
+   [C3 withdrawn — E18: termination is container-side]
    ↓
 Phase V full-chain verification (the C-phase per-component verification inputs and criteria assembled into the
    formal case set; criterion coverage check + full runs + same-ISEED reproducibility spot checks)
