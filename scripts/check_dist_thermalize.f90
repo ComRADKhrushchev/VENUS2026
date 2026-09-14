@@ -41,33 +41,46 @@
 !   (b) post-equilibration kinetic-energy expectation algebra (analytic,
 !       no sampling): the declared expectation obeys
 !       e_kin_expect = (3*nat - 3)*kb*t_eq/2 for the bound carrier (the
-!       Gaussian projection onto zero net momentum removes exactly three
-!       degrees of freedom - independent of the mass distribution),
-!       relative 1e-12
+!       mass-weighted COM-velocity Gaussian projection onto zero net
+!       momentum removes exactly three degrees of freedom - independent
+!       of the mass distribution), relative 1e-12
 !   (c) drift identity (exact algebra of the transformation): after a
 !       direct sample call the owned-set momentum sums to zero PER
-!       COMPONENT (each component had its owned-set mean subtracted) -
-!       relative residual <= 1e-10 (floating-point roundoff of the
-!       subtraction, not a statistical claim)
-!   (d) parameter-loading integrity: the t_eq/n_eq/dt_eq getters return
+!       COMPONENT (the mass-weighted projection p'_i = p_i - (m_i/M)*P
+!       carries the total to zero exactly) - relative residual <= 1e-10
+!       (floating-point roundoff of the subtraction, not a statistical
+!       claim)
+!   (d) projection-form replay (exact, no distribution assertion): the
+!       seeded Gaussians replayed here in the member's draw order and
+!       projected by the DECLARED mass-weighted formula reproduce the
+!       member's output component-for-component, relative 1e-12 - an
+!       unweighted mean subtraction would shift every component of the
+!       unequal-mass carrier (1/4 amu), so the projection form itself
+!       is pinned, not just the getter constant
+!   (e) parameter-loading integrity: the t_eq/n_eq/dt_eq getters return
 !       the values init received
-!   (e) footprint confinement: with the propagator step preset to a
+!   (f) footprint confinement: with the propagator step preset to a
 !       distinctive value and sta%t preset to a sentinel, a sample call
 !       (which swaps the step to dt_eq for the internal run) RESTORES
 !       both - the equilibration run neither consumes trajectory time nor
 !       leaves the global step changed
-!   (f) non-positive temperature loud-stop (child): t_eq = 0 -> stderr
+!   (g) non-positive temperature loud-stop (child): t_eq = 0 -> stderr
 !       names thermalize_init and t_eq
-!   (g) non-positive step count loud-stop (child): n_eq = 0 -> stderr
+!   (h) non-positive step count loud-stop (child): n_eq = 0 -> stderr
 !       names thermalize_init and n_eq
-!   (h) non-positive step size loud-stop (child): dt_eq = 0 -> stderr
+!   (i) non-positive step size loud-stop (child): dt_eq = 0 -> stderr
 !       names thermalize_init and dt_eq
-!   (i) no-fragment-binding loud-stop (child): no dist_scheme row carries
+!   (j) no-fragment-binding loud-stop (child): no dist_scheme row carries
 !       the code -> stderr names thermalize_init
-!   (j) duplicate-binding loud-stop (child): two fragments carry the
+!   (k) duplicate-binding loud-stop (child): two fragments carry the
 !       code -> stderr names thermalize_init
-!   (k) sample-before-init loud-stop (child): thermalize_sample with no
+!   (l) sample-before-init loud-stop (child): thermalize_sample with no
 !       thermalize_init -> stderr names thermalize_sample
+!   (m) roster-offset short-state loud-stop (child): a 6-dof state
+!       against a SECOND-fragment carrier (2x2-atom roster, scheme
+!       [1,10]: the owned components are 7..12) -> stderr names
+!       thermalize_sample and the state (the guard must see the
+!       fragment's roster offset, not just the atom count)
 !=====================================================================
 module equi_standin
    use state, only: state_t
@@ -85,7 +98,7 @@ end module equi_standin
 
 program check_dist_thermalize
    use consts,        only: kb_code
-   use rng,           only: rng_init
+   use rng,           only: rng_init, rng_gauss
    use sampler,       only: samp_run, samp_code
    use config,        only: reactants, propagator
    use config_roster, only: roster, roster_clear
@@ -98,8 +111,9 @@ program check_dist_thermalize
    implicit none
    type(state_t) :: sta
    type(thermalize_params_t) :: par
-   integer :: nfail = 0, i, frag_b
+   integer :: nfail = 0, i, c, frag_b
    real(8) :: e_expect, comp_sum, comp_abs, rel, rel_max
+   real(8) :: exp_p(6), wt, ptot
    real(8), parameter :: t_use = 325.0d0
    real(8), parameter :: dt_use = 0.0413d0
    real(8), parameter :: dt_live = 0.031d0
@@ -139,10 +153,15 @@ program check_dist_thermalize
          call setup_mol(2)
          call set_scheme([10, 10])
          call thermalize_init(par)
-      case ('bad-noinit')                   ! (k): sample without init
+      case ('bad-noinit')                   ! (l): sample without init
          call setup_mol(1)
          call set_scheme([10])
          call thermalize_sample(sta)
+      case ('bad-offset')                   ! (m): 6-dof state vs a SECOND-fragment carrier
+         call setup_mol(2)
+         call set_scheme([1, 10])
+         call thermalize_init(par)
+         call thermalize_sample(sta)        ! sta holds 2 atoms (6 dof) - owned 7..12
       case default
          print '(a)', 'child: unknown mode '//trim(mode)
          stop 2
@@ -161,13 +180,13 @@ program check_dist_thermalize
    call rng_init(7717)
    call thermalize_init(par)
 
-   ! (d) parameter-loading integrity
+   ! (e) parameter-loading integrity
    if (thermalize_t_eq() /= t_use .or. thermalize_n_eq() /= n_use .or. &
        thermalize_dt_eq() /= dt_use .or. thermalize_frag() /= 1 .or. thermalize_nat() /= 2) then
-      print '(a)', 'FAIL (d) parameter integrity: an equilibration parameter or the carrier was dropped'
+      print '(a)', 'FAIL (e) parameter integrity: an equilibration parameter or the carrier was dropped'
       nfail = nfail + 1
    else
-      print '(a)', '(d) parameter integrity: PASS (t_eq/n_eq/dt_eq round-trip; carrier fragment 1, 2 atoms)'
+      print '(a)', '(e) parameter integrity: PASS (t_eq/n_eq/dt_eq round-trip; carrier fragment 1, 2 atoms)'
    end if
 
    ! (b) post-equilibration KE expectation algebra: (3*nat-3)*kb*t_eq/2
@@ -182,7 +201,7 @@ program check_dist_thermalize
          e_expect, ')'
    end if
 
-   ! (e) footprint confinement: the sample swaps the propagator step to dt_eq
+   ! (f) footprint confinement: the sample swaps the propagator step to dt_eq
    ! for the internal run and must RESTORE step and trajectory time
    call state_create(sta, 2)
    sta%q = sentinel
@@ -192,14 +211,14 @@ program check_dist_thermalize
    call thermalize_sample(sta)
    if (propagator%dt /= dt_live .or. sta%t /= sentinel .or. any(sta%q /= sentinel) .or. &
        any(sta%f /= sentinel) .or. any(sta%p == sentinel)) then
-      print '(a)', 'FAIL (e) footprint: step/time not restored or q/f trespassed'
+      print '(a)', 'FAIL (f) footprint: step/time not restored or q/f trespassed'
       nfail = nfail + 1
    else
-      print '(a)', '(e) footprint confinement: PASS (propagator dt and sta%t restored; q/f untouched; owned p seeded)'
+      print '(a)', '(f) footprint confinement: PASS (propagator dt and sta%t restored; q/f untouched; owned p seeded)'
    end if
 
    ! (c) drift identity: owned-set momentum sums to zero per component
-   ! (exact algebra of the mean subtraction - roundoff-level residual)
+   ! (exact algebra of the mass-weighted projection - roundoff-level residual)
    rel_max = 0.0d0
    do i = 1, 3
       comp_sum = sta%p(i) + sta%p(i + 3)
@@ -212,6 +231,36 @@ program check_dist_thermalize
       nfail = nfail + 1
    else
       print '(a,es12.4,a)', '(c) drift identity: PASS (per-component owned momentum sums zero to ', rel_max, ')'
+   end if
+
+   ! (d) projection-form replay: the seeded Gaussians replayed here in the
+   ! member's draw order (atom-major, component within atom) and projected
+   ! by the DECLARED mass-weighted formula must reproduce the member's
+   ! output component-for-component (unequal masses 1/4 amu make an
+   ! unweighted mean subtraction visibly different)
+   call rng_init(7717)
+   do i = 1, 2
+      do c = 1, 3
+         exp_p(3*(i - 1) + c) = sqrt(roster%mass(roster%frag(1)%list(i))*kb_code*t_use)*rng_gauss()
+      end do
+   end do
+   wt = sum(roster%mass(roster%frag(1)%list))
+   do c = 1, 3
+      ptot = exp_p(c) + exp_p(3 + c)
+      exp_p(c) = exp_p(c) - (roster%mass(roster%frag(1)%list(1))/wt)*ptot
+      exp_p(3 + c) = exp_p(3 + c) - (roster%mass(roster%frag(1)%list(2))/wt)*ptot
+   end do
+   call rng_init(7717)
+   call thermalize_sample(sta)
+   rel = 0.0d0
+   do i = 1, 6
+      rel = max(rel, abs(sta%p(i) - exp_p(i))/max(abs(exp_p(i)), 1.0d-300))
+   end do
+   if (rel > 1.0d-12) then
+      print '(a,es12.4)', 'FAIL (d) projection-form replay: max relative deviation ', rel
+      nfail = nfail + 1
+   else
+      print '(a,es12.4,a)', '(d) projection-form replay: PASS (declared mass-weighted formula reproduces output to ', rel, ')'
    end if
    call state_destroy(sta)
 
@@ -232,13 +281,14 @@ program check_dist_thermalize
    end if
    call state_destroy(sta)
 
-   ! ---------- (f)-(k) loud-stop criteria (child processes) ----------
-   call expect_loudstop('bad-temp',   'thermalize_init', 't_eq',     '(f) non-positive temperature loud-stop')
-   call expect_loudstop('bad-nsteps', 'thermalize_init', 'n_eq',     '(g) non-positive step-count loud-stop')
-   call expect_loudstop('bad-dt',     'thermalize_init', 'dt_eq',    '(h) non-positive step-size loud-stop')
-   call expect_loudstop('bad-bind0',  'thermalize_init', 'scheme',   '(i) no-fragment-binding loud-stop')
-   call expect_loudstop('bad-bind2',  'thermalize_init', 'two',      '(j) duplicate-binding loud-stop')
-   call expect_loudstop('bad-noinit', 'thermalize_sample', 'thermalize_init', '(k) sample-before-init loud-stop')
+   ! ---------- (g)-(m) loud-stop criteria (child processes) ----------
+   call expect_loudstop('bad-temp',   'thermalize_init', 't_eq',     '(g) non-positive temperature loud-stop')
+   call expect_loudstop('bad-nsteps', 'thermalize_init', 'n_eq',     '(h) non-positive step-count loud-stop')
+   call expect_loudstop('bad-dt',     'thermalize_init', 'dt_eq',    '(i) non-positive step-size loud-stop')
+   call expect_loudstop('bad-bind0',  'thermalize_init', 'scheme',   '(j) no-fragment-binding loud-stop')
+   call expect_loudstop('bad-bind2',  'thermalize_init', 'two',      '(k) duplicate-binding loud-stop')
+   call expect_loudstop('bad-noinit', 'thermalize_sample', 'thermalize_init', '(l) sample-before-init loud-stop')
+   call expect_loudstop('bad-offset', 'thermalize_sample', 'state dof =6', '(m) roster-offset short-state loud-stop')
 
    print '(a,i0,a)', '=== check_dist_thermalize: ', nfail, ' failure(s) ==='
    if (nfail > 0) stop 1

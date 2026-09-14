@@ -8,11 +8,13 @@
 ! Conservation algebra (the declaration this member carries):
 !   post-equilibration kinetic-energy expectation E[KE] =
 !     (3*nat - 3)*kb*t_eq/2 exactly, independent of the mass
-!     distribution - the Maxwell seed followed by the exact projection
-!     onto zero net momentum removes exactly three degrees of freedom
-!     from the Gaussian; the equilibration run at the bath temperature
-!     preserves the expectation (a mechanism-level declaration: the
-!     trajectory numbers are posterior to the force chain).
+!     distribution - the Maxwell seed followed by the exact
+!     MASS-WEIGHTED (COM-velocity) projection p'_i = p_i -
+!     (m_i/M)*P onto zero net momentum removes exactly three degrees
+!     of freedom from the Gaussian; the equilibration run at the bath
+!     temperature preserves the expectation (a mechanism-level
+!     declaration: the trajectory numbers are posterior to the force
+!     chain).
 ! Division of labor (the ruling this member shares with the assembly):
 !   the member owns the EQUILIBRATION MECHANISM (seed + drift removal +
 !   the bounded run through the propagator - an internal
@@ -33,11 +35,17 @@
 !       no roster fragment table (assembly order); no per-fragment
 !       scheme array; length mismatch against the roster; the member
 !       word absent from the scheme-code table (a library-assembly
-!       failure); zero or multiple carrier fragments.
+!       failure); zero or multiple carrier fragments; a state whose
+!     momentum vector ends before the carrier's last owned component
+!     (the roster offset included - a direct call against a
+!     short-of-fragment state).
 !   thermalize_sample(sta) - (1) seed every owned component of the
 !     carrier fragment with a fresh Gaussian momentum at sqrt(m_i*kb*
-!     t_eq); (2) subtract the per-component owned-set mean (the
-!     owned-set total momentum becomes exactly zero); (3) swap the
+!     t_eq); (2) apply the mass-weighted COM-velocity projection
+!     p'_i = p_i - (m_i/M)*P per component, P the owned-set total
+!     momentum, M the carrier mass (the owned-set total momentum
+!     becomes exactly zero; this is the projection the declared
+!     expectation form assumes); (3) swap the
 !     global propagator step to dt_eq, run n_eq propagation steps
 !     through the evolution service, restore the step and the
 !     trajectory time (the equilibration run neither consumes
@@ -177,15 +185,17 @@ contains
    !                          run through the evolution service
    subroutine thermalize_sample(sta)
       type(state_t), intent(inout) :: sta ! sampler runtime channel (owned p components written)
-      integer :: i, c, g_atom, i_step
-      real(8) :: drift(3), t_saved, dt_saved
+      integer :: i, c, g_atom, i_step, last_own
+      real(8) :: wt, p_tot(3), t_saved, dt_saved
       if (.not. inited) then
          call stop_equix('thermalize_sample', 'sample called before thermalize_init - the '// &
             'member carries no parameter set')
       end if
-      if (size(sta%p) < 3*nat_b) then
-         call stop_equii2('thermalize_sample', 'the state momentum vector is smaller than the '// &
-            'owned component set: state dof =', size(sta%p), 'owned components =', 3*nat_b)
+      last_own = 3*roster%frag(frag_b)%list(nat_b)   ! last owned component (roster offset included)
+      if (size(sta%p) < last_own) then
+         call stop_equii2('thermalize_sample', 'the state momentum vector ends before the '// &
+            "carrier's last owned component: state dof =", size(sta%p), &
+            'last owned component =', last_own)
       end if
 
       ! (1) Maxwell seed of the owned components
@@ -196,17 +206,21 @@ contains
          end do
       end do
 
-      ! (2) exact drift removal: per-component owned-set mean subtracted
-      !     (the owned-set total momentum becomes exactly zero)
-      drift = 0.0d0
+      ! (2) exact drift removal: mass-weighted COM-velocity projection
+      !     p'_i = p_i - (m_i/M)*P per component (the owned-set total
+      !     momentum becomes exactly zero; the Gaussian projected this way
+      !     loses exactly three degrees of freedom - the declared
+      !     expectation is mass-independent)
+      wt = sum(roster%mass(roster%frag(frag_b)%list))
+      p_tot = 0.0d0
       do i = 1, nat_b
          g_atom = roster%frag(frag_b)%list(i)
-         drift = drift + sta%p(3*(g_atom - 1) + 1:3*g_atom)
+         p_tot = p_tot + sta%p(3*(g_atom - 1) + 1:3*g_atom)
       end do
-      drift = drift/dble(nat_b)
       do i = 1, nat_b
          g_atom = roster%frag(frag_b)%list(i)
-         sta%p(3*(g_atom - 1) + 1:3*g_atom) = sta%p(3*(g_atom - 1) + 1:3*g_atom) - drift
+         sta%p(3*(g_atom - 1) + 1:3*g_atom) = sta%p(3*(g_atom - 1) + 1:3*g_atom) &
+                                              - (roster%mass(g_atom)/wt)*p_tot
       end do
 
       ! (3) the bounded equilibration run at the member step size, through

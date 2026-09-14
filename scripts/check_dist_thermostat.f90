@@ -55,6 +55,11 @@
 !       thermostat_init -> stderr names thermostat_sample
 !   (i) undersized-state loud-stop (child): a 3-dof state against a
 !       2-atom carrier -> stderr names thermostat_sample and the state
+!   (j) roster-offset short-state loud-stop (child): a 6-dof state
+!       against a SECOND-fragment carrier (2x2-atom roster, scheme
+!       [1,8]: the owned components are 7..12) -> stderr names
+!       thermostat_sample and the state (the guard must see the
+!       fragment's roster offset, not just the atom count)
 !=====================================================================
 module bath_standin
    use state, only: state_t
@@ -128,6 +133,11 @@ program check_dist_thermostat
          call state_destroy(sta)
          call state_create(sta, 1)
          call thermostat_sample(sta)
+      case ('bad-offset')                   ! (j): 6-dof state vs a SECOND-fragment carrier
+         call setup_mol(2)
+         call set_scheme([1, 8])
+         call thermostat_init(par)
+         call thermostat_sample(sta)        ! sta holds 2 atoms (6 dof) - owned 7..12
       case default
          print '(a)', 'child: unknown mode '//trim(mode)
          stop 2
@@ -204,6 +214,7 @@ program check_dist_thermostat
    call expect_loudstop('bad-bind2',  'thermostat_init',   'two or more',     '(g) duplicate-binding loud-stop')
    call expect_loudstop('bad-noinit', 'thermostat_sample', 'thermostat_init', '(h) sample-before-init loud-stop')
    call expect_loudstop('bad-state',  'thermostat_sample', 'state',           '(i) undersized-state loud-stop')
+   call expect_loudstop('bad-offset', 'thermostat_sample', 'state dof =6',    '(j) roster-offset short-state loud-stop')
 
    print '(a,i0,a)', '=== check_dist_thermostat: ', nfail, ' failure(s) ==='
    if (nfail > 0) stop 1

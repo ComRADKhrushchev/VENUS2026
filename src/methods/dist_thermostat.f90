@@ -23,7 +23,10 @@
 !       the roster; the member word absent from the scheme-code table
 !       (a library-assembly failure); zero or multiple carrier
 !       fragments (one member instance carries one parameter set).
-!   thermostat_sample(sta) - one reset: every owned component of the
+!   thermostat_sample guards: sample before init; a state whose
+!     momentum vector ends before the carrier's last owned component
+!     (the roster offset included - a direct call against a
+!     short-of-fragment state). One reset: every owned component of the
 !     carrier fragment receives a fresh Gaussian momentum at the
 !     declared width. sta is the sampler runtime channel; this member
 !     writes ONLY its owned momentum components (q/f untouched, and the
@@ -148,14 +151,16 @@ contains
    !                          for every owned component of the carrier
    subroutine thermostat_sample(sta)
       type(state_t), intent(inout) :: sta ! sampler runtime channel (owned p components written)
-      integer :: i, c, g_atom
+      integer :: i, c, g_atom, last_own
       if (.not. inited) then
          call stop_thermox('thermostat_sample', 'sample called before thermostat_init - the '// &
             'member carries no parameter set')
       end if
-      if (size(sta%p) < 3*nat_b) then
-         call stop_thermoi2('thermostat_sample', 'the state momentum vector is smaller than the '// &
-            'owned component set: state dof =', size(sta%p), 'owned components =', 3*nat_b)
+      last_own = 3*roster%frag(frag_b)%list(nat_b)   ! last owned component (roster offset included)
+      if (size(sta%p) < last_own) then
+         call stop_thermoi2('thermostat_sample', 'the state momentum vector ends before the '// &
+            "carrier's last owned component: state dof =", size(sta%p), &
+            'last owned component =', last_own)
       end if
       do i = 1, nat_b
          g_atom = roster%frag(frag_b)%list(i)
