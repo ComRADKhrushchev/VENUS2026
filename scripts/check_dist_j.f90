@@ -53,6 +53,10 @@
 !       the j code -> stderr names j_init
 !   (k) sample-before-init loud-stop (child): j_sample with no j_init ->
 !       stderr names j_sample
+!   (l) support-scan cap loud-stop (child): t_rot = 1e15 K makes the
+!       exponent constant c ~ 5e-17, the Boltzmann-J ladder effectively
+!       flat over the whole 1e7 cap (peak J* ~ 1e8 lies beyond it) ->
+!       stderr names j_init, the cap and t_rot
 !=====================================================================
 program check_dist_j
    use consts,        only: hbar_code, kb_code
@@ -83,6 +87,11 @@ program check_dist_j
          call setup_mol(1, linear_geometry())
          call set_scheme([4])
          par%t_rot = 0.0d0
+         call j_init(par)
+      case ('bad-scan')                     ! (l): ladder flat to the 1e7 cap
+         call setup_mol(1, linear_geometry())
+         call set_scheme([4])
+         par%t_rot = 1.0d15
          call j_init(par)
       case ('bad-atom')                     ! (f): single-atom carrier
          call setup_mol(1, atom_geometry())
@@ -226,6 +235,7 @@ program check_dist_j
    call expect_loudstop('bad-bind0',  'j_init',   'j scheme',   '(i) no-fragment-binding loud-stop')
    call expect_loudstop('bad-bind2',  'j_init',   'two',        '(j) duplicate-fragment-binding loud-stop')
    call expect_loudstop('bad-noinit', 'j_sample', 'j_init',     '(k) sample-before-init loud-stop')
+   call expect_loudstop('bad-scan',  'j_init',   'cap',        '(l) support-scan cap loud-stop')
 
    print '(a,i0,a)', '=== check_dist_j: ', nfail, ' failure(s) ==='
    if (nfail > 0) stop 1

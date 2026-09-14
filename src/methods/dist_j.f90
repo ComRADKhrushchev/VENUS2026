@@ -31,7 +31,9 @@
 !       (coincident atoms); a nonlinear carrier (this member samples the
 !       LINEAR rotor ladder - the symmetric-top face with its K structure
 !       is not carried: it needs a symmetry-axis designation the roster
-!       does not hold).
+!       does not hold); a rotational temperature so high the support scan
+!       reaches its cap without the tail cut (the ladder is effectively
+!       flat to the cap - the support bound must never silently clamp).
 !   j_sample(sta) - one draw by rejection: J uniform on [0, j_max]
 !     (integer), accepted when u*p_env <= P(J); the envelope is the
 !     distribution maximum (exact - P is unimodal with the peak located
@@ -92,6 +94,7 @@ contains
       real(8) :: tens(3,3), ev(3)
       real(8) :: i_perp, wt, pj, p_max
       integer :: i, j, k, code, n_carry, i_carry, j_peak
+      logical :: cut
 
       ! 1. parameter validation (fail-loud, naming field + value)
       if (p%t_rot <= 0.0d0) then
@@ -183,6 +186,7 @@ contains
       p_max = 0.0d0
       j_peak = 0
       j_max = max_support
+      cut = .false.
       do j = 0, max_support
          pj = dble(2*j + 1)*exp(-c_rot*dble(j*(j + 1)))
          if (pj > p_max) then
@@ -191,9 +195,15 @@ contains
          end if
          if (j > j_peak .and. pj < tail_cut*p_max) then
             j_max = j
+            cut = .true.
             exit
          end if
       end do
+      if (.not. cut) then
+         call stop_jz('j_init', 'support scan reached the cap 10000000 without the tail cut - '// &
+            'the Boltzmann-J ladder is effectively flat to the cap; rotational temperature '// &
+            't_rot [K] =', p%t_rot)
+      end if
       p_env = p_max
       last_j = 0
       inited = .true.

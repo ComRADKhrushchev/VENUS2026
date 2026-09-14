@@ -52,8 +52,10 @@
 !       mean = 1/6 within 5 sigma (Var = 5/144, sigma of the mean =
 !       sqrt(Var/N) = 8.3e-4)
 !   (e) phase equipartition: mean kinetic energy = e_tot/2 within
-!       5 sigma with sigma = e_tot/sqrt(128*N) (Var(KE) = e_tot^2/128:
-!       E[sum u_i^4] = 3/(s(s+2)) = 1/16, times the sin^2 variance 1/8)
+!       5 sigma with sigma = e_tot*sqrt(3/(64*N)) (Var(KE) = 3*e_tot^2/64:
+!       KE/e_tot = sum_k u_k^2 sin^2(phi_k) with independent uniform phi,
+!       Var(sin^2) = 1/8 and E[sum_k u_k^4] = 3/(s+2) = 3/8 for s = 6 -
+!       the SUM of the fourth moments, not the single-mode 1/16)
 !   (f) non-positive total energy loud-stop (child): e_vib = 0 ->
 !       stderr names normalmode_init and e_vib
 !   (g) zero-mode table loud-stop (child): n_mode = 0 (both tables
@@ -263,7 +265,7 @@ program check_dist_normalmode
       print '(a,f7.3,a,f8.5,a)', '(d) mode-1 energy share: PASS (chi2 = ', chi2, &
          ' <= 16.92, df = 9; mean ', amean, ' vs Beta(1/2,5/2) mean 1/6; N = 50000)'
    end if
-   sig = e_tot/sqrt(128.0d0*dble(ndraw_stat))
+   sig = e_tot*sqrt(3.0d0/(64.0d0*dble(ndraw_stat)))
    if (abs(kmean - 0.5d0*e_tot) > 5.0d0*sig) then
       print '(a,es12.4,a,es12.4)', 'FAIL (e) equipartition: mean KE ', kmean, ' vs e_tot/2 = ', 0.5d0*e_tot
       nfail = nfail + 1

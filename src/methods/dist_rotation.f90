@@ -235,8 +235,11 @@ contains
          ! linear carrier: strip the axis component, skip the axis eigenvalue
          u = u - dot_product(u, vecs(:,1))*vecs(:,1)
          un = norm2(u)
-         if (un < 1.0d-12) u = vecs(:,2)    ! the draw landed on the axis: use a perpendicular axis
-         u = u/un
+         if (un < 1.0d-12) then
+            u = vecs(:,2)    ! the draw landed on the axis: use a perpendicular axis (already
+         else                ! unit - the stale tiny un must NOT renormalize it)
+            u = u/un
+         end if
          l_vec = al_mom*u
          do k = 2, 3
             om = om + (dot_product(l_vec, vecs(:,k))/ev(k))*vecs(:,k)

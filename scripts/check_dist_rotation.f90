@@ -21,8 +21,8 @@
 ! stderr and exit nonzero. The parent asserts the exit status and the
 ! stderr content.
 ! Criteria:
-!   (a) angular-momentum magnitude exact: for J = 0, 1, 5 over a LINEAR
-!       carrier (masses 1/2 amu at +/-0.6 Ang), 500 draws each:
+!   (a) angular-momentum magnitude exact: for J = 0, 1, 2, 3, 4, 5 over a
+!       LINEAR carrier (masses 1/2 amu at +/-0.6 Ang), 500 draws each:
 !       |sum r x p| = sqrt(J(J+1))*hbar_code to 1e-10 relative (J = 0:
 !       identically zero momenta)
 !   (b) zero total momentum exact: |sum p| <= 1e-9 hbar_code-scale for
@@ -43,10 +43,13 @@
 !       written fragment matches the equilibrium geometry to 1e-10
 !       Angstrom, over all draws of (e)
 !   (g) orientation isotropy of the bond axis (linear carrier, J = 1,
-!       20000 draws): each mean component of the axis unit vector within
-!       5 sigma of 0 (sigma = sqrt(1/(3N)) = 4.08e-3), and mean of the
-!       squared z component within 5 sigma of 1/3 (sigma_z2 =
-!       sqrt((1/5 - 1/9)/N) = sqrt(4/(45N)) = 6.67e-3)
+!       20000 draws): the squared norm of the mean axis unit vector is
+!       tested chi-square(3)-calibrated - 3N*|mean axis|^2 <= 16.27 (the
+!       99.9% upper critical of chi^2_3; per-component sigma is
+!       sqrt(1/(3N)) = 4.08e-3, and a 3-vector norm needs the joint, not
+!       the per-component, distribution), and the mean of the squared z
+!       component within 5 sigma of 1/3 (sigma_z2 = sqrt((1/5 - 1/9)/N) =
+!       sqrt(4/(45N)) = 6.67e-3)
 !   (h) negative J loud-stop (child): j_rot = -1 -> stderr names
 !       rotation_init and j_rot
 !   (i) single-atom carrier loud-stop (child): nat = 1 -> stderr names
@@ -79,6 +82,7 @@ program check_dist_rotation
    real(8) :: r(3), tens(3,3), ev(3), vecs(3,3), tin(3,3)
    real(8) :: com(3), wt, axis(3), axlen, asum(3), az2
    real(8) :: d_eq(3,3), d_new, dev_max
+   real(8) :: chi_iso
    real(8) :: qz_lin(6), qz_non(9), mass_non(3)
    character(len=32) :: mode
    logical :: ok_all
@@ -124,7 +128,7 @@ program check_dist_rotation
 
    ! ---------- (a)-(d) linear carrier identities ----------
    qz_lin = lin_geom()
-   do jval = 0, 5, 5                        ! J = 0 and J = 5
+   do jval = 0, 5                           ! J = 0..5 (header (a) set)
       call setup_lin()
       call set_scheme([3])
       call state_create(sta, 2)
@@ -259,13 +263,14 @@ program check_dist_rotation
    asum = asum/dble(ndraw_iso)
    az2 = az2/dble(ndraw_iso)
    nfail0 = nfail
-   if (norm2(asum) > 5.0d0*sqrt(1.0d0/(3.0d0*dble(ndraw_iso))) .or. &
+   chi_iso = 3.0d0*dble(ndraw_iso)*dot_product(asum, asum)
+   if (chi_iso > 16.27d0 .or. &
        abs(az2 - 1.0d0/3.0d0) > 5.0d0*sqrt(4.0d0/(45.0d0*dble(ndraw_iso)))) then
       print '(a,3f8.4,a,f8.4)', 'FAIL (g) bond-axis isotropy: mean ', asum, ' mean z^2 ', az2
       nfail = nfail + 1
    else
-      print '(a,3f8.4,a,f8.4)', '(g) bond-axis isotropy: PASS (mean axis ', asum, ', mean z^2 = ', az2, &
-         ' vs 1/3; N = 20000)'
+      print '(a,f6.2,a,3f8.4,a,f8.4)', '(g) bond-axis isotropy: PASS (chi^2_3 = ', chi_iso, &
+         ' <= 16.27; mean axis ', asum, ', mean z^2 = ', az2, ' vs 1/3; N = 20000)'
    end if
    call state_destroy(sta)
 

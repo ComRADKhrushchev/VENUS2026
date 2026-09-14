@@ -56,7 +56,7 @@
 !       equal-CDF 10-bin chi-square with closed-form quantiles
 !       (CDF(s) = 1.5*s - 0.5*s^3, s = sqrt(x), solved by bisection),
 !       df = 9, critical 16.92; mean = 1/5 within 5 sigma
-!       (Var = 8/63, sigma of the mean = sqrt(Var/N))
+!       (Var = 8/175, sigma of the mean = sqrt(Var/N))
 !   (e) negative stabilization energy loud-stop (child): e_stab = -1 ->
 !       stderr names barrier_excitation_init and e_stab
 !   (f) bad energy-law selector loud-stop (child): n_e_bar = 2 ->
@@ -386,7 +386,7 @@ program check_dist_barrier_excitation
       chi2 = chi2 + (dble(freq(ib)) - ndraw_stat/dble(nbin))**2/(ndraw_stat/dble(nbin))
    end do
    emean = 0.2d0
-   sig = sqrt((8.0d0/63.0d0)/dble(ndraw_stat))
+   sig = sqrt((8.0d0/175.0d0)/dble(ndraw_stat))
    if (chi2 > 16.92d0 .or. abs(amean - emean) > 5.0d0*sig) then
       print '(a,f9.3,a,f9.6)', 'FAIL (d) stable share: chi2 = ', chi2, ' mean = ', amean
       nfail = nfail + 1
