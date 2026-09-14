@@ -13,13 +13,19 @@
 ! message on stderr and exit nonzero. The parent asserts the exit status and the
 ! stderr content; a child that returns without stopping exits 0 and fails the
 ! criterion.
-! Negative-sample note (D4 nat/list/mass rules; implementer's choice, stated):
+! Negative-sample note (D4 nat/list/mass rules + the fill-time bounds guard;
+! implementer's choice, stated):
 !   the staging accessors are READ-ONLY and consistent by construction (nat runs
 !   sum to the atom count; masses come from elem_mass, all positive) - no folder
 !   and no public setter can produce a violating roster, so those three D4 rules
-!   are tested as POSITIVE invariants on both assembled end-to-end rosters (c);
-!   their loud-stop branches remain in roster_load as defensive guards for later
-!   fill routes (the phase-C surface rows carry their own content).
+!   AND roster_load's pre-access fill guard (offset+nat <= n_atoms, review fix
+!   round 1) are NOT triggerable through the public staging surface; forcing a
+!   backdoor would enlarge that surface, so they are tested as POSITIVE invariants
+!   on both assembled end-to-end rosters (c) instead. The loud-stop branches
+!   remain in roster_load as fail-safe defensive guards for later fill routes
+!   (the phase-C surface rows carry their own content); since the fix-round-1
+!   reorder the guard fires BEFORE any geometry access, so an oversized staged
+!   nat can no longer surface as an out-of-bounds read ahead of the named stop.
 ! Criteria (C4.md C4.3 + D4):
 !   (a) end-to-end molecular chain (acceptance 2): folder (au_cluster.xyz + co.xyz,
 !       created OUT of name order) -> sysdef_load -> roster_load -> every roster

@@ -92,7 +92,12 @@ contains
    !   2. fragment tables: frag(i) = the contiguous atom-index run of fragment i (rows in
    !      the sysdef name order): nat = staging_frag_nat(i), list = offset+1 .. offset+nat,
    !      mass = sum(mass(list)) (old :508-518 fragment-A algebra, :743-766 the B-side
-   !      reference), qz = the run's geometry packed 3*nat (old QZA/QZB fill)
+   !      reference), qz = the run's geometry packed 3*nat (old QZA/QZB fill); a bounds
+   !      guard runs BEFORE any allocate/geom access (offset+nat <= n_atoms - fail-safe:
+   !      a too-large staged nat loud-stops by name there, never an out-of-bounds read;
+   !      unreachable through the consistent-by-construction staging accessors, it guards
+   !      the fill against future staging/fill routes; the post-loop sum equality check
+   !      is the backstop)
    !   3. q0 assembly: the per-fragment qz runs concatenated by atom index = the packed
    !      staged geometry (old SELECT.f90:713-715 by A, :1028-1030 by B)
    !   4. unit cell (periodic-box route): the staged 3x3 cell (lattice vectors BY ROW,
@@ -151,6 +156,14 @@ contains
             fr%nat = staging_frag_nat(i)
             if (fr%nat < 0) then
                write (msg, '(a,i0,a,i0)') 'staged fragment ', i, ' has a negative atom count ', fr%nat
+               call stop_assembly(trim(msg))
+            end if
+            ! bounds guard BEFORE any allocate/geom access: this fragment's contiguous
+            ! run must fit inside the staged atom count (a too-large nat loud-stops
+            ! named here - never an out-of-bounds geom read; fail-safe defensive order)
+            if (offset + fr%nat > n_atoms) then
+               write (msg, '(a,i0,a,i0,a,i0,a,i0)') 'fragment ', i, ' atom count ', fr%nat, &
+                  ' exceeds the remaining staged atoms (', n_atoms - offset, ' left)'
                call stop_assembly(trim(msg))
             end if
             allocate (fr%list(fr%nat), fr%qz(3*fr%nat))
