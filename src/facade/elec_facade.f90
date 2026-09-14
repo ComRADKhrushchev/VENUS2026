@@ -11,9 +11,7 @@
 !       electronic propagation advances the electronic variables given Q(t) — amplitude
 !       ODE / mapping flow / analytic elimination; state-statistics matching reads the
 !       electronic statistics and writes the classical + nuclear sides, and is the sole
-!       consumption point of the random stream during the evolution phase);
-!       old-library propagation sites venus2026/src_VENUS/*.f (citation pass during C-phase
-!       implementation — no skeleton-time citation)
+!       consumption point of the random stream during the evolution phase)
 !
 ! -- E14 four-entry rebuild (user rulings 2026-09-08; spec §3) --
 !   The E13 sentence "facade_force is the orchestration of the three" is withdrawn: the
@@ -39,7 +37,8 @@
 !   registering author's own knowledge (one method_reg call vouches for the whole
 !   package); which ws%repr a member eats and which dt semantics it can live with are the
 !   member's own knowledge (unsupported repr -> member loud-stop, E10 contract;
-!   dt-semantics loud-stop — E13 open point, carried to phase C with elec_tsh). A
+!   dt-semantics loud-stop — E13 open point, carried to the first real dt-sensitive
+!   members). A
 !   facade-side legality table would also collide with E11 drag-in (a new combination
 !   would require editing this file to add a row — exactly what "drag in and it works"
 !   forbids).
@@ -64,7 +63,8 @@
 !   holder, the ws sibling (ws = one-step representation construct, occ/n_hop = run-time
 !   statistical constructs — same privacy axioms, different lifetimes). Access: members
 !   read/write through the facade-internal conveyance channel (same vehicle as ws,
-!   wrapper shape C2); force_eval (the adiab-mode delivery-request source) and recorder
+!   wrapper shape deferred to the member-signature freeze); force_eval (the adiab-mode
+!   delivery-request source) and recorder
 !   (the n_hop column) read through the public read-only getter pair occ_get / n_hop_get.
 !   The degenerate occupation occ=[1] is seeded at method_bind — it arrives with the
 !   method declaration, not with the container (the adiabatic degenerate point is method
@@ -139,16 +139,17 @@ module elec_facade
    ! the held ws through the FACADE-INTERNAL channel: elec_prop / mqc_statistic fetch the
    ! module instance (the holder declaration below) and convey it into the member through
    ! an internal wrapper signature carrying ws_t; the wrapper layer (the exact internal
-   ! signature the method members implement) is finalized in C2 together with the
-   ! member-signature freeze. The skeleton legislates the channel's existence and privacy,
+   ! signature the method members implement) is finalized at the member-signature freeze.
+   ! The skeleton legislates the channel's existence and privacy,
    ! not its shape (class-A pes members, by contrast, carry ws in their signature — the two
    ! routes are the "signature or facade-internal channel" pair of the elec_ws.f90 note).
    ! (see previous line)
 
    ! Method-package table (single-select by name at assembly; rows registered via reg_*.f90
    ! under methods/ — spec §5 two-level registration; read-only during evolution)
-   integer, parameter :: max_method = 16  ! package-table capacity [row] (K2 seed: 'adiabatic';
-                                          ! 'ehrenfest'/'fssh'/'iesh' land in phase C)
+   integer, parameter :: max_method = 16  ! package-table capacity [row] (seeded with the
+                                          ! 'adiabatic' degenerate package; 'ehrenfest'/
+                                          ! 'fssh'/'iesh' land with their own tasks)
    type :: method_entry_t
       character(len=32) :: name = ''      ! package name (the config%electronic%method assembly key)
       character(len=32) :: h_form = ''    ! the method's Hamiltonian preset - which H forms it
@@ -177,10 +178,12 @@ module elec_facade
    ! read by force_eval / recorder through occ_get; n_hop incremented at hop detection,
    ! read through n_hop_get. Seeded occ=[1] / n_hop=0 at method_bind (the degenerate
    ! occupation arrives with the method declaration)
-   integer, allocatable :: occ(:)   ! occupation vector (E14 generalization of i_surf:
-                                    ! occ(k) = state of electron k / the configuration
-                                    ! index — length 1 = the degenerate single-active-
-                                    ! surface form; dimension n_e set at member init)
+   integer, allocatable :: occ_held(:)   ! occupation vector (E14 generalization of i_surf:
+                                        ! occ(k) = state of electron k / the configuration
+                                        ! index — length 1 = the degenerate single-active-
+                                        ! surface form; dimension n_e set at member init.
+                                        ! Field renamed from occ - occ_get's dummy must
+                                        ! not shadow the holder)
    integer :: n_hop = 0             ! hop counter (pure observable, recorder-only read)
 
 contains
@@ -197,14 +200,19 @@ contains
                                       ! read — no getter round-trip), then the per-mode fields
                                       ! per the elec_ws.f90 container contract — and leaves it
                                       ! in place for the electronic phases)
-      ! Pseudocode:
       ! 1. Hand the held instance out through the dummy (the only sanctioned handle on the
       !    holder — force_eval calls this at its head, composes into the container, and
       !    returns; the instance stays module-private, the caller never owns it)
-      ! 2. The exact association mechanism belongs to the C2 member-signature freeze (the
-      !    same window that fixes the member-side conveyance wrapper); the K2 statute is
-      !    the contract: what force_eval writes here is what elec_prop / mqc_statistic next
-      !    read, and nothing outside the box ever holds the instance
+      ! 2. Degenerate association form (registered deferral): the dummy receives a
+      !    snapshot COPY of the held instance — an alias onto the holder is not
+      !    expressible through an intent(inout) dummy, and the exact mechanism is fixed
+      !    at the member-signature freeze (the same window as the member-side conveyance
+      !    wrapper). The contract is complete for the scalar branch realized now:
+      !    force_eval composes into the handed instance and consumes the composed values
+      !    within the same call, so nothing yet depends on the composition surviving in
+      !    the holder — the one-step conveyance to the electronic phases lands together
+      !    with those entries' own realization
+      w = ws
    end subroutine ws_get
 
    !------------------------------------------------------------------
@@ -213,15 +221,14 @@ contains
    ! Reference: elec_ws.f90 (r_empty tag; axiom C comment: filled at force evaluation,
    !       consumed by elec_prop / mqc_statistic, reset to r_empty at step end); spec §3
    subroutine ws_reset()
-      ! Pseudocode:
       ! 1. ws%repr = r_empty (the stale per-mode arrays become unreadable — repr gates every
-      !    consumer read; the next force_eval re-requests from scratch)
-      ! 2. Invoked at each step end (after mqc_statistic has consumed the statistics) and
-      !    re-issued as the force_eval head reset (every evaluation begins from the empty
-      !    container — together the two sites make the one-step lifetime robust to skipped
-      !    phases); allocation/reuse of the per-mode arrays is finalized in C2 with the
-      !    facade concretization (elec_ws.f90 tail note — the skeleton legislates the repr
-      !    reset only)
+      !    consumer read; the next force_eval re-requests from scratch). Invoked at each
+      !    step end (after mqc_statistic has consumed the statistics) and re-issued as the
+      !    force_eval head reset (every evaluation begins from the empty container — the
+      !    two sites together make the one-step lifetime robust to skipped phases).
+      !    Allocation/reuse of the per-mode arrays rides the holder-association freeze
+      !    (elec_ws.f90 tail note — the repr reset is the statute)
+      ws%repr = r_empty
    end subroutine ws_reset
 
    !------------------------------------------------------------------
@@ -230,13 +237,18 @@ contains
    ! Reference: this module's E16 header note (statistics holder); spec §4 occupation
    !       semantics (the location clause superseded — the holder is here)
    subroutine occ_get(occ)
-      integer, allocatable, intent(out) :: occ ! read-only copy of the held set (the
-                                               ! caller never receives the holder itself —
-                                               ! no allocation handle: the single writer
-                                               ! stays mqc_statistic's member)
-      ! Pseudocode:
+      integer, allocatable, intent(out) :: occ(:) ! read-only copy of the held set (the
+                                                  ! caller never receives the holder itself —
+                                                  ! no allocation handle: the single writer
+                                                  ! stays mqc_statistic's member)
       ! 1. Unallocated holder (pre-assembly window — method_bind not yet run) ->
       !    loud-stop; otherwise copy the held occ into the dummy (allocate + assign)
+      if (.not. allocated(occ_held)) then
+         call stop_ele('occ_get', 'the occupation holder is not seeded (method_bind not '// &
+                       'yet run - an evolution-phase read before assembly)')
+      end if
+      allocate (occ(size(occ_held)))
+      occ = occ_held
    end subroutine occ_get
 
    !------------------------------------------------------------------
@@ -267,16 +279,36 @@ contains
       procedure(mqc_match_i) :: match       ! layer-3 member (matching)
       procedure(sync_proc_i), optional :: sync ! container sync (absent = the method declares
                                             ! no deliverable cache)
-      ! Pseudocode:
+      integer :: j
       ! 1. Duplicate name in method_tbl or full table (n_method = max_method) -> loud-stop
       !    (purely formal name-table hygiene; the E13 statute: pairing legality is NOT
       !    checked here — one registration vouches for the whole package, the registering
       !    author knows their pairing is legal)
+      do j = 1, n_method
+         if (trim(method_tbl(j)%name) == trim(name)) then
+            call stop_ele('method_reg', 'duplicate method name "'//trim(name)//'" (each '// &
+                          'package registers exactly once, at assembly)')
+         end if
+      end do
+      if (n_method >= max_method) then
+         call stop_ele('method_reg', 'method table full (max_method rows exceeded - the '// &
+                       'built-in set and the dragged-in packages exceeded the capacity)')
+      end if
       ! 2. Register the row {name, h_form, prop, match, sync} (sync absent -> null pointer,
       !    legal — spec §4: null = no deliverable container to keep up to date); executed by
       !    the reg_*.f90 files during the assembly phase (the driver calls the prebuilt
       !    registry_gen, which aggregates every reg file under methods/ and systems/ —
       !    zero registration lines in this file, E11)
+      n_method = n_method + 1
+      method_tbl(n_method)%name = name
+      method_tbl(n_method)%h_form = h_form
+      method_tbl(n_method)%prop => prop
+      method_tbl(n_method)%match => match
+      if (present(sync)) then
+         method_tbl(n_method)%sync => sync
+      else
+         method_tbl(n_method)%sync => null()
+      end if
    end subroutine method_reg
 
    !------------------------------------------------------------------
@@ -286,10 +318,14 @@ contains
    ! Reference: this module's E17 header note; force_facade's E17 header block (5)
    function method_h_form() result(form)
       character(len=32) :: form              ! the bound row's h_form (comma-list / empty)
-      ! Pseudocode:
       ! 1. Unbound table (i_assembled = 0 - method_bind not yet run) -> loud-stop (a
       !    match check before assembly is an assembly-order error, formal); otherwise
       !    form = method_tbl(i_assembled)%h_form
+      if (i_assembled == 0) then
+         call stop_ele('method_h_form', 'no method row bound (method_bind not yet run - '// &
+                       'a match check before assembly, formal)')
+      end if
+      form = method_tbl(i_assembled)%h_form
    end function method_h_form
 
    !------------------------------------------------------------------
@@ -303,19 +339,40 @@ contains
    subroutine method_bind(name)
       character(len=*), intent(in) :: name ! package name (config%electronic%method — a name
                                            ! string, same form as pes_main, E13)
-      ! Pseudocode:
+      integer :: j, i_row
       ! 1. Empty table (n_method = 0 — no library registered, registry_gen missing) or name
       !    not found -> loud-stop naming the requested method (a purely formal check: the
       !    name is data, its physical legality is not judged here, E13)
+      if (n_method == 0) then
+         call stop_ele('method_bind', 'the method table is empty (no package registered - '// &
+                       'the aggregated registry module is missing or registered nothing)')
+      end if
+      i_row = 0
+      do j = 1, n_method
+         if (trim(method_tbl(j)%name) == trim(name)) i_row = j
+      end do
+      if (i_row == 0) then
+         call stop_ele('method_bind', 'the requested method "'//trim(name)//'" names no '// &
+                       'registered row (a purely formal name lookup, E13)')
+      end if
       ! 2. Already bound (i_assembled /= 0) -> loud-stop (container_init ran twice — an
       !    assembly-choreography error, formal)
+      if (i_assembled /= 0) then
+         call stop_ele('method_bind', 'a method row is already bound (container_init ran '// &
+                       'twice - an assembly-choreography error, formal)')
+      end if
       ! 3. Bind i_assembled to the matched row index (single-select; from here the
       !    evolution entries dispatch through this row — the table is read-only during
       !    evolution)
+      i_assembled = i_row
       ! 4. Seed the statistics holder (E16): occ = [1] (the degenerate occupation arrives
       !    with the method declaration — the adiabatic degenerate point is method
       !    knowledge, not container knowledge), n_hop = 0; larger occupation dimensions
       !    (n_e) reallocated by the member-init hook together with a
+      if (allocated(occ_held)) deallocate (occ_held)
+      allocate (occ_held(1))
+      occ_held(1) = 1
+      n_hop = 0
    end subroutine method_bind
 
    !------------------------------------------------------------------
@@ -389,4 +446,15 @@ contains
       !    container resets and post-propagation refreshes are indistinguishable to the
       !    facade)
    end subroutine mqc_statistic
+
+   !------------------------------------------------------------------
+   ! private helper: the loud-stop channel of this facade (name the caller, print the
+   ! named message, STOP 1)
+   !------------------------------------------------------------------
+   subroutine stop_ele(who, msg)
+      character(len=*), intent(in) :: who, msg
+      write (0, '(a)') trim(who)//': electronic-facade error: '//trim(msg)
+      write (0, '(a)') trim(who)//': loud-stop (the method table is not usable)'
+      stop 1
+   end subroutine stop_ele
 end module elec_facade

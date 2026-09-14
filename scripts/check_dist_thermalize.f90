@@ -4,21 +4,23 @@
 !                    this program executes them)
 ! Compile (from src/; modules in use-order first, -Jbuild keeps the .mod
 ! files out of the source tree; the evolution chain enters because the
-! member drives the propagator through its no-op skeleton):
+! member drives the real propagator through its equilibration run):
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 facade/sysdef_facade.f90 input.f90 &
 !            globals/config_roster.f90 globals/state.f90 &
 !            utils/rng.f90 facade/elec_ws.f90 facade/elec_facade.f90 &
-!            facade/force_facade.f90 dynamics/propagator.f90 facade/sampler.f90 &
+!            facade/force_facade.f90 dynamics/propagator.f90 &
+!            methods/reg_prop.f90 facade/sampler.f90 &
 !            methods/dist_thermalize.f90 methods/reg_dist_thermalize.f90 &
 !            ../scripts/check_dist_thermalize.f90 -o build/check_dist_thermalize.exe
 ! All artifacts are written under build/ - the source tree stays clean.
 ! Synthetic-parameter statute: the member is driven by directly constructed
 ! parameters and a directly filled roster; the input grammar is not in the
 ! loop. This is a MECHANISM-level check: no trajectory statistics are
-! asserted (the equilibration RUN is exercised through the no-op force
-! chain - the zero-force trajectory is the lawful mechanism-level
-! posture, real dynamics are posterior); the kinetic-energy expectation and
+! asserted (the equilibration RUN is exercised through the real verlet
+! row on a check-bound ZERO-force container - free flight is the lawful
+! mechanism-level posture, real potentials are posterior; the free-flight
+! landing spot is asserted exactly); the kinetic-energy expectation and
 ! the drift identity are verified ALGEBRAICALLY from the member-public
 ! parameters and the exact transformation the member applies.
 ! The incident channel is not this check's subject: a LOCAL no-op stand-in
@@ -36,8 +38,8 @@
 !       reg file row, samp_code('thermalize') = 10; a single-fragment
 !       gas-phase roster with dist_scheme = [10] and samp_run('incident',
 !       sta) REACHES the member - the owned p components come off their
-!       sentinels (the Maxwell seed) while q/f keep theirs (the no-op
-!       force chain advances nothing - zero-force trajectory); the
+!       sentinels (the Maxwell seed) while q lands exactly on the
+!       free-flight mimic and f exactly 0 (the zero-force container); the
 !       incident channel is not dispatched
 !   (b) post-equilibration kinetic-energy expectation algebra (analytic,
 !       no sampling): the declared expectation obeys
@@ -64,7 +66,9 @@
 !       distinctive value and sta%t preset to a sentinel, a sample call
 !       (which swaps the step to dt_eq for the internal run) RESTORES
 !       both - the equilibration run neither consumes trajectory time nor
-!       leaves the global step changed
+!       leaves the global step changed; on the zero-force container q
+!       lands exactly on the free-flight mimic (p constant through the
+!       run) and f exactly 0
 !   (g) non-positive temperature loud-stop (child): t_eq = 0 -> stderr
 !       names thermalize_init and t_eq
 !   (h) non-positive step count loud-stop (child): n_eq = 0 -> stderr
@@ -104,6 +108,10 @@ program check_dist_thermalize
    use config,        only: reactants, propagator
    use config_roster, only: roster, roster_clear
    use state,         only: state_t, state_create, state_destroy
+   use elec_ws,       only: ws_t, r_scalar
+   use elec_facade,   only: method_reg
+   use force_facade,  only: container_bind_pes, container_init
+   use reg_prop,      only: reg_prop_all
    use dist_thermalize, only: thermalize_params_t, thermalize_init, thermalize_sample, &
                               thermalize_t_eq, thermalize_n_eq, thermalize_dt_eq, &
                               thermalize_e_kin_expect, thermalize_frag, thermalize_nat
@@ -112,9 +120,9 @@ program check_dist_thermalize
    implicit none
    type(state_t) :: sta
    type(thermalize_params_t) :: par
-   integer :: nfail = 0, i, c, frag_b
+   integer :: nfail = 0, i, c, frag_b, istep
    real(8) :: e_expect, comp_sum, comp_abs, rel, rel_max
-   real(8) :: exp_p(6), wt, ptot
+   real(8) :: exp_p(6), qe(6), wt, ptot
    real(8), parameter :: t_use = 325.0d0
    real(8), parameter :: dt_use = 0.0413d0
    real(8), parameter :: dt_live = 0.031d0
@@ -181,6 +189,18 @@ program check_dist_thermalize
    call rng_init(7717)
    call thermalize_init(par)
 
+   ! the evolution chain the member drives (real since the propagator
+   ! landed): degenerate method row + check-local ZERO-force container +
+   ! the verlet registration row - the equilibration run inside every
+   ! sample below is genuine free-flight propagation, assembled CHECK-SIDE
+   ! (the tree's default binding posture stays untouched)
+   call method_reg('adiabatic', '', noop_prop, noop_match)
+   call container_bind_pes(zero_pes)
+   call container_init()
+   call reg_prop_all()
+   propagator%id = 1
+   propagator%order = 1
+
    ! (e) parameter-loading integrity
    if (thermalize_t_eq() /= t_use .or. thermalize_n_eq() /= n_use .or. &
        thermalize_dt_eq() /= dt_use .or. thermalize_frag() /= 1 .or. thermalize_nat() /= 2) then
@@ -203,19 +223,28 @@ program check_dist_thermalize
    end if
 
    ! (f) footprint confinement: the sample swaps the propagator step to dt_eq
-   ! for the internal run and must RESTORE step and trajectory time
+   ! for the internal run and must RESTORE step and trajectory time; on the
+   ! zero-force container q lands exactly on the free-flight mimic (p stays
+   ! constant through the run) and f lands exactly 0
    call state_create(sta, 2)
    sta%q = sentinel
    sta%p = sentinel
    sta%f = sentinel
    sta%t = sentinel
    call thermalize_sample(sta)
-   if (propagator%dt /= dt_live .or. sta%t /= sentinel .or. any(sta%q /= sentinel) .or. &
-       any(sta%f /= sentinel) .or. any(sta%p == sentinel)) then
-      print '(a)', 'FAIL (f) footprint: step/time not restored or q/f trespassed'
+   qe = sentinel
+   do istep = 1, n_use
+      do i = 1, 2
+         qe(3*i - 2:3*i) = qe(3*i - 2:3*i) + sta%p(3*i - 2:3*i)*(dt_use/roster%mass(i))
+      end do
+   end do
+   if (propagator%dt /= dt_live .or. sta%t /= sentinel .or. any(abs(sta%q - qe) > 1.0d-10) .or. &
+       any(sta%f /= 0.0d0) .or. any(sta%p == sentinel)) then
+      print '(a)', 'FAIL (f) footprint: step/time not restored, q off the free-flight mimic, or f nonzero'
       nfail = nfail + 1
    else
-      print '(a)', '(f) footprint confinement: PASS (propagator dt and sta%t restored; q/f untouched; owned p seeded)'
+      print '(a)', '(f) footprint confinement: PASS (propagator dt and sta%t restored; q on the'// &
+         ' free-flight mimic; f = 0; owned p seeded)'
    end if
 
    ! (c) drift identity: owned-set momentum sums to zero per component
@@ -265,7 +294,8 @@ program check_dist_thermalize
    end if
    call state_destroy(sta)
 
-   ! (a) registration + dispatch chain through samp_run
+   ! (a) registration + dispatch chain through samp_run (the run below is
+   ! real free flight on the zero-force container: q on the mimic, f = 0)
    call reg_dist_thermalize_all()
    call samp_reg_incident()
    call state_create(sta, 2)
@@ -273,12 +303,19 @@ program check_dist_thermalize
    sta%p = sentinel
    sta%f = sentinel
    call samp_run('incident', sta)
-   if (samp_code('thermalize') /= 10 .or. any(sta%q /= sentinel) .or. &
-       any(sta%f /= sentinel) .or. any(sta%p == sentinel) .or. propagator%dt /= dt_live) then
+   qe = sentinel
+   do istep = 1, n_use
+      do i = 1, 2
+         qe(3*i - 2:3*i) = qe(3*i - 2:3*i) + sta%p(3*i - 2:3*i)*(dt_use/roster%mass(i))
+      end do
+   end do
+   if (samp_code('thermalize') /= 10 .or. any(abs(sta%q - qe) > 1.0d-10) .or. &
+       any(sta%f /= 0.0d0) .or. any(sta%p == sentinel) .or. propagator%dt /= dt_live) then
       print '(a)', 'FAIL (a) dispatch chain: samp_run did not reach the member cleanly'
       nfail = nfail + 1
    else
-      print '(a)', '(a) dispatch chain: PASS (reg row -> code 10 -> samp_run dispatch; owned p seeded, zero-force run)'
+      print '(a)', '(a) dispatch chain: PASS (reg row -> code 10 -> samp_run dispatch; owned p seeded,'// &
+         ' free-flight q, f = 0)'
    end if
    call state_destroy(sta)
 
@@ -302,6 +339,31 @@ contains
       use sampler, only: samp_reg
       call samp_reg('incident', stand_incident)
    end subroutine samp_reg_incident
+
+   ! the check-local zero container: empty gradient and energy (eV member
+   ! units) - the free-flight posture of every equilibration run below
+   subroutine zero_pes(q, mass, ws)
+      real(8), intent(in)  :: q(:)     ! coordinates [A] (unused - zero force)
+      real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (unused)
+      type(ws_t), intent(inout) :: ws  ! workspace (scalar channel out)
+      if (allocated(ws%g_add)) then
+         if (size(ws%g_add) /= size(q)) deallocate (ws%g_add)
+      end if
+      if (.not. allocated(ws%g_add)) allocate (ws%g_add(size(q)))
+      ws%g_add = 0.0d0
+      ws%v_add = 0.0d0
+      ws%repr = r_scalar
+   end subroutine zero_pes
+
+   ! degenerate no-op method members (the row container_init resolves)
+   subroutine noop_prop(sta, dt)
+      type(state_t), intent(inout) :: sta
+      real(8), intent(in) :: dt
+   end subroutine noop_prop
+
+   subroutine noop_match(sta)
+      type(state_t), intent(inout) :: sta
+   end subroutine noop_match
 
    ! mini-roster by direct field fill: nf two-atom fragments, unequal masses
    ! 1/4 amu (the expectation form must not care, and the drift identity is

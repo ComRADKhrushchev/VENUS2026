@@ -11,16 +11,17 @@
 ! Sample output files are written under build/ and read back line-by-line - the
 ! source tree stays clean.
 ! S1 boundary (C4.md): the energy columns t_kin/v_pot/e_tot pass through force_eval,
-!   which is a no-op skeleton until C2(interface) - their VALUES are never numerically
-!   compared here; only presence / order / header (the column MECHANISM). Numeric
-!   assertions cover the constructible quantities: frame-header step/trajectory/time
-!   and the sec_qp q/p six-tuple rows (hand-built state_t). The force section is
-!   asserted for GATING + header/line count only (the E20 no-op posture).
+!   now REAL on a check-bound zero-force container (degenerate method row +
+!   container_bind_pes + container_init, assembled check-side) - their VALUES stay
+!   unasserted here (zero potential: only presence / order / header, the column
+!   MECHANISM). Numeric assertions cover the constructible quantities: frame-header
+!   step/trajectory/time and the sec_qp q/p six-tuple rows (hand-built state_t). The
+!   force section is asserted for GATING + header/line count only (the E20 posture).
 ! Placeholder statute (E16/E19): occ / n_hop columns are registered-but-inert - the
-!   elec_facade getters are no-op skeletons (occ_get would hand back an unallocated
-!   set, n_hop_get an undefined value), so the extractors return a defined placeholder
-!   and the getter call lands when the statistics holder goes real. Values are
-!   asserted to PARSE as finite reals only (numeric check deferred to phase V).
+!   occupation holder is real and seeded at method_bind, but the recorder-extractor
+!   wiring is deferred together with the electronic phases; n_hop_get is still a
+!   skeleton. Values are asserted to PARSE as finite reals only (numeric check
+!   deferred to phase V).
 ! Loud-stop verification approach (same scheme as check_sysdef/check_roster): the
 !   loud-stop criteria run as CHILD PROCESSES - the check re-spawns itself with a
 !   mode argument (execute_command_line); the child triggers the real loud-stop path
@@ -66,6 +67,9 @@ program check_recorder
    use recorder,     only: col_val_i, rec_reg_col, rec_select, rec_frame, rec_final
    use state,        only: state_t, state_create, state_destroy
    use config_roster, only: roster
+   use elec_ws,      only: ws_t, r_scalar
+   use elec_facade,  only: method_reg
+   use force_facade, only: container_bind_pes, container_init
    implicit none
    integer :: nfail = 0, nfail0
    character(len=256) :: mode
@@ -125,6 +129,14 @@ program check_recorder
    sta%q = q2
    sta%p = p2
    sta%f = [ 0.125d0,-0.25d0, 0.375d0, 1.5d0,-2.5d0, 3.5d0 ]
+
+   ! the force chain the energy columns ride (real since the scalar force path
+   ! landed): degenerate method row + check-local ZERO-force container + the
+   ! single assembly entry - v_pot lands 0 on it, t_kin the analytic kinetic fold.
+   ! Assembled CHECK-SIDE; the tree's default binding posture stays untouched
+   call method_reg('adiabatic', '', noop_prop, noop_match)
+   call container_bind_pes(zero_pes)
+   call container_init()
 
    open (newunit=u, file='build/rec_frames.txt', status='replace', action='write')
 
@@ -285,6 +297,31 @@ contains
       type(state_t), intent(in) :: sta
       v = 0.0d0
    end function col_probe
+
+   ! the check-local zero container: empty gradient and energy (eV member units)
+   ! - v_pot/e_tot ride the zero potential, the mechanism-level posture
+   subroutine zero_pes(q, mass, ws)
+      real(8), intent(in)  :: q(:)     ! coordinates [A] (unused - zero force)
+      real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (unused)
+      type(ws_t), intent(inout) :: ws  ! workspace (scalar channel out)
+      if (allocated(ws%g_add)) then
+         if (size(ws%g_add) /= size(q)) deallocate (ws%g_add)
+      end if
+      if (.not. allocated(ws%g_add)) allocate (ws%g_add(size(q)))
+      ws%g_add = 0.0d0
+      ws%v_add = 0.0d0
+      ws%repr = r_scalar
+   end subroutine zero_pes
+
+   ! degenerate no-op method members (the row container_init resolves)
+   subroutine noop_prop(sta, dt)
+      type(state_t), intent(inout) :: sta
+      real(8), intent(in) :: dt
+   end subroutine noop_prop
+
+   subroutine noop_match(sta)
+      type(state_t), intent(inout) :: sta
+   end subroutine noop_match
 
    ! fail(msg) - record one criterion failure
    subroutine fail(msg)

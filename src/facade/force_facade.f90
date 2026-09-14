@@ -4,23 +4,15 @@
 !                    x23.0605 x e_conv appears only here) + the container single-slot
 !                    binding + container_init, the single assembly entry point spanning
 !                    BOTH facades
-! Reference: venus2026/DVDQ.f:10-22 (PDOT zeroing + DPESHON dispatch - the old form of additive composition);
-!       src_TEST/interface_TEST.f90:12-16 (POTPRE member-init hook), :18-30
-!       (POT0 energy conversion x23.0605), :32-44 (DPESHON gradient accumulation
-!       PDOT(i)=PDOT(i)-g(i)*23.0605*C1 - the new facade conversion is character-for-character identical,
-!       N1.1 bit-comparable); ENERGY.f:54-68 (T=sum p^2/2m/C1, V=POT0 convention, H=T+V);
-!       docs/final_completion_plan.md §5 N1 (registration/assembly spec - directly in force; its
-!       negotiation-table clause superseded by E13, see the E13 note below the slot)
-! Member unit contract: class-A members deliver force kernels/energies in eV (eV is the exchange unit -
-! following the old interface_TEST v/g chain); eV -> internal-unit conversion is centralized in this
-! facade (the T4 grep requirement that 23.0605 appear only in this file - hence the "F_add code units" note
-! in the N1 member-signature spec reads as "after facade conversion")
-! (see previous line)
-! (see previous line)
-! Member tables are filled in C2 (main PES + additive stochastic-law members; E12 ruling: pes members
-! are system material - each systems/<system>/ folder carries self-contained functional form + parameters,
-! the "six pes_* files land in interface_electronic/" plan of K2 E3 is superseded; the facade itself is
-! untouched)
+! Reference: docs/final_completion_plan.md §5 N1 (registration/assembly spec - directly in force; its
+! negotiation-table clause superseded by E13, see the E13 note below the slot)
+! Member unit contract: class-A members deliver force kernels/energies in eV (eV is the exchange unit);
+! eV -> internal-unit conversion is centralized in this facade (the unit-contract grep
+! requirement that the eV-to-kcal/mol literal appear only in this file - hence the "F_add code
+! units" note in the member-signature spec reads as "after facade conversion")
+! Member tables are filled when the interface phase lands the real containers (main PES + additive
+! stochastic-law members; E12 ruling: pes members are system material - each systems/<system>/
+! folder carries self-contained functional form + parameters; the facade itself is untouched)
 !
 ! -- E10 workspace revision (user adjudication 2026-09-07, three axioms enacted - amending E9) --
 !   A Interface invariance: the abstract interfaces are invariant across systems - signatures carry only
@@ -49,7 +41,7 @@
 !   representation or integrator - e.g. the hop probability g_ij(dt) losing its basis at adaptive
 !   sequence boundaries) is the members' own knowledge: the class-B member loud-stops on a ws%repr
 !   it does not support (E10 contract, unchanged) and on dt semantics it cannot live with (shape
-!   fixed in phase C with elec_tsh). Rationale: blackbox authors are assumed to know their system,
+!   fixed with the first real dt-sensitive members). Rationale: blackbox authors are assumed to know their system,
 !   not this program - a facade-side legal-combination table is knowledge displaced from its owners,
 !   and it collides with E11 drag-in (a new combination would require editing this file to add a
 !   row). The blackbox machine does three things (legislated wording): compute forces from the
@@ -134,9 +126,8 @@
 !   container_term(sta) (unbound slot = legal: the safety-net-only run). MAX_STEPS stays
 !   the ever-present safety net as control%max_steps - program safety, generic side, the
 !   only judgment never delegated. Geometry criteria (COM distance / recession velocity /
-!   height) are written container-side on utils/geometry instruments (cenmas etc.);
-!   TEST.f:106-146 remains their provenance, cited by the C2 container example. The
-!   outcome expression family (output/outcome.f90) is the same complexity question -
+!   height) are written container-side on utils/geometry instruments (cenmas etc.).
+!   The outcome expression family (output/outcome.f90) is the same complexity question -
 !   flagged for its L4 review.
 !=====================================================================
 module force_facade
@@ -227,11 +218,16 @@ contains
                                                           ! (comma-list of r_* names; default
                                                           ! '' = scalar only - the degenerate
                                                           ! single-surface container)
-      ! Pseudocode:
-      ! 1. Already bound (associated(container_pes)) -> loud-stop (container_bind_pes ran
-      !    twice - an assembly-choreography error, formal)
-      ! 2. Bind the slot, store h_deliver (present-check defaults to '') - executed once
-      !    in the assembly phase by the container's reg module
+      if (associated(container_pes)) then
+         call stop_ff('container_bind_pes', 'the class-A slot is already bound ('// &
+                      'container_bind_pes ran twice - an assembly-choreography error, formal)')
+      end if
+      container_pes => proc
+      if (present(h_deliver)) then
+         call store_deliver(h_deliver)
+      else
+         call store_deliver('')                  ! default: scalar only, the degenerate container
+      end if
    end subroutine container_bind_pes
 
    !------------------------------------------------------------------
@@ -272,33 +268,41 @@ contains
    !                 affair - it already executed inside the bound aggregate entry)
    ! Reference: docs/superpowers/specs/2026-09-08-facade-e14-design.md §3 (assembly-phase
    !       entries - the E17 form: slot bound, H forms matched, method slot filled,
-   !       observable-vs-container delivery contradiction); src_TEST/interface_TEST.f90:12-16
-   !       (POTPRE-type member-init hook - now container-internal, executed by its reg
-   !       module); docs/design_spec_completeness.md §3.2-2
+   !       observable-vs-container delivery contradiction); docs/design_spec_completeness.md
+   !       §3.2-2 (member-init hooks are container-internal, executed by the container's own
+   !       reg module around its binding)
    subroutine container_init()
-      ! Pseudocode:
-      ! 1. Slot check: container_pes unbound (container_bind_pes not yet run - an empty
-      !    container folder / a missing reg module) -> loud-stop naming the missing binding
-      ! 2. Container-contract formal checks: multi-surface system (config%electronic%n_surf
-      !    >= 2) while h_deliver names no multi-surface mode (diab/adiab) -> loud-stop
-      !    naming the conflict (E13 kept: derivable from the container contract alone)
-      ! 3. Method-slot assembly (E14): call method_bind(config%electronic%method) - a pure
-      !    name lookup into method_tbl (the empty-table / not-found / already-bound
-      !    loud-stops live in method_bind itself - no duplicate here; the table lives in
-      !    elec_facade, the init choreography stays here as the single assembly entry
-      !    point)
-      ! 4. H-form match (E17(5)): parse the bound method row's h_form (method_h_form())
-      !    and the container's h_deliver; h_form must be a subset of h_deliver -> else
-      !    loud-stop naming BOTH sides (the method's Hamiltonian preset vs the container's
-      !    delivery set); an empty h_form (the degenerate method) always passes
+      character(len=32) :: hf                 ! the bound method row's Hamiltonian preset
+      ! 1. Slot check: an unbound class-A slot means container_bind_pes has not run (an
+      !    empty container folder / a missing reg module)
+      if (.not. associated(container_pes)) then
+         call stop_ff('container_init', 'the class-A slot is not bound (container_bind_pes '// &
+                      'must run first - an empty container / a missing reg module)')
+      end if
+      ! 2. Container-contract formal check: a multi-surface system needs a multi-surface
+      !    delivery mode (E13 kept: derivable from the container contract alone)
+      if (electronic%n_surf >= 2) then
+         if (.not. names_mode(h_deliver, 'diab') .and. .not. names_mode(h_deliver, 'adiab')) then
+            call stop_ff('container_init', 'multi-surface system (n_surf >= 2) but the '// &
+                         'declared delivery set names no multi-surface mode: "'//trim(h_deliver)//'"')
+         end if
+      end if
+      ! 3. Method-slot assembly (E14): a pure name lookup - the empty-table / not-found /
+      !    already-bound loud-stops live in method_bind itself (the table lives in
+      !    elec_facade; the init choreography stays here as the single assembly entry point)
+      call method_bind(electronic%method)
+      ! 4. H-form match (E17(5)): the method row's demand must be a subset of the
+      !    container's supply; an empty h_form (the degenerate method) always passes
+      hf = method_h_form()
+      if (.not. subset_of(hf, h_deliver)) then
+         call stop_ff('container_init', 'the method Hamiltonian preset "'//trim(hf)// &
+                      '" is not covered by the container delivery set "'//trim(h_deliver)//'"')
+      end if
       ! 5. Container-side member init: executed by the container's reg module around its
-      !    container_bind_pes call (POTPRE-type hooks are container-internal now - the
-      !    facade no longer choreographs them; parameters arrive through the members' own
-      !    params, D3)
-      ! 6. Observable-vs-container formal check (spec §4): an observable column demanding
-      !    a container no assembled package member delivers (a/rho declared undelivered by
-      !    the bound method row) -> loud-stop naming the conflict (derivable from the
-      !    container contract alone, E13); integrator x electron-law legality is NOT
+      !    container_bind_pes call (member-init hooks are container-internal; parameters
+      !    arrive through the members' own params, D3) - not choreographed here
+      ! 6. Observable-vs-container formal check (spec §4): deferred to the interface phase
+      !    with the observable declarations; integrator x electron-law legality is NOT
       !    checked here (a law's own prerequisites are its author's knowledge - the member
       !    loud-stops at runtime, e.g. hop probabilities g_ij(dt) losing their basis at
       !    adaptive sequence boundaries)
@@ -311,10 +315,9 @@ contains
    !                            E = T(P) + V (the E10 unified path; renamed
    !                            facade_force -> force_eval by E14; dt removed from the
    !                            signature - the E9 channel re-anchored onto elec_prop)
-   ! Reference: venus2026/DVDQ.f:10-22 (zeroing + dispatch); src_TEST/interface_TEST.f90:32-44
-   !       (identical-form accumulation), :18-30 (energy convention); ENERGY.f:54-68 (T/H reporting
-   !       convention); spec §3 entry-1 contract (as a side effect the ws of the current geometry is
-   !       left in place for the later electronic phases)
+   ! Reference: spec §3 entry-1 contract (as a side effect the ws of the current geometry is
+   !       left in place for the later electronic phases); the module-header unit contract
+   !       (this routine is the unique conversion point of the whole library)
    subroutine force_eval(sta, e_tot)
       type(state_t), intent(inout) :: sta  ! physical state (q/p/s read in; f written out - the composed force)
       real(8), intent(out) :: e_tot        ! total energy H = T(P)+V [kcal/mol] (N1 convention;
@@ -323,74 +326,166 @@ contains
       ! the elec_facade-held instance, obtained through ws_get (the fill site), composed into here,
       ! and left in place for elec_prop / mqc_statistic (one-integration-step lifetime; still
       ! invisible outside the box - never an argument of any public signature, zero footprint in
-      ! the force_eval signature)
-      ! Pseudocode:
-      ! 1. Zero the force-kernel workspace g(:), v_sum = 0 (old DVDQ.f:12-14 PDOT zeroing site);
-      !    ws_reset() (the head reset - every evaluation begins from the empty container; with
-      !    elec_facade's step-end reset the two sites together make the one-step lifetime robust to
-      !    skipped phases); dt no longer appears here (E9 channel withdrawn - the hop probability
+      ! the force_eval signature). The degenerate hand-out realized today is a snapshot copy -
+      ! the exact holder-association mechanism belongs to the interface-phase member-signature
+      ! freeze; the scalar branch below consumes the composed values immediately, so the
+      ! contract is complete for the single-surface scope realized now
+      type(ws_t) :: w                      ! the workspace snapshot (see the note above)
+      integer, allocatable :: occ_req(:)   ! the delivery request - the held occupation set
+      integer :: k
+      real(8) :: g(size(sta%q))            ! folded force kernel [eV/A]
+      real(8) :: v_sum, v_pot, t_kin       ! energy channels [eV / kcal/mol]
+      ! 1. Zero the force-kernel accumulators; ws_reset() (the head reset - every
+      !    evaluation begins from the empty container; with elec_facade's step-end reset
+      !    the two sites together make the one-step lifetime robust to skipped phases);
+      !    dt does not appear here (the E9 channel withdrawn - the hop probability
       !    g_ij(dt) is consumed in elec_prop)
-      ! 2. Unbound slot (container_pes not associated - container_init not yet run) ->
-      !    loud-stop (an evolution-phase entry called before assembly - assembly-order
-      !    error, formal)
+      call ws_reset()
+      g = 0.0d0
+      v_sum = 0.0d0
+      ! 2. Unbound slot -> loud-stop (an evolution-phase entry called before assembly -
+      !    assembly-order error, formal)
+      if (.not. associated(container_pes)) then
+         call stop_ff('force_eval', 'the class-A slot is not bound (container_bind_pes not '// &
+                      'yet run - an evolution-phase entry called before assembly)')
+      end if
       ! 3. ONE call into the container (E17: the member sum - main PES + additive
-      !    stochastic laws - executes INSIDE it): request the occupation set -
-      !    ws%i_want(:) = occ_get() (the adiab-mode delivery request, E16: generalized
-      !    from the scalar i_surf; length 1 = the single-active-surface degenerate form;
-      !    the occupation set stays out of the class-A signature and is conveyed through
-      !    the request field, E10); via the ws_get instance:
-      !    call container_pes(sta%q, roster%mass, ws) - the container fills ws per its
-      !    own mode (scalar channel: the SUMMED g_add/v_add [eV]; construct channel:
-      !    h_ij/dh_ij or v_surf/g_surf/d_ij [the i_want rows]; inter-member ws
-      !    reset/folding is container-internal)
+      !    stochastic laws - executes INSIDE it): the request field i_want(:) = occ_get()
+      !    (the delivery request, E16: generalized from the scalar i_surf; length 1 = the
+      !    single-active-surface degenerate form; the occupation set stays out of the
+      !    class-A signature and is conveyed through the request field, E10)
+      call occ_get(occ_req)
+      call ws_get(w)                     ! the fill-site hand-out (snapshot form - the
+                                         ! deferral note at w's declaration above)
+      if (allocated(w%i_want)) deallocate (w%i_want)
+      allocate (w%i_want(size(occ_req)))
+      w%i_want = occ_req
+      call container_pes(sta%q, roster%mass, w)   ! the container fills ws per its own mode
       ! 4. Fold the scalar channel: g(:) = ws%g_add, v_sum = ws%v_add (the container
       !    already summed - the facade folds ONCE; no member loop remains here)
-      ! 5. Unit-contract fulfillment point (T4 - unique in the whole library):
-      !    after pre-zeroing sta%f, element-wise sta%f(i) = sta%f(i) - g(i)*ev_kcal*e_conv
-      !    (character-for-character identical to the old DPESHON "PDOT(i)=PDOT(i)-g(i)*23.0605*C1" -
-      !    N1.1 bit-comparable; e_conv is the old C1; how g is composed in multi-surface mode, see 4')
-      !    (see previous line)
-      ! 6. NO electron-law consumption here (E14: withdrawn to elec_prop / mqc_statistic in
-      !    elec_facade) - the ws of the current geometry is left in place for the later phases
-      !    (the spec §3 side-effect contract: what force_eval writes into the holder is what
-      !    elec_prop / mqc_statistic next read)
-      ! 7. Energy: v_pot = v_sum*ev_kcal [kcal/mol] (old POT0 :26 convention);
-      !    t_kin = sum p^2/(2*roster%mass)/e_conv [kcal/mol] (per-atom fold -
-      !    old ENERGY.f:58-66 convention); e_tot = t_kin + v_pot (old :68 H=T+V)
+      g = w%g_add
+      v_sum = w%v_add
+      ! 5. Unit-contract fulfillment point (unique in the whole library): after
+      !    pre-zeroing sta%f, element-wise sta%f(i) = sta%f(i) - g(i)*ev_kcal*e_conv
+      !    (the one eV->internal conversion; how g is composed in multi-surface mode: 4')
+      sta%f = 0.0d0
+      sta%f = sta%f - g*ev_kcal*e_conv
+      ! 6. NO electron-law consumption here (E14: withdrawn to elec_prop / mqc_statistic
+      !    in elec_facade) - the composed ws of the current geometry is what the later
+      !    phases next read (the spec §3 side-effect contract; holder association: the
+      !    note at the declaration of w)
+      ! 7. Energy [kcal/mol]: v_pot = v_sum*ev_kcal; t_kin = sum p^2/(2*roster%mass)/e_conv
+      !    (per-atom fold); e_tot = t_kin + v_pot (H = T + V)
+      v_pot = v_sum*ev_kcal
+      t_kin = 0.0d0
+      do k = 1, size(roster%mass)
+         t_kin = t_kin + dot_product(sta%p(3*k-2:3*k), sta%p(3*k-2:3*k))/(2.0d0*roster%mass(k))
+      end do
+      t_kin = t_kin/e_conv
+      e_tot = t_kin + v_pot
       ! ————————————————————————————————————————————————
       ! 4'. Multi-surface branch (the container's declared mode = diab/adiab - a
-      !     composition swap of steps 4-7):
-      !    a. Force-kernel composition: r_diab -> diagonalize ws%h_ij via utils/linalg to compute the
-      !       adiabatic view on the spot (eigenvalues = per-surface V, eigenvectors = representation
-      !       transform U); the current-occupation adiabatic force kernel takes the transformed
-      !       current rows; the dh_ij.U product needed for the hop probability g_ij(dt) is fetched by
-      !       the electronic phases themselves (the facade does not pre-build it; the diagonalization
-      !       itself is system-independent generic physics and lawfully stays in the facade - not
-      !       system-specific code. Delivery of U: an adiab-view cache field in ws, written by the
-      !       facade and read-only to the electronic phases (one-step lifetime, axiom C intact),
-      !       or a re-diagonalization inside the consuming member - fixed in phase C with the
-      !       elec_tsh consumer, noting the double O(n_surf^3) cost of the latter; the consumer is
-      !       now elec_prop / mqc_statistic, no longer an in-force_eval call); r_adiab -> g(:) =
-      !       fold of the occupation-set rows ws%g_surf(:, occ) (the current-occupation force kernel,
-      !       E14 - generalized from the single current-surface row; length 1 = the degenerate
-      !       single-row form; after a hop mqc_statistic updates the held occ (E16), recomputing with
-      !       new rows belongs to the next evaluation); in BOTH modes the additive scalar kernel
-      !       g_add (the container-side additive sum) folds on top of the construct-channel kernel -
-      !       stochastic laws / constraint potentials are electronic-state-independent, they feed
-      !       only the nuclear-force channel
-      !       (see previous line)
-      !       (see previous line)
-      !       (see previous line)
-      !       (see previous line)
-      !    b. v_pot convention: adiab -> v_surf(occ)*ev_kcal (the current-occupation surfaces); diab ->
-      !       population-weighted or current-surface (class-B law-member convention, fixed by the
-      !       consumer); the additive scalar v_add folds in as usual;
-      !       (see previous line)
-      !       e_tot = t_kin + v_pot
-      !    c. radau note: fixed-step only on multi-surface paths (E13: enforced inside the class-B
-      !       member - not by a facade table) - adaptive substeps have no
-      !       well-defined "one step" dt semantics; this path only ever sees fixed steps (same source as
-      !       the propagator header note)
-      !       (see previous line)
+      !     composition swap of steps 4-7). NOT REALIZED YET - kept as the roadmap:
+      !    a. Force-kernel composition: r_diab -> diagonalize ws%h_ij via utils/linalg to
+      !       compute the adiabatic view on the spot (eigenvalues = per-surface V,
+      !       eigenvectors = representation transform U); the current-occupation adiabatic
+      !       force kernel takes the transformed current rows; the dh_ij.U product needed
+      !       for the hop probability g_ij(dt) is fetched by the electronic phases
+      !       themselves (the facade does not pre-build it; the diagonalization itself is
+      !       system-independent generic physics and lawfully stays in the facade).
+      !       Delivery of U: an adiab-view cache field in ws, written by the facade and
+      !       read-only to the electronic phases (one-step lifetime, axiom C intact), or
+      !       a re-diagonalization inside the consuming member - to be fixed with the
+      !       first real consumers (noting the double O(n_surf^3) cost of the latter).
+      !       r_adiab -> g(:) = fold of the occupation-set rows ws%g_surf(:, occ) (the
+      !       current-occupation force kernel, E14; length 1 = the degenerate single-row
+      !       form; after a hop mqc_statistic updates the held occ (E16), recomputing
+      !       with new rows belongs to the next evaluation). In BOTH modes the additive
+      !       scalar kernel g_add folds on top of the construct-channel kernel -
+      !       stochastic laws / constraint potentials are electronic-state-independent,
+      !       they feed only the nuclear-force channel
+      !    b. v_pot convention: adiab -> v_surf(occ)*ev_kcal (the current-occupation
+      !       surfaces); diab -> population-weighted or current-surface (class-B
+      !       law-member convention, fixed by the consumer); the additive scalar v_add
+      !       folds in as usual; e_tot = t_kin + v_pot
+      !    c. radau note: fixed-step only on multi-surface paths (E13: enforced inside
+      !       the class-B member - not by a facade table) - adaptive substeps have no
+      !       well-defined "one step" dt semantics; this path only ever sees fixed steps
+      !       (same source as the propagator header note)
    end subroutine force_eval
+
+   !------------------------------------------------------------------
+   ! private helpers
+   !------------------------------------------------------------------
+
+   ! store_deliver(s) - assign the delivery-set field (the public dummy name shadows the
+   ! module field inside container_bind_pes; this helper reaches it through host association)
+   subroutine store_deliver(s)
+      character(len=*), intent(in) :: s     ! the declared delivery set (comma-list / '')
+      h_deliver = s
+   end subroutine store_deliver
+
+   ! names_mode(list, mode) - does the comma-list name this single mode?
+   logical function names_mode(list, mode)
+      character(len=*), intent(in) :: list, mode
+      names_mode = subset_of(mode, list)
+   end function names_mode
+
+   ! subset_of(demand, supply) - is every comma-list token of demand a token of supply?
+   ! (an empty demand is the degenerate case - always covered)
+   logical function subset_of(demand, supply)
+      character(len=*), intent(in) :: demand, supply
+      character(len=32) :: dtok, stok
+      integer :: dp, sp
+      logical :: found
+      subset_of = .true.
+      if (len_trim(demand) == 0) return
+      dp = 1
+      do while (next_token(demand, dp, dtok))
+         found = .false.
+         sp = 1
+         do while (next_token(supply, sp, stok))
+            if (trim(stok) == trim(dtok)) then
+               found = .true.
+               exit
+            end if
+         end do
+         if (.not. found) then
+            subset_of = .false.
+            return
+         end if
+      end do
+   end function subset_of
+
+   ! next_token(s, pos, tok) - comma-list tokenizer: fetch the next non-empty token at or
+   ! after pos, advancing pos past it; .false. when the string is exhausted
+   logical function next_token(s, pos, tok)
+      character(len=*), intent(in) :: s
+      integer, intent(inout) :: pos
+      character(len=*), intent(out) :: tok
+      integer :: c
+      next_token = .false.
+      do
+         if (pos > len(s)) return
+         c = index(s(pos:), ',')
+         if (c == 0) then
+            tok = adjustl(s(pos:))
+            pos = len(s) + 1
+         else
+            tok = adjustl(s(pos:pos + c - 1))
+            pos = pos + c
+         end if
+         if (len_trim(tok) > 0) exit               ! skip empty items
+      end do
+      next_token = .true.
+   end function next_token
+
+   ! stop_ff(who, msg) - the loud-stop channel (name the caller, print the named
+   ! message, STOP 1)
+   subroutine stop_ff(who, msg)
+      character(len=*), intent(in) :: who, msg
+      write (0, '(a)') trim(who)//': container error: '//trim(msg)
+      write (0, '(a)') trim(who)//': loud-stop (the container is not usable)'
+      stop 1
+   end subroutine stop_ff
 end module force_facade
