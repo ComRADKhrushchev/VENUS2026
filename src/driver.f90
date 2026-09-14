@@ -110,8 +110,8 @@ program venus
    !    an assembly-phase data-material entry, spec §3 - no evolution-loop presence). Runs FIRST
    !    ahead of roster_load by the config_roster ordering statute (sysdef fills the roster, so
    !    roster_load shrinks to allocation/algebra; a roster_load ahead of the sysdef products is an
-   !    assembly-order error). The write-hand question - whether sysdef writes roster%* directly or
-   !    roster_load transfers staged products - stays C4-open
+   !    assembly-order error). S2 settled (C4.3): roster_load transfers the staged sysdef
+   !    products through the facade's staging accessors - sysdef never writes roster%* directly
    ! 4. roster_load() - assemble and validate the roster (E14-shrunken to allocation / algebra /
    !    validation: per-field fill from the sysdef products, fragment mass sums, equilibrium-geometry
    !    placement, unit-cell derivation - the old input-keyword source is superseded, spec §9;
