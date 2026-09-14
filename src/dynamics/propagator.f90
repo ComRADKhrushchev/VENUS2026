@@ -58,6 +58,41 @@
 !   family design legislates third-order positions at order=2, so the corrector carries the
 !   third-order-consistent coefficients; staging, boot semantics, and the two-evaluations-
 !   per-step cost are identical to the classic form.
+!
+! -- symple composition cache (module-private staging - the per-order coefficient table of
+!    the drift-kick member, legislated by the family design) --
+!   Coefficients: Christoph Schlier's 1999 composition sets (order 4: N = 5 stages;
+!   order 6: N = 8; order 8: N = 17). The half table a(0..N) is literal and the second
+!   half is mirror-copied, a(k) = a(2N-k) - the palindromic structure IS the exact
+!   single-step time reversibility of the composition. The symplecticity normalization
+!   reads directly off the array: the kick coefficients (even sites, a(0)+a(2)+...+
+!   a(2N)) sum to 1 and the drift coefficients (odd sites) sum to 1 - together a unit
+!   advance of p and q. The cache keys on order: a switch of config%propagator%order
+!   reloads the table (the table is a pure function of order - no trajectory state is
+!   held, contrast the Beeman staging). HYGIENE: a symple step builds no force history,
+!   so it clears the Beeman staging on entry - mode switches never inherit a history
+!   they did not build (the order=1 rule, applied symmetrically). A step makes N+1
+!   force evaluations (one per loop head i = 0..N-1 plus the final beat); the last
+!   evaluation sits at the endpoint q - the header endpoint-force contract holds with
+!   no extra evaluation.
+!
+!   ORDER-4 SIGN CORRECTION (documented deviation from the historical table): the
+!   historical order-4 half table carries the four middle kicks with flipped signs -
+!   its a(2) = +1/3 with the mirror a(4) = a(6) = -1/3, a(8) = +1/3. That set is
+!   exactly SECOND order: the modified-frequency series of the composed harmonic map
+!   has theta = h(1 + h^2/6 + ...) - the order-4 condition (vanishing h^2 term) fails
+!   in exact rational arithmetic, and the measured one-step error scales dt^3 on
+!   quartic and Kepler potentials (a validated harness reproduces order 4 for
+!   Forest-Ruth and order 2 for velocity Verlet, so the instrument is sound). With
+!   a(2) = -1/3 the h^2 term vanishes IDENTICALLY (rational arithmetic) and the
+!   measured one-step error scales dt^5 - genuine fourth order; the orders 6/8
+!   tables are verified genuine as transcribed (their series vanish through h^6/h^8
+!   and the measured scalings are dt^7/dt^9). The correction flips one sign of the
+!   historical table; every other value, the palindromic structure and both
+!   normalizations are untouched (the kick sum is sign-invariant: +-(1/3) cancels
+!   either way). Criteria (s-b)/(s-d) of check_propagator anchor the fourth-order
+!   behavior; (s-a4) anchors the loaded values bit-level against an independently
+!   transcribed copy of the CORRECTED table.
 !=====================================================================
 module propagator
    use state,         only: state_t
@@ -93,6 +128,13 @@ module propagator
    real(8), allocatable :: f_prev(:)          ! F(t-dt) of the upcoming Beeman step [internal
                                               ! force units] (sta%f units)
    logical :: f_prev_ok = .false.             ! history usable [flag]
+
+   ! symple composition cache (see the header note): the coefficient table a(0:2N) +
+   ! the stage count N + the order key the table was loaded for (reload on change)
+   real(8) :: sym_a(0:34) = 0.0d0             ! composition coefficients a(k) [dimensionless]
+                                              ! (k = 0..2N; 2N = 10/16/34 at orders 4/6/8)
+   integer :: sym_n = 0                       ! stage count N [stage]
+   integer :: sym_order_cached = 0            ! order key of the loaded table [order]
 contains
    !------------------------------------------------------------------
    ! prop_reg(id, proc) - register an integrator member into the closed-family registry
@@ -194,19 +236,39 @@ contains
    end subroutine verlet_step
 
    !------------------------------------------------------------------
-   ! symple_step(sta) - 4th/6th/8th-order symplectic single step (alternating drift-kick)
-   ! Not yet realized - the composition member arrives with its own concretization task;
-   ! the legislated sequence is kept as the roadmap:
-   ! 1. On first call load the composition coefficients per order (4/6/8, prop_cfg%order)
-   !    into a(0:2N) (N = 5/8/17; the symmetric second half mirror-copied) - a
-   !    module-private static cache with a first-call flag
-   ! 2. Alternating loop i = 0..N-1: force_eval (force before the kick);
-   !    p += dt*a(2i)*f (momentum kick); q += dt*a(2i+1)*p/m (position drift)
-   ! 3. Final beat: force_eval; p += dt*a(2N)*f
-   ! 4. sta%t += dt (the final beat's force site is the endpoint q after the last drift -
-   !    the header contract holds with no extra evaluation)
+   ! symple_step(sta) - 4th/6th/8th-order symplectic single step (alternating drift-kick
+   !                   composition, the Schlier coefficient sets of the header note)
+   ! The legislated sequence: per-order coefficient load on first use (the cache keys on
+   ! order), then the alternating loop - force_eval BEFORE each kick (N evaluations),
+   ! p += dt*a(2i)*f, q += dt*a(2i+1)*p/m - then the final beat (force_eval at the
+   ! endpoint q, p += dt*a(2N)*f) and sta%t += dt. Endpoint-force contract: the final
+   ! beat's evaluation is the LAST of the step and sits at the returned sta%q. sta%f on
+   ! return is the composed endpoint force; q/p/mass per the unit contract (as verlet_step).
    subroutine symple_step(sta)
       type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
+      integer :: i, k
+      real(8) :: dt, e
+      e = 0.0d0                             ! force_eval fills it; the integrator does not consume it
+      dt = prop_cfg%dt
+
+      call beeman_forget()                  ! hygiene: this member builds no force history
+                                           ! (the header-note rule, applied symmetrically)
+      if (sym_order_cached /= prop_cfg%order) call symple_load(prop_cfg%order)
+
+      do i = 0, sym_n - 1                   ! alternating loop: kick a(2i), drift a(2i+1)
+         call force_eval(sta, e)            ! F at the current q, before the kick
+         do k = 1, size(roster%mass)
+            sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) + sta%f(3*k-2:3*k)*(dt*sym_a(2*i))
+         end do
+         do k = 1, size(roster%mass)
+            sta%q(3*k-2:3*k) = sta%q(3*k-2:3*k) + sta%p(3*k-2:3*k)*(dt*sym_a(2*i + 1)/roster%mass(k))
+         end do
+      end do
+      call force_eval(sta, e)               ! the final beat's force site = the endpoint q
+      do k = 1, size(roster%mass)
+         sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) + sta%f(3*k-2:3*k)*(dt*sym_a(2*sym_n))
+      end do
+      sta%t = sta%t + dt
    end subroutine symple_step
 
    !------------------------------------------------------------------
@@ -278,6 +340,67 @@ contains
          beeman_boot_needed = (size(f_prev) /= size(sta%q) .or. sta%t == 0.0d0)
       end if
    end function beeman_boot_needed
+
+   ! symple_load(order) - fill the composition cache for one order (4/6/8; loud-stop
+   ! otherwise, named for the member). The half table a(0..N) is literal, the second
+   ! half mirror-copied (a(2N-k) = a(k), k = 0..N-1) - Schlier's 1999 sets, the values
+   ! verified bit-level against an independently transcribed historical copy (the
+   ! header note); the table is a pure function of order, so the cache reloads on a
+   ! change of the order key
+   subroutine symple_load(order)
+      integer, intent(in) :: order          ! composition order [-] (4, 6 or 8)
+      integer :: k
+      select case (order)
+      case (4)                              ! N = 5 (SIGN-CORRECTED vs the historical
+                                           ! table - the correction is legislated in the
+                                           ! module header note; criterion (s-b) anchors it)
+         sym_n = 5
+         sym_a(0) = 0.5d0
+         sym_a(1) = -1.0d0/48.0d0
+         sym_a(2) = -1.0d0/3.0d0
+         sym_a(3) = 3.0d0/8.0d0
+         sym_a(4) = 1.0d0/3.0d0
+         sym_a(5) = 7.0d0/24.0d0
+      case (6)                              ! N = 8
+         sym_n = 8
+         sym_a(0) = 0.06942944346252987735848865824703402d0
+         sym_a(1) = 0.2848783771728008405274534645665783d0
+         sym_a(2) = -0.1331551983159820940996130995137351d0
+         sym_a(3) = 0.3278397575961294541205467836732554d0
+         sym_a(4) = 0.0012903891798107897423048174644328d0
+         sym_a(5) = -0.3812210427193262947562278437421127d0
+         sym_a(6) = 0.4224353656736414269988196238022683d0
+         sym_a(7) = 0.268502907950396000108227595502279d0
+         sym_a(8) = 0.28d0
+      case (8)                              ! N = 17
+         sym_n = 17
+         sym_a(0) = 0.04463795052359022755913999625733590d0
+         sym_a(1) = 0.13593258071690959145543264213495574d0
+         sym_a(2) = 0.2198844042714707225445535069606167d0
+         sym_a(3) = 0.13024946780523828601621193778196846d0
+         sym_a(4) = 0.10250365693975069608261241007779814d0
+         sym_a(5) = 0.43234521869358547487983257884877035d0
+         sym_a(6) = -0.00477482916916881658022489063962934d0
+         sym_a(7) = -0.58253476904040845493112837930861213d0
+         sym_a(8) = -0.03886264282111817697737420875189743d0
+         sym_a(9) = 0.31548728537940479698273603797274199d0
+         sym_a(10) = 0.18681583743297155471526153503972746d0
+         sym_a(11) = 0.26500275499062083398346002963079872d0
+         sym_a(12) = -0.02405084735747361993573587982407554d0
+         sym_a(13) = -0.45040492499772251180922896712151891d0
+         sym_a(14) = -0.05897433015592386914575323926766330d0
+         sym_a(15) = -0.02168476171861335324934388684707580d0
+         sym_a(16) = 0.07282080033590128173761892641234244d0
+         sym_a(17) = 0.55121429634197067334405601381594315d0
+      case default
+         call stop_propi('symple_step', 'illegal propagator order for symple', order, &
+                         '(4, 6 or 8 - the composition orders)')
+      end select
+      do k = 0, sym_n - 1                   ! palindromic mirror of the second half
+         sym_a(2*sym_n - k) = sym_a(k)
+      end do
+      sym_order_cached = order
+   end subroutine symple_load
 
    ! loud-stop channel (name the caller; value variant; STOP 1)
    subroutine stop_prop(who, msg)

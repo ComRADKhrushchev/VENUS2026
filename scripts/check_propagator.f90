@@ -9,13 +9,14 @@
 !            globals/state.f90 facade/elec_ws.f90 facade/elec_facade.f90 &
 !            facade/force_facade.f90 dynamics/propagator.f90 methods/reg_prop.f90 &
 !            ../scripts/check_propagator.f90 -o build/check_propagator.exe
-! Posture: the force chain is assembled CHECK-SIDE - a local analytic harmonic test
-!   container is bound through container_bind_pes (a degenerate no-op method row
-!   registered through method_reg, then container_init), so every criterion below
-!   runs on REAL forces; the default binding posture of the tree is untouched (the
-!   driver binds nothing). The harmonic test potential (per-dof distinct stiffness
-!   and centers over 2 atoms of distinct mass) is a local procedure of this check -
-!   it never enters src/.
+! Posture: the force chain is assembled CHECK-SIDE - a local analytic test container is
+!   bound through container_bind_pes (a degenerate no-op method row registered through
+!   method_reg, then container_init), so every criterion below runs on REAL forces; the
+!   default binding posture of the tree is untouched (the driver binds nothing). The
+!   bound container branches on a check-side selector: harmonic (the default - per-dof
+!   distinct stiffness and centers over 2 atoms of distinct mass), kepler two-body
+!   attraction, a uniform field, and free flight; every branch is a local procedure of
+!   this check - none of them ever enters src/.
 ! Unit notes: q [Ang]; p [amu*Ang/(10 fs)]; t and dt [10 fs]; mass [amu] (roster);
 !   facade force [internal energy units per Ang]. The eV->kcal/mol conversion
 !   literal lives only in force_facade - this check NEVER writes it: the composed
@@ -59,9 +60,55 @@
 !       sets (rel 1e-12; e_conv from consts, never the facade literal)
 !   (h) unbound class-A slot loud-stop (child): force_eval called before any
 !       container_bind_pes names the slot on stderr
+!   ---------- symple criteria (the composition member, id = 2) ----------
+!   (s-a) coefficient loading (criteria stated on the composed array a(0:2N), N = 5/8/17
+!       for orders 4/6/8 - measured through the stepping, the cache being module-private):
+!       (s-a1) drift normalization - on free flight q advances by dt*p/m exactly,
+!           i.e. the drift coefficients a(1,3,..,2N-1) sum to 1 (rel 1e-12);
+!       (s-a2) kick normalization - in a uniform field p advances by dt*f exactly,
+!           i.e. the kick coefficients a(0,2,..,2N) sum to 1 (rel 1e-12);
+!       (s-a3) palindromic mirror - the single-step momentum-reversal retrace returns
+!           to the start (R S R S = I, R: p -> -p, holds iff a(k) = a(2N-k); an
+!           asymmetric table retraces with an O(dt) defect; abs 1e-12);
+!       (s-a4) bit-level values - q and p bitwise equal after EVERY of 30 steps to an
+!           independent transcription of the historical Schlier tables driving the same
+!           arithmetic stream (the reference's expression grouping mirrors the member's;
+!           any differing coefficient bit perturbs the stream and flips trajectory bits;
+!           the order-4 row of the reference carries the SIGN CORRECTION legislated in
+!           the propagator header - the historical a(2) = +1/3 set is second order)
+!   (s-b) per-order convergence: harmonic position error at fixed T = 25.12 against the
+!       analytic solution drops ~2^order per dt halving, orders 4/6/8 each; dt sets per
+!       order keep every error well above the accumulated-time roundoff floor (sta%t
+!       rounding grows with step count - coarser chains, fewer steps): order 4 dt
+!       0.04/0.02/0.01 (window [13, 19]), order 6 dt 0.5024/0.2512/0.1256 (window
+!       [40, 80]), order 8 dt 0.5024/0.2512 (window [180, 340])
+!   (s-c) symplecticity signature: 50000 steps at dt = 0.2, order 6 (T = 10^4); block
+!       maxima of |E-E0| over 10 equal blocks: bounded oscillation - the second half's
+!       worst block <= 1.5x the first half's worst; the non-symplectic contrast
+!       (classical RK4 on the same bound force, dt and length, check-local) drifts
+!       secularly, linearly in step count - its LAST block's max >= 5x its FIRST
+!       block's max (a linear drift gives ~10x over ten blocks) AND its overall worst
+!       >= 100x the composition's overall worst
+!   (s-d) kepler two-body (V = -k/|q1-q2|, k set so GM of the relative motion = 1;
+!       a = 1 A, e = 0.5, prograde): the apsidal precession - the mean per-orbit
+!       advance of the Runge-Lenz eccentricity-vector angle of the RELATIVE motion,
+!       sampled at successive perihelion passages (radial-velocity zero crossings -
+!       to - +; per-crossing angles from the step-end state directly, deltas wrapped
+!       to (-pi, pi]; the interpolated-atan2 form is NOT accurate enough - its O(dt^2)
+!       interpolation bias swamps the order-6/8 signals) over 60 orbits: shrinks
+!       monotonically with order 4 -> 6 -> 8 at dt = 0.05 (each at least 8x below the
+!       previous) and each order's own advance scales with its dt halving (order 4:
+!       dt 0.05 -> 0.025, window [8, 32] x 1; order 6: 0.05 -> 0.025, window
+!       [32, 128]; order 8: 0.10 -> 0.05, window [128, 512])
+!   (s-e) reversibility: 5 kepler orbits forward + back at order 6, dt = 0.02: q
+!       returns to the start and p to -p0 (roundoff-level abs tol)
+!   (s-f) endpoint-force contract: after 1 and 3 symple steps (each order, harmonic;
+!       order 8 kepler) sta%f equals the analytic force of the branch at the RETURNED
+!       q, component-wise (rel 1e-13, as (d))
+!   (s-ls) illegal symple order (= 5) loud-stop (child): names the order
 !=====================================================================
 program check_propagator
-   use consts,        only: e_conv
+   use consts,        only: e_conv, two_pi
    use config,        only: prop_cfg => propagator
    use config_roster, only: roster
    use state,         only: state_t, state_create, state_destroy
@@ -73,11 +120,32 @@ program check_propagator
    implicit none
    integer :: nfail = 0, nfail0
    character(len=64) :: mode
-   type(state_t) :: sta, sa, sb
+   type(state_t) :: sta, sa, sb, sr
    real(8) :: e, ea, eb, cal, tk
    real(8) :: om(6), fa(6), fb(6), qa(6), u2(6)
    real(8) :: errc, errf, r1, r2, errh(3), errb, errv, tmax
    integer :: i, n
+   ! ---------- symple-section state ----------
+   integer :: iord
+   real(8) :: dqv(3), fu(6)
+   real(8) :: serr(3), srat(2)
+   real(8) :: bmax(10), rkmax(10)
+   real(8) :: adv(3), advh(3), qk0(6), pk0(6)
+   ! bound-container branch selector + branch parameters: 1 harmonic (the default, every
+   ! pre-existing criterion) / 2 kepler / 3 uniform field / otherwise free flight
+   integer :: pot_sel = 1
+   real(8) :: kep_k = 0.0d0               ! kepler coupling [eV*A] (V = -kep_k/|q1-q2|; set
+                                          ! after calibration so GM of the relative motion
+                                          ! = gm_want in internal units)
+   real(8), parameter :: gm_want = 1.0d0  ! target GM of the relative motion [internal]
+   real(8), parameter :: kep_a = 1.0d0    ! orbit semi-major axis [A]
+   real(8), parameter :: kep_ecc = 0.5d0  ! orbit eccentricity [-]
+   real(8), parameter :: f_uni(6) = [ 0.30d0,-0.20d0, 0.25d0,-0.15d0, 0.10d0,-0.22d0 ] ! uniform [eV/A]
+   ! the reference composition of (s-a4): coefficient values from an INDEPENDENT
+   ! transcription of the historical tables (the assignment forms mirror the historical
+   ! block, mirror copies included); ref_n stages, ref_a(0:2*ref_n)
+   real(8) :: ref_a(0:34)
+   integer :: ref_n = 0
    ! harmonic test-potential parameters (per-dof, 6 dofs / 2 atoms of mass 1 and 4 amu)
    real(8), parameter :: k_eV(6)  = [ 1.00d0, 1.10d0, 0.90d0, 1.20d0, 0.80d0, 1.05d0 ] ! stiffness [eV/A^2]
    real(8), parameter :: q_ctr(6) = [ 0.10d0,-0.20d0, 0.30d0,-0.15d0, 0.25d0,-0.05d0 ] ! centers [A]
@@ -96,9 +164,9 @@ program check_propagator
       case ('c-dup')                       ! (a1): the verlet row registered twice
          call reg_prop_all()
          call prop_reg(1, verlet_step)
-      case ('c-full')                      ! (a2): 1 shipped row + 7 fills = 8, then one more
+      case ('c-full')                      ! (a2): 2 shipped rows + 6 fills = 8, then one more
          call reg_prop_all()
-         do i = 1, 7
+         do i = 1, 6
             call prop_reg(10 + i, verlet_step)
          end do
          call prop_reg(20, verlet_step)
@@ -117,6 +185,12 @@ program check_propagator
       case ('c-unbound')                   ! (h): force_eval before any binding
          call state_create(sa, 2)
          call force_eval(sa, e)
+      case ('c-sorder')                    ! (s-ls): illegal symple order (= 5)
+         call reg_prop_all()
+         call state_create(sa, 2)
+         prop_cfg%id = 2
+         prop_cfg%order = 5
+         call prop_step(sa)
       case default
          print '(a)', 'child: unknown mode '//trim(mode)
          stop 2
@@ -131,12 +205,13 @@ program check_propagator
    call state_create(sta, 2)
    call state_create(sa, 2)
    call state_create(sb, 2)
+   call state_create(sr, 2)
 
-   ! degenerate no-op method row + the local harmonic container + the single assembly
+   ! degenerate no-op method row + the local branch container + the single assembly
    ! entry (fills the method slot, seeds the statistics holder), then the shipped
-   ! verlet registration row - the family every criterion below dispatches through
+   ! registration rows - the family every criterion below dispatches through
    call method_reg('adiabatic', '', noop_prop, noop_match)
-   call container_bind_pes(harm_pes)
+   call container_bind_pes(test_pes)
    call container_init()
    call reg_prop_all()
    prop_cfg%id = 1
@@ -165,6 +240,7 @@ program check_propagator
    call expect_loudstop('c-unreg',   'id 9',          'prop_step',   '(a3) unregistered-id loud-stop')
    call expect_loudstop('c-order',   'order',         'verlet_step', '(a4) illegal-order loud-stop')
    call expect_loudstop('c-unbound', 'slot',          'force_eval',  '(h) unbound-slot loud-stop')
+   call expect_loudstop('c-sorder', 'order',          'symple_step', '(s-ls) illegal-symple-order loud-stop')
 
    ! ---------- (b) velocity-Verlet energy-error scaling ----------
    errc = max_e_err(0.02d0, nint(tmax/0.02d0))
@@ -322,31 +398,353 @@ program check_propagator
    if (nfail == nfail0) print '(a)', '(g) facade force path: PASS (bound force_eval = analytic gradient at two'// &
       ' geometries; e_tot = t_kin(p) + v_pot(q) via the derived conversion)'
 
+   ! ================= symple section (the composition member, id = 2) =================
+   ! every sub-criterion sets its own id/order/dt and container branch; pot_sel is
+   ! restored to the harmonic default at the section end
+   prop_cfg%id = 2
+
+   ! ---------- (s-a1) drift normalization: free flight ----------
+   ! form: with F = 0 the kicks vanish and the composed drift is q1 = q0 +
+   ! dt*(a(1)+a(3)+...+a(2N-1))*p0/m - the drift coefficients must sum to 1
+   pot_sel = 0
+   nfail0 = nfail
+   do iord = 4, 8, 2
+      sa%q = q_ctr + uA
+      sa%p = pB
+      sa%t = 0.0d0
+      prop_cfg%order = iord
+      prop_cfg%dt = 0.02d0
+      call prop_step(sa)
+      if (any(sa%p /= pB)) then
+         call fail('(s-a1) free-flight step changed p (order '//trim(i2s(iord))//')')
+      end if
+      do i = 1, 2
+         dqv = 0.02d0*pB(3*i - 2:3*i)/roster%mass(i)       ! dt*p0/m per atom
+         if (maxval(abs(sa%q(3*i - 2:3*i) - (q_ctr(3*i - 2:3*i) + uA(3*i - 2:3*i) + dqv))) > &
+             1.0d-12*max(1.0d0, maxval(abs(dqv)))) then
+            call fail('(s-a1) drift sum /= 1 (order '//trim(i2s(iord))//', atom '//trim(i2s(i))//')')
+         end if
+      end do
+   end do
+   if (nfail == nfail0) print '(a)', '(s-a1) drift normalization: PASS (free flight advances q by'// &
+      ' dt*p/m exactly, orders 4/6/8 - drift coefficients sum to 1)'
+
+   ! ---------- (s-a2) kick normalization: uniform field ----------
+   ! form: with F = f independent of q every kick adds dt*a(2i)*f and the composed
+   ! momentum is p1 = p0 + dt*(a(0)+a(2)+...+a(2N))*f - the kick coefficients must sum
+   ! to 1 (fu = the branch's uniform force in internal units, via the measured cal)
+   pot_sel = 3
+   fu = -(f_uni*cal)
+   nfail0 = nfail
+   do iord = 4, 8, 2
+      sa%q = q_ctr + uB
+      sa%p = 0.0d0
+      sa%t = 0.0d0
+      prop_cfg%order = iord
+      prop_cfg%dt = 0.02d0
+      call prop_step(sa)
+      do i = 1, 6
+         if (abs(sa%p(i) - 0.02d0*fu(i)) > 1.0d-12*max(1.0d0, abs(0.02d0*fu(i)))) then
+            call fail('(s-a2) kick sum /= 1 (order '//trim(i2s(iord))//', dof '//trim(i2s(i))//')')
+         end if
+      end do
+   end do
+   if (nfail == nfail0) print '(a)', '(s-a2) kick normalization: PASS (uniform field advances p by'// &
+      ' dt*f exactly, orders 4/6/8 - kick coefficients sum to 1)'
+
+   ! ---------- (s-a3) palindromic mirror: single-step retrace ----------
+   ! form: R S R S = I (R: p -> -p) holds to roundoff iff the coefficient sequence is
+   ! palindromic, a(k) = a(2N-k) - an asymmetric table retraces with an O(dt) defect
+   pot_sel = 1
+   nfail0 = nfail
+   do iord = 4, 8, 2
+      sa%q = q_ctr + u0
+      sa%p = p0c
+      sa%t = 0.0d0
+      prop_cfg%order = iord
+      prop_cfg%dt = 0.02d0
+      call prop_step(sa)
+      sa%p = -sa%p
+      call prop_step(sa)
+      if (maxval(abs(sa%q - (q_ctr + u0))) > 1.0d-12 .or. &
+          maxval(abs(sa%p + p0c)) > 1.0d-12) then
+         call fail('(s-a3) single-step retrace failed (order '//trim(i2s(iord))//': q dev '// &
+                   trim(d2s(maxval(abs(sa%q - (q_ctr + u0)))))//', p dev '// &
+                   trim(d2s(maxval(abs(sa%p + p0c))))//' - asymmetric coefficients?)')
+      end if
+   end do
+   if (nfail == nfail0) print '(a)', '(s-a3) palindromic mirror: PASS (single-step momentum-reversal'// &
+      ' retrace back to 1e-12, orders 4/6/8 - a(k) = a(2N-k))'
+
+   ! ---------- (s-a4) bit-level coefficient values: trajectory equality ----------
+   ! form: the reference runs the SAME arithmetic stream (identical per-beat expression
+   ! grouping) on coefficient values from an independent transcription of the historical
+   ! tables - the order-4 row carrying the sign correction legislated in the propagator
+   ! header (the historical +1/3 set is second order; both this reference and the member
+   ! carry the corrected -1/3); q and p must be bitwise equal after every step - any
+   ! differing coefficient bit perturbs a product at the ulp level and flips trajectory
+   ! bits
+   nfail0 = nfail
+   do iord = 4, 8, 2
+      call ref_load(iord)
+      sa%q = q_ctr + u0
+      sa%p = p0c
+      sa%t = 0.0d0
+      sr%q = q_ctr + u0
+      sr%p = p0c
+      sr%t = 0.0d0
+      prop_cfg%order = iord
+      prop_cfg%dt = 0.02d0
+      call force_eval(sr, e)               ! seed the reference's carried force at q0
+      do i = 1, 30
+         call prop_step(sa)
+         call ref_step(sr, 0.02d0)
+         if (any(sa%q /= sr%q) .or. any(sa%p /= sr%p)) then
+            call fail('(s-a4) member vs transcription trajectories differ (order '//trim(i2s(iord))// &
+                      ', step '//trim(i2s(i))//' - a coefficient value is not bit-equal)')
+            exit
+         end if
+      end do
+   end do
+   if (nfail == nfail0) print '(a)', '(s-a4) bit-level coefficients: PASS (q/p bitwise equal to the'// &
+      ' independent transcription over 30 steps, orders 4/6/8)'
+
+   ! ---------- (s-b) per-order convergence: harmonic position error O(dt^order) ----------
+   ! anchor = the closed-form solution with the measured-conversion frequencies (as (e));
+   ! T = 25.12 for every run (comparison at the ACCUMULATED sta%t, so the dt need not
+   ! divide T exactly); the per-order dt sets keep the finest error above the roundoff
+   ! floor (~2e-15) and the coarsest inside the asymptotic regime. PASS line prints the
+   ! measured errors/ratios
+   serr(1) = run_q_err(4, 0.04d0, 628, 2)
+   serr(2) = run_q_err(4, 0.02d0, 1256, 2)
+   serr(3) = run_q_err(4, 0.01d0, 2512, 2)
+   nfail0 = nfail
+   r1 = 0.0d0
+   r2 = 0.0d0
+   if (serr(2) <= 0.0d0 .or. serr(3) <= 0.0d0) then
+      call fail('(s-b) an order-4 position error vanished - scaling ratio undefined')
+   else
+      r1 = serr(1)/serr(2)
+      r2 = serr(2)/serr(3)
+      if (r1 < 13.0d0 .or. r1 > 19.0d0 .or. r2 < 13.0d0 .or. r2 > 19.0d0) then
+         call fail('(s-b) order-4 scaling out of window: ratios '//trim(d2s(r1))//' / '//trim(d2s(r2))// &
+                   ' (want [13, 19]; errors '//trim(d2s(serr(1)))//' / '//trim(d2s(serr(2)))//' / '// &
+                   trim(d2s(serr(3)))//')')
+      end if
+   end if
+   if (nfail == nfail0) print '(a)', '(s-b) order-4 scaling: PASS (error ratios '//trim(d2s(r1))//' / '// &
+      trim(d2s(r2))//' per dt halving, dt 0.04/0.02/0.01, T = 25.12; errors '//trim(d2s(serr(1)))// &
+      ' / '//trim(d2s(serr(2)))//' / '//trim(d2s(serr(3)))//')'
+   serr(1) = run_q_err(6, 0.5024d0, 50, 2)
+   serr(2) = run_q_err(6, 0.2512d0, 100, 2)
+   serr(3) = run_q_err(6, 0.1256d0, 200, 2)
+   nfail0 = nfail
+   r1 = 0.0d0
+   r2 = 0.0d0
+   if (serr(2) <= 0.0d0 .or. serr(3) <= 0.0d0) then
+      call fail('(s-b) an order-6 position error vanished - scaling ratio undefined')
+   else
+      r1 = serr(1)/serr(2)
+      r2 = serr(2)/serr(3)
+      if (r1 < 40.0d0 .or. r1 > 80.0d0 .or. r2 < 40.0d0 .or. r2 > 80.0d0) then
+         call fail('(s-b) order-6 scaling out of window: ratios '//trim(d2s(r1))//' / '//trim(d2s(r2))// &
+                   ' (want [40, 80]; errors '//trim(d2s(serr(1)))//' / '//trim(d2s(serr(2)))//' / '// &
+                   trim(d2s(serr(3)))//')')
+      end if
+   end if
+   if (nfail == nfail0) print '(a)', '(s-b) order-6 scaling: PASS (error ratios '//trim(d2s(r1))//' / '// &
+      trim(d2s(r2))//' per dt halving, dt 0.5024/0.2512/0.1256, T = 25.12; errors '//trim(d2s(serr(1)))// &
+      ' / '//trim(d2s(serr(2)))//' / '//trim(d2s(serr(3)))//')'
+   serr(1) = run_q_err(8, 0.5024d0, 50, 2)
+   serr(2) = run_q_err(8, 0.2512d0, 100, 2)
+   nfail0 = nfail
+   r1 = 0.0d0
+   if (serr(2) <= 0.0d0) then
+      call fail('(s-b) the order-8 position error vanished - scaling ratio undefined')
+   else
+      r1 = serr(1)/serr(2)
+      if (r1 < 180.0d0 .or. r1 > 340.0d0) then
+         call fail('(s-b) order-8 scaling out of window: ratio '//trim(d2s(r1))// &
+                   ' (want [180, 340]; errors '//trim(d2s(serr(1)))//' / '//trim(d2s(serr(2)))//')')
+      end if
+   end if
+   if (nfail == nfail0) print '(a)', '(s-b) order-8 scaling: PASS (error ratio '//trim(d2s(r1))// &
+      ' per dt halving, dt 0.5024/0.2512, T = 25.12; errors '//trim(d2s(serr(1)))//' / '//trim(d2s(serr(2)))//')'
+
+   ! ---------- (s-c) symplecticity signature: bounded oscillation, no drift ----------
+   ! form: 50000 steps at dt = 0.2, order 6 (T = 10^4); |E-E0| block maxima over 10
+   ! equal blocks through the same force entry. Bounded: worst second-half block <= 1.5x
+   ! worst first-half block. Contrast: check-local classical RK4 on the same ICs/force/
+   ! dt/length drifts secularly - LINEARLY in step count, so the block maxima march
+   ! upward block over block: LAST block max >= 5x FIRST block max (a linear drift over
+   ! ten equal blocks puts the last block's max ~10x the first's) AND its overall worst
+   ! >= 100x the composition's overall worst
+   call sym_e_blocks(6, 0.2d0, 50000, bmax)
+   call rk4_e_blocks(0.2d0, 50000, rkmax)
+   nfail0 = nfail
+   if (maxval(bmax(6:10)) > 1.5d0*maxval(bmax(1:5))) then
+      call fail('(s-c) composition energy error grows: worst second-half block '//trim(d2s(maxval(bmax(6:10))))// &
+                ' vs first-half '//trim(d2s(maxval(bmax(1:5))))//' (bounded oscillation expected)')
+   end if
+   if (rkmax(10) < 5.0d0*rkmax(1)) then
+      call fail('(s-c) the RK4 contrast does not drift: last block max '//trim(d2s(rkmax(10)))// &
+                ' vs first block max '//trim(d2s(rkmax(1)))//' (linear secular drift expected)')
+   end if
+   if (maxval(rkmax) < 100.0d0*maxval(bmax)) then
+      call fail('(s-c) contrast too weak: RK4 overall worst '//trim(d2s(maxval(rkmax)))// &
+                ' vs composition overall worst '//trim(d2s(maxval(bmax))))
+   end if
+   if (nfail == nfail0) print '(a)', '(s-c) symplecticity: PASS (50000 steps, dt 0.2, order 6: worst'// &
+      ' |E-E0| block first half '//trim(d2s(maxval(bmax(1:5))))//' second half '//trim(d2s(maxval(bmax(6:10))))// &
+      ' - bounded oscillation; RK4 last/first block max ratio '//trim(d2s(rkmax(10)/rkmax(1)))// &
+      ', drifts to '//trim(d2s(maxval(rkmax)))//')'
+
+   ! ---------- (s-d) kepler apsidal precession converges with order ----------
+   ! potential: V = -kep_k/|q1-q2| (the gravitational two-body form), kep_k set so GM
+   ! of the relative motion = 1 internal; orbit a = 1 A, e = 0.5, prograde. Instrument
+   ! (header note): the Runge-Lenz e-vector angle of the relative motion at successive
+   ! perihelion passages, mean wrapped advance per orbit over 60 orbits. adv(i): orders
+   ! 4/6/8 at dt 0.05 - the convergence chain; dt-halving pairs: order 4 0.05->0.025,
+   ! order 6 0.05->0.025, order 8 0.10->0.05 (its dt 0.05 advance sits ~300x above
+   ! the double-precision floor - halving once more would fall through it)
+   pot_sel = 2
+   kep_k = gm_want*(roster%mass(1)*roster%mass(2)/sum(roster%mass))/cal
+   adv(1) = kep_adv(4, 0.05d0, 60)
+   adv(2) = kep_adv(6, 0.05d0, 60)
+   adv(3) = kep_adv(8, 0.05d0, 60)
+   advh(1) = kep_adv(4, 0.025d0, 60)
+   advh(2) = kep_adv(6, 0.025d0, 60)
+   advh(3) = kep_adv(8, 0.10d0, 60)
+   nfail0 = nfail
+   if (abs(adv(2)) >= abs(adv(1))/8.0d0 .or. abs(adv(3)) >= abs(adv(2))/8.0d0) then
+      call fail('(s-d) precession does not converge with order: advances '// &
+                trim(d2s(adv(1)))//' / '//trim(d2s(adv(2)))//' / '//trim(d2s(adv(3)))// &
+                ' rad/orbit at dt 0.05 (each order at least 8x below the previous expected)')
+   end if
+   if (abs(advh(1)) <= 0.0d0 .or. abs(advh(2)) <= 0.0d0 .or. abs(advh(3)) <= 0.0d0) then
+      call fail('(s-d) a dt-halved advance vanished - scaling undefined')
+   else
+      if (abs(adv(1))/abs(advh(1)) < 8.0d0 .or. abs(adv(1))/abs(advh(1)) > 32.0d0) then
+         call fail('(s-d) order-4 precession scaling out of window: ratio '// &
+                   trim(d2s(abs(adv(1))/abs(advh(1))))//' (want [8, 32] about 2^4)')
+      end if
+      if (abs(adv(2))/abs(advh(2)) < 32.0d0 .or. abs(adv(2))/abs(advh(2)) > 128.0d0) then
+         call fail('(s-d) order-6 precession scaling out of window: ratio '// &
+                   trim(d2s(abs(adv(2))/abs(advh(2))))//' (want [32, 128] about 2^6)')
+      end if
+      if (abs(advh(3))/abs(adv(3)) < 128.0d0 .or. abs(advh(3))/abs(adv(3)) > 512.0d0) then
+         call fail('(s-d) order-8 precession scaling out of window: ratio '// &
+                   trim(d2s(abs(advh(3))/abs(adv(3))))//' (want [128, 512] about 2^8; pair dt 0.10->0.05)')
+      end if
+   end if
+   if (nfail == nfail0) print '(a)', '(s-d) kepler precession: PASS (advances per orbit '// &
+      trim(d2s(adv(1)))//' / '//trim(d2s(adv(2)))//' / '//trim(d2s(adv(3)))//' rad at dt 0.05,'// &
+      ' orders 4/6/8; dt-halving ratios '//trim(d2s(abs(adv(1))/abs(advh(1))))//' / '// &
+      trim(d2s(abs(adv(2))/abs(advh(2))))//' / '//trim(d2s(abs(advh(3))/abs(adv(3))))//')'
+
+   ! ---------- (s-e) reversibility: kepler round trip ----------
+   ! 5 orbits forward at order 6, dt = 0.02 (1571 steps), p -> -p, 5 orbits back: q
+   ! returns to the start and p to -p0 (roundoff-level tolerance)
+   prop_cfg%order = 6
+   prop_cfg%dt = 0.02d0
+   call kep_ic(sa)
+   qk0 = sa%q
+   pk0 = sa%p
+   do i = 1, 1571
+      call prop_step(sa)
+   end do
+   sa%p = -sa%p
+   do i = 1, 1571
+      call prop_step(sa)
+   end do
+   nfail0 = nfail
+   if (maxval(abs(sa%q - qk0)) > 1.0d-10) then
+      call fail('(s-e) reversibility: q did not return to the start (max dev '// &
+                trim(d2s(maxval(abs(sa%q - qk0))))//')')
+   end if
+   if (maxval(abs(sa%p + pk0)) > 1.0d-10) then
+      call fail('(s-e) reversibility: p did not return to -p0 (max dev '// &
+                trim(d2s(maxval(abs(sa%p + pk0))))//')')
+   end if
+   if (nfail == nfail0) print '(a)', '(s-e) symple reversibility: PASS (3142-step round trip over 5'// &
+      ' kepler orbits, q/p back to 1e-10)'
+
+   ! ---------- (s-f) endpoint-force contract ----------
+   ! after 1 and 3 steps per order (harmonic) plus order-8 kepler: sta%f equals the
+   ! analytic branch force at the RETURNED q (rel 1e-13, as (d))
+   pot_sel = 1
+   nfail0 = nfail
+   do iord = 4, 8, 2
+      prop_cfg%order = iord
+      prop_cfg%dt = 0.02d0
+      sta%q = q_ctr + u0
+      sta%p = p0c
+      sta%t = 0.0d0
+      call prop_step(sta)
+      call check_endpoint_force('(s-f) harmonic order='//trim(i2s(iord))//' step 1')
+      call prop_step(sta)
+      call prop_step(sta)
+      call check_endpoint_force('(s-f) harmonic order='//trim(i2s(iord))//' step 3')
+   end do
+   pot_sel = 2
+   prop_cfg%order = 8
+   prop_cfg%dt = 0.02d0
+   call kep_ic(sta)
+   call prop_step(sta)
+   call check_kep_endpoint('(s-f) kepler order=8 step 1')
+   call prop_step(sta)
+   call prop_step(sta)
+   call check_kep_endpoint('(s-f) kepler order=8 step 3')
+   if (nfail == nfail0) print '(a)', '(s-f) endpoint force: PASS (sta%f = analytic branch force at the'// &
+      ' returned q, orders 4/6/8 + kepler order 8, steps 1 and 3, rel 1e-13)'
+
+   pot_sel = 1   ! restore the harmonic default for anything that follows
+   ! ================= end symple section =================
+
    call state_destroy(sta)
    call state_destroy(sa)
    call state_destroy(sb)
+   call state_destroy(sr)
    print '(a,i0,a)', '=== check_propagator: ', nfail, ' failure(s) ==='
    if (nfail > 0) stop 1
    stop 0
 
 contains
 
-   ! the local harmonic test container: per-dof distinct stiffness/centers, the
-   ! gradient and energy in eV (the member unit contract); fills the scalar channel
-   subroutine harm_pes(q, mass, ws)
+   ! the local branch test container (bound once; the check-side selector pot_sel picks
+   ! the analytic branch): harmonic per-dof distinct stiffness/centers (the default),
+   ! kepler two-body attraction, uniform field, free flight. The gradient and energy in
+   ! eV (the member unit contract); fills the scalar channel
+   subroutine test_pes(q, mass, ws)
       real(8), intent(in)  :: q(:)     ! coordinates [A]
-      real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (unused - a pure PES)
+      real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (unused - pure PES branches)
       type(ws_t), intent(inout) :: ws  ! workspace (scalar channel out)
       integer :: n
+      real(8) :: rr(3), rn
       n = size(q)
       if (allocated(ws%g_add)) then
          if (size(ws%g_add) /= n) deallocate (ws%g_add)
       end if
       if (.not. allocated(ws%g_add)) allocate (ws%g_add(n))
-      ws%g_add = k_eV*(q - q_ctr)                            ! dV/dq [eV/A]
-      ws%v_add = 0.5d0*dot_product(k_eV, (q - q_ctr)*(q - q_ctr))  ! V [eV]
+      select case (pot_sel)
+      case (1)                                 ! harmonic: V = 1/2 sum k (q-qc)^2
+         ws%g_add = k_eV*(q - q_ctr)                            ! dV/dq [eV/A]
+         ws%v_add = 0.5d0*dot_product(k_eV, (q - q_ctr)*(q - q_ctr))  ! V [eV]
+      case (2)                                 ! kepler: V = -kep_k/|q1-q2|
+         rr = q(1:3) - q(4:6)
+         rn = sqrt(rr(1)**2 + rr(2)**2 + rr(3)**2)
+         ws%g_add(1:3) = kep_k*rr/rn**3        ! dV/dq1 = +k r/|r|^3 (attraction: F = -g*cal)
+         ws%g_add(4:6) = -ws%g_add(1:3)        ! dV/dq2 = -dV/dq1 (central two-body form)
+         ws%v_add = -kep_k/rn
+      case (3)                                 ! uniform field: V = -f.q
+         ws%g_add = f_uni
+         ws%v_add = -dot_product(f_uni, q)
+      case default                             ! free flight: V = 0
+         ws%g_add = 0.0d0
+         ws%v_add = 0.0d0
+      end select
       ws%repr = r_scalar
-   end subroutine harm_pes
+   end subroutine test_pes
 
    ! degenerate no-op method members (the all-noop package this check registers so
    ! container_init resolves the default method name)
@@ -381,12 +779,16 @@ contains
    end function max_e_err
 
    ! max |q(T) - q_analytic(T)| for an n-step run at dt from the turning-point ICs
-   ! (each dof an independent harmonic oscillator, omega from the measured conversion)
-   real(8) function run_q_err(order, dt, n)
+   ! (each dof an independent harmonic oscillator, omega from the measured conversion);
+   ! id_sel picks the family member (default 1 = verlet; the symple section passes 2)
+   real(8) function run_q_err(order, dt, n, id_sel)
       integer, intent(in) :: order
       real(8), intent(in) :: dt
       integer, intent(in) :: n
+      integer, intent(in), optional :: id_sel
       integer :: i
+      prop_cfg%id = 1
+      if (present(id_sel)) prop_cfg%id = id_sel
       prop_cfg%order = order
       prop_cfg%dt = dt
       sta%q = q_ctr + u0
@@ -411,6 +813,286 @@ contains
          end if
       end do
    end subroutine check_endpoint_force
+
+   ! assert sta%f equals the analytic kepler force at the RETURNED sta%q (as above)
+   subroutine check_kep_endpoint(tag)
+      character(len=*), intent(in) :: tag
+      integer :: i
+      real(8) :: rr(3), rn3
+      rr = sta%q(1:3) - sta%q(4:6)
+      rn3 = sqrt(rr(1)**2 + rr(2)**2 + rr(3)**2)**3
+      fa(1:3) = -(kep_k*rr/rn3)*cal           ! internal force on atom 1 (attraction)
+      fa(4:6) = -fa(1:3)
+      do i = 1, 6
+         if (abs(sta%f(i) - fa(i)) > 1.0d-13*max(abs(fa(i)), 1.0d0)) then
+            call fail(tag//': kepler endpoint force mismatch at dof '//trim(i2s(i))//': '// &
+                      trim(d2s(sta%f(i)))//' vs analytic '//trim(d2s(fa(i))))
+         end if
+      end do
+   end subroutine check_kep_endpoint
+
+   ! kepler ICs: relative orbit a = kep_a, e = kep_ecc, GM = gm_want; the center of mass
+   ! at rest at the origin, perihelion on +x, prograde in xy (atom positions/momenta
+   ! from the COM/relative split: q1 = (m2/M) r, p1 = mu*v_r with P_com = 0)
+   subroutine kep_ic(sx)
+      type(state_t), intent(inout) :: sx
+      real(8) :: m1, m2, mt, mu, rp, vp
+      m1 = roster%mass(1)
+      m2 = roster%mass(2)
+      mt = m1 + m2
+      mu = m1*m2/mt
+      rp = kep_a*(1.0d0 - kep_ecc)
+      vp = sqrt(gm_want*(1.0d0 + kep_ecc)/(kep_a*(1.0d0 - kep_ecc)))
+      sx%q = 0.0d0
+      sx%p = 0.0d0
+      sx%q(1) = (m2/mt)*rp
+      sx%q(4) = -(m1/mt)*rp
+      sx%p(2) = mu*vp
+      sx%p(5) = -mu*vp
+      sx%t = 0.0d0
+   end subroutine kep_ic
+
+   ! mean apsidal advance per orbit (the precession), via the Runge-Lenz instrument
+   ! (header note of (s-d)): perihelion = the inward-to-outward zero crossing of the
+   ! radial velocity r.v_rel of the RELATIVE motion; at each crossing the angle of the
+   ! eccentricity vector e = (v x h)/GM - r/|r| (the orbit plane is z = 0 exactly - the
+   ! planar IC and the central force keep it there bitwise) is taken from the step-end
+   ! state directly - no interpolation; deltas between consecutive crossings are
+   ! wrapped to (-pi, pi] (each delta is the per-orbit precession, |delta| << pi); the
+   ! mean over the crossings of an n_orb-orbit run is returned. vrprev is seeded from
+   ! the TRUE initial radial velocity (zero at the perihelion IC) so the first step
+   ! cannot fake a crossing
+   real(8) function kep_adv(order, dt, n_orb)
+      integer, intent(in) :: order
+      real(8), intent(in) :: dt
+      integer, intent(in) :: n_orb
+      integer :: i, n, ncross
+      real(8) :: r(3), v(3), vr, vrprev, hz, rn, ex, ey, thA, lastA, dth, acc
+      prop_cfg%id = 2
+      prop_cfg%order = order
+      prop_cfg%dt = dt
+      call kep_ic(sta)
+      ncross = 0
+      acc = 0.0d0
+      lastA = 0.0d0
+      r = sta%q(1:3) - sta%q(4:6)
+      v = sta%p(1:3)/roster%mass(1) - sta%p(4:6)/roster%mass(2)
+      vrprev = r(1)*v(1) + r(2)*v(2) + r(3)*v(3)
+      n = nint(n_orb*two_pi/dt)
+      do i = 1, n
+         call prop_step(sta)
+         r = sta%q(1:3) - sta%q(4:6)
+         v = sta%p(1:3)/roster%mass(1) - sta%p(4:6)/roster%mass(2)
+         vr = r(1)*v(1) + r(2)*v(2) + r(3)*v(3)
+         if (vrprev < 0.0d0 .and. vr >= 0.0d0) then
+            hz = r(1)*v(2) - r(2)*v(1)          ! orbit-plane angular momentum [internal]
+            rn = sqrt(r(1)**2 + r(2)**2 + r(3)**2)
+            ex = v(2)*hz/gm_want - r(1)/rn      ! e-vector (GM = gm_want = 1 here)
+            ey = -v(1)*hz/gm_want - r(2)/rn
+            thA = atan2(ey, ex)
+            ncross = ncross + 1
+            if (ncross >= 2) then
+               dth = thA - lastA
+               dth = dth - two_pi*anint(dth/two_pi)   ! wrap to (-pi, pi]
+               acc = acc + dth
+            end if
+            lastA = thA
+         end if
+         vrprev = vr
+      end do
+      kep_adv = 0.0d0
+      if (ncross >= 2) kep_adv = acc/(ncross - 1)
+   end function kep_adv
+
+   ! per-block maxima of |E - E0| over 10 equal blocks of a symple run on the harmonic
+   ! branch (turning-point ICs; energy sampled after every step through the same force
+   ! entry the member uses)
+   subroutine sym_e_blocks(order, dt, n, bmax)
+      integer, intent(in) :: order
+      real(8), intent(in) :: dt
+      integer, intent(in) :: n
+      real(8), intent(out) :: bmax(10)
+      integer :: i, b, bps
+      real(8) :: e0l, el
+      bps = n/10
+      prop_cfg%id = 2
+      prop_cfg%order = order
+      prop_cfg%dt = dt
+      sta%q = q_ctr + u0
+      sta%p = 0.0d0
+      sta%t = 0.0d0
+      call force_eval(sta, e0l)
+      bmax = 0.0d0
+      do i = 1, n
+         call prop_step(sta)
+         call force_eval(sta, el)
+         b = min((i - 1)/bps + 1, 10)
+         bmax(b) = max(bmax(b), abs(el - e0l))
+      end do
+   end subroutine sym_e_blocks
+
+   ! the non-symplectic contrast of (s-c): classical RK4 on the state (q,p) with the
+   ! same bound force entry, ICs, dt and run length (check-local reference; sb is the
+   ! stage-geometry scratch - its energy/momenta are never consumed); per-block maxima
+   ! of |E - E0| as in sym_e_blocks
+   subroutine rk4_e_blocks(dt, n, bmax)
+      real(8), intent(in) :: dt
+      integer, intent(in) :: n
+      real(8), intent(out) :: bmax(10)
+      integer :: i, b, bps, k
+      real(8) :: e0l, el, h2, h6
+      real(8) :: q0(6), p0(6), k1q(6), k1p(6), k2q(6), k2p(6), k3q(6), k3p(6), k4q(6), k4p(6)
+      h2 = dt/2.0d0
+      h6 = dt/6.0d0
+      bps = n/10
+      sta%q = q_ctr + u0
+      sta%p = 0.0d0
+      sta%t = 0.0d0
+      call force_eval(sta, e0l)
+      bmax = 0.0d0
+      do i = 1, n
+         q0 = sta%q
+         p0 = sta%p
+         call force_eval(sta, el)              ! k1 at q0
+         k1p = sta%f
+         do k = 1, 2
+            k1q(3*k - 2:3*k) = p0(3*k - 2:3*k)/roster%mass(k)
+         end do
+         sb%q = q0 + h2*k1q
+         call force_eval(sb, el)               ! k2
+         k2p = sb%f
+         do k = 1, 2
+            k2q(3*k - 2:3*k) = (p0(3*k - 2:3*k) + h2*k1p(3*k - 2:3*k))/roster%mass(k)
+         end do
+         sb%q = q0 + h2*k2q
+         call force_eval(sb, el)               ! k3
+         k3p = sb%f
+         do k = 1, 2
+            k3q(3*k - 2:3*k) = (p0(3*k - 2:3*k) + h2*k2p(3*k - 2:3*k))/roster%mass(k)
+         end do
+         sb%q = q0 + dt*k3q
+         call force_eval(sb, el)               ! k4
+         k4p = sb%f
+         do k = 1, 2
+            k4q(3*k - 2:3*k) = (p0(3*k - 2:3*k) + dt*k3p(3*k - 2:3*k))/roster%mass(k)
+         end do
+         sta%q = q0 + h6*(k1q + 2.0d0*k2q + 2.0d0*k3q + k4q)
+         sta%p = p0 + h6*(k1p + 2.0d0*k2p + 2.0d0*k3p + k4p)
+         sta%t = sta%t + dt
+         call force_eval(sta, el)
+         b = min((i - 1)/bps + 1, 10)
+         bmax(b) = max(bmax(b), abs(el - e0l))
+      end do
+   end subroutine rk4_e_blocks
+
+   ! ref_load(order) - fill the reference coefficient table for one order: an
+   ! INDEPENDENT transcription of the historical tables (same values, the historical
+   ! assignment structure with explicit mirror copies; order 4 carries the sign
+   ! correction legislated in the propagator header) - the member's own literals were
+   ! written from the same source; agreement is asserted bitwise by (s-a4)
+   subroutine ref_load(order)
+      integer, intent(in) :: order
+      select case (order)
+      case (4)                                 ! historical assignment structure with
+         ref_n = 5                             ! the SIGN-CORRECTED a(2) (propagator
+         ref_a(0) = 0.5d0                      ! header note: the historical +1/3 set is
+         ref_a(1) = -1.0d0/48.0d0              ! second order)
+         ref_a(2) = -1.0d0/3.0d0
+         ref_a(3) = 3.0d0/8.0d0
+         ref_a(4) = -ref_a(2)
+         ref_a(5) = 7.0d0/24.0d0
+         ref_a(6) = -ref_a(2)
+         ref_a(7) = ref_a(3)
+         ref_a(8) = ref_a(2)
+         ref_a(9) = ref_a(1)
+         ref_a(10) = ref_a(0)
+      case (6)
+         ref_n = 8
+         ref_a(0) = 0.06942944346252987735848865824703402d0
+         ref_a(1) = 0.2848783771728008405274534645665783d0
+         ref_a(2) = -0.1331551983159820940996130995137351d0
+         ref_a(3) = 0.3278397575961294541205467836732554d0
+         ref_a(4) = 0.0012903891798107897423048174644328d0
+         ref_a(5) = -0.3812210427193262947562278437421127d0
+         ref_a(6) = 0.4224353656736414269988196238022683d0
+         ref_a(7) = 0.268502907950396000108227595502279d0
+         ref_a(8) = 0.28d0
+         ref_a(9) = ref_a(7)
+         ref_a(10) = ref_a(6)
+         ref_a(11) = ref_a(5)
+         ref_a(12) = ref_a(4)
+         ref_a(13) = ref_a(3)
+         ref_a(14) = ref_a(2)
+         ref_a(15) = ref_a(1)
+         ref_a(16) = ref_a(0)
+      case (8)
+         ref_n = 17
+         ref_a(0) = 0.04463795052359022755913999625733590d0
+         ref_a(1) = 0.13593258071690959145543264213495574d0
+         ref_a(2) = 0.2198844042714707225445535069606167d0
+         ref_a(3) = 0.13024946780523828601621193778196846d0
+         ref_a(4) = 0.10250365693975069608261241007779814d0
+         ref_a(5) = 0.43234521869358547487983257884877035d0
+         ref_a(6) = -0.00477482916916881658022489063962934d0
+         ref_a(7) = -0.58253476904040845493112837930861213d0
+         ref_a(8) = -0.03886264282111817697737420875189743d0
+         ref_a(9) = 0.31548728537940479698273603797274199d0
+         ref_a(10) = 0.18681583743297155471526153503972746d0
+         ref_a(11) = 0.26500275499062083398346002963079872d0
+         ref_a(12) = -0.02405084735747361993573587982407554d0
+         ref_a(13) = -0.45040492499772251180922896712151891d0
+         ref_a(14) = -0.05897433015592386914575323926766330d0
+         ref_a(15) = -0.02168476171861335324934388684707580d0
+         ref_a(16) = 0.07282080033590128173761892641234244d0
+         ref_a(17) = 0.55121429634197067334405601381594315d0
+         ref_a(18) = ref_a(16)
+         ref_a(19) = ref_a(15)
+         ref_a(20) = ref_a(14)
+         ref_a(21) = ref_a(13)
+         ref_a(22) = ref_a(12)
+         ref_a(23) = ref_a(11)
+         ref_a(24) = ref_a(10)
+         ref_a(25) = ref_a(9)
+         ref_a(26) = ref_a(8)
+         ref_a(27) = ref_a(7)
+         ref_a(28) = ref_a(6)
+         ref_a(29) = ref_a(5)
+         ref_a(30) = ref_a(4)
+         ref_a(31) = ref_a(3)
+         ref_a(32) = ref_a(2)
+         ref_a(33) = ref_a(1)
+         ref_a(34) = ref_a(0)
+      case default
+         print '(a)', 'ref_load: unknown order (reference transcription: 4/6/8 only)'
+         stop 2
+      end select
+   end subroutine ref_load
+
+   ! ref_step(sx, dt) - the reference composition step: the historical main-loop form
+   ! (the force of the PREVIOUS evaluation is carried in sx%f; N fresh evaluations per
+   ! step, at the drift ends). The expression grouping mirrors the member's per-beat
+   ! arithmetic exactly - same operations in the same order on the same values - so
+   ! equal coefficient tables yield bit-identical trajectories ((s-a4))
+   subroutine ref_step(sx, dt)
+      type(state_t), intent(inout) :: sx
+      real(8), intent(in) :: dt
+      integer :: i, k
+      real(8) :: ed
+      ed = 0.0d0
+      do i = 0, ref_n - 1
+         do k = 1, size(roster%mass)
+            sx%p(3*k - 2:3*k) = sx%p(3*k - 2:3*k) + sx%f(3*k - 2:3*k)*(dt*ref_a(2*i))
+         end do
+         do k = 1, size(roster%mass)
+            sx%q(3*k - 2:3*k) = sx%q(3*k - 2:3*k) + sx%p(3*k - 2:3*k)*(dt*ref_a(2*i + 1)/roster%mass(k))
+         end do
+         call force_eval(sx, ed)
+      end do
+      do k = 1, size(roster%mass)
+         sx%p(3*k - 2:3*k) = sx%p(3*k - 2:3*k) + sx%f(3*k - 2:3*k)*(dt*ref_a(2*ref_n))
+      end do
+      sx%t = sx%t + dt
+   end subroutine ref_step
 
    ! fail(msg) - record one criterion failure
    subroutine fail(msg)
