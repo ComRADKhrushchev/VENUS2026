@@ -9,7 +9,8 @@
 !       POSCAR public format definition (comment line / universal scaling factor / three
 !       lattice vectors / element-symbols line / per-species counts line / Direct|
 !       Cartesian tag / coordinate rows; the scaling factor applies to the cell AND, in
-!       Cartesian mode, to the coordinates);
+!       Cartesian mode, to the coordinates; an optional velocity block - one row per
+!       atom after the coordinates - is read past, never interpreted);
 !       .xyz public format definition (atom-count line / comment line / "Symbol x y z"
 !       rows; no cell by definition);
 !       element mass table: IUPAC standard atomic weights (public physical-constant data;
@@ -75,7 +76,9 @@ contains
    !------------------------------------------------------------------
    ! read_poscar(u, title, cell, names, xyz, ok [, errmsg]) - parse one POSCAR: comment
    !              line, universal scaling factor, three lattice vectors, element-symbols
-   !              line, per-species counts line, Direct/Cartesian tag, coordinate rows
+   !              line, per-species counts line, Direct/Cartesian tag, coordinate rows;
+   !              a velocity block following the coordinates (one row per atom) is
+   !              READ PAST without interpretation (step 7)
    ! Reference: POSCAR public format definition (VASP wiki); E14 spec §6 (formats row)
    subroutine read_poscar(u, title, cell, names, xyz, ok, errmsg)
       integer, intent(in) :: u    ! unit number (the caller opens/positions and closes the
@@ -99,7 +102,9 @@ contains
       character(len=512) :: line
       character(len=16) :: toks(max_sp)
       character(len=4) :: symb(max_sp)
-      character(len=64) :: emsg_row
+      character(len=96) :: emsg_row   ! wide enough for the longest missing-row message
+                                      ! (a too-short buffer crashed the soft-error
+                                      ! channel with End-of-record instead of returning)
       integer :: cnt(max_sp)
       integer :: ios, i, k, nat, nsp, ntok, iat
       real(8) :: s, s_eff, vec(3,3), fr(3), det0
@@ -252,8 +257,8 @@ contains
       !    would contract row 1 with fr instead, coinciding only for diagonal cells);
       !    Cartesian -> xyz(:,i) = s_eff * cartesian_i (the universal factor scales
       !    Cartesian coordinates too, per the format definition); trailing
-      !    per-coordinate T/F flags read past; the block stops here - any velocity
-      !    block is never read
+      !    per-coordinate T/F flags read past; the coordinate block stops here -
+      !    a velocity block, if present, is handled by step 7
       do iat = 1, nat
          read (u, '(a)', iostat=ios) line
          if (ios /= 0) then
@@ -274,7 +279,25 @@ contains
          end if
       end do
 
-      ! 7. clean parse
+      ! 7. velocity block (first variant): the format allows one velocity row per
+      !    atom after the coordinate block - probe one read: end-of-file right
+      !    after the coordinates means no block (a clean file ends there); a
+      !    present block is READ PAST without interpreting it (velocities are
+      !    initial-condition material owned elsewhere - this reader returns
+      !    coordinates and cell only); a block cut short (fewer than nat rows) is
+      !    a soft error naming the missing velocity row
+      do iat = 1, nat
+         read (u, '(a)', iostat=ios) line
+         if (ios /= 0) then
+            if (iat == 1) exit      ! no velocity block - the file ends with the coordinates
+            write (emsg_row, '(a,i0,a)') 'POSCAR: velocity row ', iat, &
+               ' missing (file ends inside the velocity block)'
+            call fail(errmsg, trim(emsg_row))
+            return
+         end if
+      end do
+
+      ! 8. clean parse
       ok = .true.
    end subroutine read_poscar
 

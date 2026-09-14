@@ -20,17 +20,27 @@
 !   (f) read_poscar negative scale (target volume): |det(cell)| = |s| = 27 and the
 !       cell rows are the raw vectors rescaled by (|s|/|det(raw vectors)|)^(1/3)
 !   (g) read_poscar Selective-dynamics line skipped, trailing T/F flags read past,
-!       the coordinate block stops before the velocity block (never read)
+!       the coordinate block stops before the velocity block (read past by the
+!       velocity step, never interpreted)
 !   (h) bad samples -> ok = .false. + non-blank errmsg:
 !       xyz    - non-numeric count / zero count / short coordinate row / non-numeric
 !                coordinate field / symbol longer than 4 characters / file ends early
 !       POSCAR - non-numeric scaling factor / zero scaling factor / symbols-counts
 !                field mismatch / zero atoms / unknown mode tag / short coordinate row
+!                / velocity block cut short (h13)
 !   (i) read_poscar skewed (non-diagonal) cell with Direct coordinates: the row-stored
 !       lattice vectors a1=(1,0,0), a2=(0.5,2,0), a3=(0.2,0.3,1.5) combined as
 !       r = 0.25*a1 + 0.50*a2 + 0.75*a3 = (0.65, 1.225, 1.125) - distinguishes
 !       matmul(fr, cell) (correct linear combination) from matmul(cell, fr)
 !       (row-contraction, coincides only for diagonal cells; fix-round-1 regression)
+!   (j) read_poscar velocity block (first variant): a POSCAR whose coordinate block
+!       is followed by the per-atom velocity rows (nat rows of numbers, here loaded
+!       with magnitudes -888..888 that would be unmistakable in the coordinates)
+!       parses CLEAN with every field exact (title / cell / names / the two
+!       coordinate rows) - the velocity rows are skipped, never interpreted, and
+!       their numbers do not leak into the coordinates; (h13) the same shape with
+!       the velocity block cut short (two rows of three) -> ok = .false. naming
+!       the missing velocity row
 !=====================================================================
 program check_specio
    use specio, only: read_poscar, read_xyz, elem_mass
@@ -55,6 +65,13 @@ program check_specio
       2.0d0,4.0d0,6.0d0 ], [ 3,2 ])
    real(8), parameter :: wxyz_g(3,1) = reshape( [ 1.0d0,1.0d0,1.0d0 ], [ 3,1 ])
    real(8), parameter :: wxyz_i(3,1) = reshape( [ 0.65d0,1.225d0,1.125d0 ], [ 3,1 ])
+   ! (j) expected coordinates: Direct rows (0.10,0.20,0.30)/(0.25,0.50,0.75) against
+   ! the diagonal cell diag(3,4,5) -> (0.30,0.80,1.50) and (0.75,2.00,3.75); the
+   ! products are written as PRODUCTS (not decimal literals) so the expectation
+   ! carries the same rounding the reader's matmul produces (0.10*3 sits one ulp
+   ! off the literal 0.30 - a literal here would flag a phantom deviation)
+   real(8), parameter :: wxyz_j(3,2) = reshape( [ 0.10d0*3.0d0,0.20d0*4.0d0,0.30d0*5.0d0, &
+      0.25d0*3.0d0,0.50d0*4.0d0,0.75d0*5.0d0 ], [ 3,2 ])
 
    ! ---------- sample files (all written under build/) ----------
    call write_sample('build/specio_xyz_ok.xyz', [ character(len=64) :: &
@@ -102,6 +119,15 @@ program check_specio
       '1.0 0.0 0.0', '0.5 2.0 0.0', '0.2 0.3 1.5', &
       'H', '1', 'Direct', &
       '0.25 0.50 0.75' ])
+   ! (j) velocity-block sample: two Direct coordinate rows followed by the
+   ! per-atom velocity rows (magnitudes -888..888 that would be unmistakable
+   ! if they leaked into the coordinates)
+   call write_sample('build/specio_poscar_vel.poscar', [ character(len=64) :: &
+      'velocity-block sample', '1.0', &
+      '3.0 0.0 0.0', '0.0 4.0 0.0', '0.0 0.0 5.0', &
+      'H', '2', 'Direct', &
+      '0.10 0.20 0.30', '0.25 0.50 0.75', &
+      '888.25 -777.50 666.75', '-555.25 444.50 -333.75' ])
    call write_sample('build/specio_poscar_bscale0.poscar', [ character(len=64) :: &
       'c4.1 bad: zero scaling factor', '0.0', &
       '1.0 0.0 0.0', '0.0 1.0 0.0', '0.0 0.0 1.0', &
@@ -126,6 +152,13 @@ program check_specio
       'c4.1 bad: short coordinate row', '1.0', &
       '1.0 0.0 0.0', '0.0 1.0 0.0', '0.0 0.0 1.0', &
       'Si', '2', 'Direct', '0.0 0.0 0.0', '0.25 0.75' ])
+   ! (h13) bad: velocity block cut short (three atoms, only two velocity rows)
+   call write_sample('build/specio_poscar_bvel.poscar', [ character(len=64) :: &
+      'bad: velocity block cut short', '1.0', &
+      '1.0 0.0 0.0', '0.0 1.0 0.0', '0.0 0.0 1.0', &
+      'Si', '3', 'Direct', &
+      '0.00 0.00 0.00', '0.25 0.25 0.25', '0.50 0.50 0.50', &
+      '0.10 0.20 0.30', '0.40 0.50 0.60' ])
 
    ! ---------- (a) read_xyz clean sample ----------
    nfail0 = nfail
@@ -270,6 +303,7 @@ program check_specio
    call expect_bad_poscar('build/specio_poscar_bzero.poscar',   '(h10) POSCAR zero atoms')
    call expect_bad_poscar('build/specio_poscar_bmode.poscar',   '(h11) POSCAR unknown mode tag')
    call expect_bad_poscar('build/specio_poscar_bcoord.poscar',  '(h12) POSCAR short coordinate row')
+   call expect_bad_poscar('build/specio_poscar_bvel.poscar',    '(h13) POSCAR velocity block cut short')
 
    ! ---------- (i) skewed cell, Direct coordinates (fix-round-1 regression) ----------
    ! r = 0.25*a1 + 0.50*a2 + 0.75*a3 with a1=(1,0,0), a2=(0.5,2,0), a3=(0.2,0.3,1.5):
@@ -292,6 +326,29 @@ program check_specio
    end if
    if (nfail == nfail0) print '(a)', &
       '(i) skewed-cell Direct: PASS (r = 0.65/1.225/1.125, off-diagonal cell rows verified)'
+
+   ! ---------- (j) velocity block after the coordinates (first variant) ----------
+   ! every field exact: title / diagonal cell diag(3,4,5) / names H,H / the two
+   ! coordinate rows - and the velocity magnitudes (-888..888) nowhere in xyz
+   nfail0 = nfail
+   open (newunit=u, file='build/specio_poscar_vel.poscar', status='old', action='read')
+   call read_poscar(u, title, cell, names, xyz, ok, errmsg=emsg)
+   close (u)
+   res = -1.0d0
+   if (allocated(xyz)) then
+      if (size(xyz,2) == 2) res = maxval(abs(xyz - wxyz_j))
+   end if
+   if (.not. ok .or. len_trim(emsg) /= 0 .or. &
+       trim(title) /= 'velocity-block sample' .or. &
+       abs(cell(1,1) - 3.0d0) > 0.0d0 .or. abs(cell(2,2) - 4.0d0) > 0.0d0 .or. &
+       abs(cell(3,3) - 5.0d0) > 0.0d0 .or. res /= 0.0d0 .or. &
+       .not. allocated(names) .or. size(names) /= 2 .or. &
+       names(1) /= 'H' .or. names(2) /= 'H') then
+      print '(a,es10.2)', 'FAIL (j) velocity block: max coord deviation ', res
+      nfail = nfail + 1
+   end if
+   if (nfail == nfail0) print '(a)', &
+      '(j) velocity block: PASS (fields exact; velocity rows skipped, no pollution of the coordinates)'
 
    print '(a,i0,a)', '=== check_specio: ', nfail, ' failure(s) ==='
    if (nfail > 0) stop 1

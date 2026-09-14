@@ -5,8 +5,9 @@
 ! Compile (from src/; modules in use-order first, -Jbuild keeps the .mod
 ! files out of the source tree; the evolution chain enters because the
 ! member drives the propagator through its no-op skeleton):
-!   gfortran -Jbuild globals/consts.f90 globals/config.f90 utils/specio.f90 &
-!            facade/sysdef_facade.f90 globals/config_roster.f90 globals/state.f90 &
+!   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
+!            utils/specio.f90 facade/sysdef_facade.f90 input.f90 &
+!            globals/config_roster.f90 globals/state.f90 &
 !            utils/rng.f90 facade/elec_ws.f90 facade/elec_facade.f90 &
 !            facade/force_facade.f90 dynamics/propagator.f90 facade/sampler.f90 &
 !            methods/dist_thermalize.f90 methods/reg_dist_thermalize.f90 &
@@ -130,26 +131,26 @@ program check_dist_thermalize
       par%dt_eq = dt_use
       propagator%dt = dt_live
       select case (trim(mode))
-      case ('bad-temp')                     ! (f): t_eq = 0
+      case ('bad-temp')                     ! (g): t_eq = 0
          call setup_mol(1)
          call set_scheme([10])
          par%t_eq = 0.0d0
          call thermalize_init(par)
-      case ('bad-nsteps')                   ! (g): zero propagation steps
+      case ('bad-nsteps')                   ! (h): zero propagation steps
          call setup_mol(1)
          call set_scheme([10])
          par%n_eq = 0
          call thermalize_init(par)
-      case ('bad-dt')                       ! (h): zero equilibration step
+      case ('bad-dt')                       ! (i): zero equilibration step
          call setup_mol(1)
          call set_scheme([10])
          par%dt_eq = 0.0d0
          call thermalize_init(par)
-      case ('bad-bind0')                    ! (i): no fragment carries the code
+      case ('bad-bind0')                    ! (j): no fragment carries the code
          call setup_mol(1)
          call set_scheme([1])
          call thermalize_init(par)
-      case ('bad-bind2')                    ! (j): two fragments carry the code
+      case ('bad-bind2')                    ! (k): two fragments carry the code
          call setup_mol(2)
          call set_scheme([10, 10])
          call thermalize_init(par)

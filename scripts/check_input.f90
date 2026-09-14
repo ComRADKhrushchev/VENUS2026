@@ -2,14 +2,18 @@
 ! check_input.f90 - C4.4 acceptance criteria program (criteria defined FIRST in
 !                    docs/plans/C4.md; this program executes them)
 ! Compile (from src/; modules in use-order first, -Jbuild keeps the .mod files out
-! of the source tree):
-!   gfortran -Jbuild globals/control.f90 globals/config.f90 input.f90 &
+! of the source tree; specio/sysdef_facade/config_roster enter for the (o) window
+! criteria, which drive the real assembly route input -> sysdef -> roster):
+!   gfortran -Jbuild globals/control.f90 globals/config.f90 utils/specio.f90 &
+!            facade/sysdef_facade.f90 input.f90 globals/config_roster.f90 &
 !            ../scripts/check_input.f90 -o build/check_input.exe
 ! All sample input files are written under build/ - the source tree stays clean.
 ! Loud-stop verification approach (same scheme as check_sysdef): the loud-stop
-! criteria (e)/(f)/(g)/(h)/(k)/(l) run as CHILD PROCESSES - the check re-spawns
-! itself with a mode argument (execute_command_line); the child calls the REAL
-! read_input on a prepared bad file and must print a naming message on stderr and
+! criteria (e)/(f)/(g)/(h)/(k)/(l)/(o2)-(o7)/(p) run as CHILD PROCESSES - the
+! check re-spawns itself with a mode argument (execute_command_line); the child
+! calls the REAL read_input on a prepared bad file (the surface/molecular window
+! children continue into sysdef_load + roster_load - the paradigm condition lives
+! at assembly time) and must print a naming message on stderr and
 ! exit nonzero. The parent asserts the exit status and the stderr content (the
 ! print+STOP behavior itself is verified, not a softened internal flag); a child
 ! that returns without stopping exits 0 and fails the criterion.
@@ -73,6 +77,31 @@
 !       DIST_SCHEME = thermostat, glo_target, thermalize ->
 !       reactants%dist_scheme = [8,9,10] (the word/code pairing shared with
 !       the sampler scheme-code table, now ten words)
+!   (o) surface window keys (paradigm-conditional): A_LAT [A] (positive real,
+!       the surface lattice constant) and BOXPAD [A] (positive, the periodic-box
+!       fill half-width) stage in block two; the paradigm condition executes at
+!       ASSEMBLY time (the sampler count-check precedent - the input layer holds
+!       no system knowledge), so these criteria drive the real chain
+!       read_input -> sysdef_load -> roster_load:
+!       (o1) surface folder + both keys -> the values land in roster%a_lat /
+!            roster%box_pad (the registered slot path: config carries no relay
+!            field, the values stay in the input staging and roster_load pulls
+!            them through the staging accessors - the S2-shaped transfer),
+!            surface_model = 1, the A_LAT row tagged block two
+!       (o2) surface folder + A_LAT removed -> loud-stop (child) naming
+!            roster_load and the missing required key A_LAT
+!       (o3) surface folder + BOXPAD removed -> loud-stop (child) naming
+!            roster_load and BOXPAD
+!       (o4)/(o5) molecular folder + A_LAT / BOXPAD present -> loud-stop
+!            (child) naming roster_load and the paradigm conflict (the
+!            molecular paradigm has no surface window)
+!       (o6)/(o7) non-positive A_LAT / BOXPAD -> loud-stop (child) at
+!            read_input naming key + line (the positive-real value domain)
+!   (p) slot-width column (every char key registers its value-slot width = the
+!       target field's width): the four families TITLE wider than 80,
+!       ELEC_METHOD wider than 32, SYSTEM_DIR wider than 128, OBSERVABLES wider
+!       than 256 -> loud-stop (child) naming key + line + the actual width
+!       (silent truncation closed; PES_MAIN shares the 32 family)
 ! Sweep-along note: the map_slots key-kind select's case-default guard
 !       (the stale-ok leak fix, fourth site of the family) is UNREACHABLE
 !       from any input file - every key in the table carries kind 1..7, so
@@ -85,6 +114,8 @@ program check_input
                       staging_line, staging_val
    use control, only: task, n_traj, title, i_seed, max_steps
    use config,  only: propagator, electronic, reactants, observables
+   use sysdef_facade, only: sysdef_load
+   use config_roster, only: roster, roster_load
    implicit none
    integer :: nfail = 0, nfail0, i, k, nrows
    character(len=32) :: mode
@@ -94,15 +125,25 @@ program check_input
    character(len=16) :: mkey(30), mval(30)
 
    ! ---------- child dispatch: one bad case per spawn, must loud-stop ----------
-   ! bad-file naming convention: build/input_case_<mode>.txt (bad-nofile excepted)
+   ! bad-file naming convention: build/input_case_<mode>.txt (bad-nofile excepted);
+   ! the w-surf-/w-mol- prefixed modes drive the full window chain (the paradigm
+   ! condition lives at assembly time, so the child continues into roster_load)
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       if (trim(mode) == 'bad-nofile') then
          call read_input('build/input_no_such_file.txt')
+      else if (index(trim(mode), 'w-surf-') == 1) then
+         call read_input('build/input_case_'//trim(mode)//'.txt')
+         call sysdef_load('build/window_surf')
+         call roster_load()
+      else if (index(trim(mode), 'w-mol-') == 1) then
+         call read_input('build/input_case_'//trim(mode)//'.txt')
+         call sysdef_load('build/window_mol')
+         call roster_load()
       else
          call read_input('build/input_case_'//trim(mode)//'.txt')
       end if
-      print '(a)', 'child: NO LOUD-STOP (read_input returned - bug)'
+      print '(a)', 'child: NO LOUD-STOP (the child chain returned - bug)'
       stop 0
    end if
 
@@ -235,6 +276,52 @@ program check_input
       'R_SEP = 8.0', &
       'DT = 0.01', &
       'DIST_SCHEME = thermostat, glo_target, thermalize' ])
+   ! (o) window-chain folders (dedicated names - the sysdef_case_* folders belong
+   ! to check_sysdef's samples): a molecular window (single .xyz, no cell) and a
+   ! surface window (a slab POSCAR carrying the cell) - the paradigm is DERIVED
+   ! from the cell's presence, so the two folders are the two paradigms
+   call make_dir('build/window_mol')
+   call write_sample('build/window_mol/probe.xyz', [ character(len=64) :: &
+      '1', 'window molecular sample', 'Ar 0.00 0.00 0.00' ])
+   call make_dir('build/window_surf')
+   call write_sample('build/window_surf/slab.poscar', [ character(len=64) :: &
+      'window surface sample', '1.0', &
+      '2.9 0.0 0.0', '0.0 2.9 0.0', '0.0 0.0 18.6', &
+      'Au', '1', 'Direct', '0.00 0.00 0.10' ])
+   ! (o1) surface window: the six required keys + both window keys
+   call write_sample('build/input_case_surfwin.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/window_surf', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann', &
+      'A_LAT = 3.25', 'BOXPAD = 5.5' ])
+   ! (o2)/(o3) surface window with one window key removed each time
+   call write_sample('build/input_case_w-surf-noalat.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/window_surf', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann', 'BOXPAD = 5.5' ])
+   call write_sample('build/input_case_w-surf-nopad.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/window_surf', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann', 'A_LAT = 3.25' ])
+   ! (o4)/(o5) molecular window with one window key present each time
+   call write_sample('build/input_case_w-mol-alat.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/window_mol', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann', 'A_LAT = 3.25' ])
+   call write_sample('build/input_case_w-mol-bpad.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/window_mol', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann', 'BOXPAD = 5.5' ])
+   ! (o6)/(o7) non-positive window values (value-domain loud-stop at read_input)
+   call write_case('v-alat', 'A_LAT = -3.0')
+   call write_case('v-bpad', 'BOXPAD = 0.0')
+   ! (p) slot-width families: the offending key at line 1 with a value w
+   ! characters wide, its minimal-six row replaced (a duplicate required key
+   ! would loud-stop first and mask the width stop)
+   call write_width_case('w-title', 'TITLE',       81)
+   call write_width_case('w-meth', 'ELEC_METHOD',  33)
+   call write_width_case('w-sysd', 'SYSTEM_DIR',  129)
+   call write_width_case('w-obs',  'OBSERVABLES', 257)
 
    ! ---------- bad sample files (one per child loud-stop case) ----------
    ! (e) one required key removed each time
@@ -453,6 +540,39 @@ program check_input
       nfail = nfail + 1
    end if
 
+   ! ---------- (o1) surface window chain: input -> sysdef -> roster ----------
+   nfail0 = nfail
+   call read_input('build/input_case_surfwin.txt')
+   call sysdef_load('build/window_surf')
+   call roster_load()
+   k = staged_row('A_LAT')
+   if (roster%a_lat /= 3.25d0 .or. roster%box_pad /= 5.5d0 .or. &
+       reactants%surface_model /= 1 .or. k == 0 .or. staging_block(k) /= 2) then
+      print '(a)', 'FAIL (o1) surface window chain: the window scalars did not land in the roster'
+      nfail = nfail + 1
+   else
+      print '(a)', '(o1) surface window chain: PASS (A_LAT=3.25/BOXPAD=5.5 pulled by '// &
+         'roster_load from the staging; surface_model=1, rows tagged block two)'
+   end if
+
+   ! ---------- (o2)-(o7) window loud-stops (children) ----------
+   call expect_loudstop_at('roster_load', 'w-surf-noalat', 'A_LAT', 'missing', &
+        '(o2) surface window missing A_LAT loud-stop (required under the surface paradigm)')
+   call expect_loudstop_at('roster_load', 'w-surf-nopad', 'BOXPAD', 'missing', &
+        '(o3) surface window missing BOXPAD loud-stop')
+   call expect_loudstop_at('roster_load', 'w-mol-alat', 'A_LAT', 'molecular paradigm', &
+        '(o4) molecular paradigm + A_LAT loud-stop (the window keys are surface-only)')
+   call expect_loudstop_at('roster_load', 'w-mol-bpad', 'BOXPAD', 'molecular paradigm', &
+        '(o5) molecular paradigm + BOXPAD loud-stop')
+   call expect_loudstop('v-alat', 'A_LAT', 'line 1', '(o6) non-positive A_LAT loud-stop (value domain)')
+   call expect_loudstop('v-bpad', 'BOXPAD', 'line 1', '(o7) non-positive BOXPAD loud-stop (value domain)')
+
+   ! ---------- (p) slot-width families (children) ----------
+   call expect_loudstop('w-title', 'TITLE',       'width 81',  '(p1) TITLE over its 80-wide slot loud-stop')
+   call expect_loudstop('w-meth', 'ELEC_METHOD',  'width 33',  '(p2) ELEC_METHOD over its 32-wide slot loud-stop')
+   call expect_loudstop('w-sysd', 'SYSTEM_DIR',   'width 129', '(p3) SYSTEM_DIR over its 128-wide slot loud-stop')
+   call expect_loudstop('w-obs',  'OBSERVABLES',  'width 257', '(p4) OBSERVABLES over its 256-wide slot loud-stop')
+
    print '(a,i0,a)', '=== check_input: ', nfail, ' failure(s) ==='
    if (nfail > 0) stop 1
    stop 0
@@ -529,10 +649,18 @@ contains
    end subroutine write_sample
 
    ! spawn the child for one bad case and assert the loud-stop: nonzero exit,
-   ! stderr names read_input and carries the expected key / line-number needle
-   ! (an empty needle is skipped)
-   subroutine expect_loudstop(cmode, key, lineno, label)
-      character(len=*), intent(in) :: cmode, key, lineno, label
+   ! stderr names the authority (read_input) and carries the expected key /
+   ! extra needle (an empty needle is skipped)
+   subroutine expect_loudstop(cmode, key, needle, label)
+      character(len=*), intent(in) :: cmode, key, needle, label
+      call expect_loudstop_at('read_input', cmode, key, needle, label)
+   end subroutine expect_loudstop
+
+   ! the authority-parameterized form: the window criteria stop inside
+   ! roster_load (the paradigm condition is assembly-side), so the asserted
+   ! stderr authority is the assembly face, not read_input
+   subroutine expect_loudstop_at(who, cmode, key, needle, label)
+      character(len=*), intent(in) :: who, cmode, key, needle, label
       character(len=512) :: cmd, line
       character(len=1024) :: buf
       character(len=1) :: sep
@@ -559,19 +687,57 @@ contains
       if (stat == 0) then
          print '(a)', 'FAIL '//trim(label)//': expected a loud-stop, the child exited 0'
          nfail = nfail + 1
-      else if (index(buf, 'read_input') == 0) then
-         print '(a)', 'FAIL '//trim(label)//': stderr does not name read_input'
+      else if (index(buf, trim(who)) == 0) then
+         print '(a)', 'FAIL '//trim(label)//': stderr does not name '//trim(who)
          nfail = nfail + 1
       else if (len_trim(key) > 0 .and. index(buf, trim(key)) == 0) then
          print '(a)', 'FAIL '//trim(label)//': stderr missing the key "'//trim(key)//'"'
          nfail = nfail + 1
-      else if (len_trim(lineno) > 0 .and. index(buf, trim(lineno)) == 0) then
-         print '(a)', 'FAIL '//trim(label)//': stderr missing "'//trim(lineno)//'"'
+      else if (len_trim(needle) > 0 .and. index(buf, trim(needle)) == 0) then
+         print '(a)', 'FAIL '//trim(label)//': stderr missing "'//trim(needle)//'"'
          nfail = nfail + 1
       else
          print '(a)', trim(label)//': PASS ('//trim(buf)//')'
       end if
-   end subroutine expect_loudstop
+   end subroutine expect_loudstop_at
+
+   ! write one width-family bad case: the offending key at line 1 with a value w
+   ! characters wide, then the minimal six with the offending key's own row
+   ! replaced (a duplicate required key would loud-stop first and mask the stop
+   ! under test)
+   subroutine write_width_case(cmode, key, w)
+      character(len=*), intent(in) :: cmode, key
+      integer, intent(in) :: w
+      character(len=256) :: six(6), keep(6), fname
+      character(len=300) :: offend
+      integer :: n, m, v
+      offend = trim(key)//' = '//repeat('x', w)
+      six = [ character(len=256) :: 'SYSTEM_DIR = build/sysdef_case_mol', 'E_REL = 1.0', &
+             'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', 'DIST_SCHEME = boltzmann' ]
+      m = 0
+      do n = 1, 6
+         if (index(six(n), trim(key)//' =') == 1) cycle    ! its row is replaced
+         m = m + 1
+         keep(m) = six(n)
+      end do
+      fname = 'build/input_case_'//trim(cmode)//'.txt'
+      open (newunit=v, file=fname, status='replace', action='write')
+      write (v, '(a)') trim(offend)
+      do n = 1, m
+         write (v, '(a)') trim(keep(n))
+      end do
+      close (v)
+   end subroutine write_width_case
+
+   ! make one sample folder (idempotent - a second run tolerates its own leftovers)
+   subroutine make_dir(path)
+      character(len=*), intent(in) :: path
+      if (windows_host()) then
+         call execute_command_line('mkdir "'//trim(path)//'" 2>nul', wait=.true.)
+      else
+         call execute_command_line('mkdir -p "'//trim(path)//'" 2>/dev/null', wait=.true.)
+      end if
+   end subroutine make_dir
 
    ! Windows-host probe (same runtime OS branch check_sysdef uses for redirects)
    logical function windows_host()

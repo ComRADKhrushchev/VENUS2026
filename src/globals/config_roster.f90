@@ -16,6 +16,7 @@ module config_roster
    use sysdef_facade, only: staging_loaded, staging_frag_count, staging_frag_nat, &
                             staging_atom_symbols, staging_atom_masses, staging_atom_geometry, &
                             staging_cell_present, staging_unit_cell
+   use input, only: staging_n_rows, staging_key, staging_val
    implicit none
    private
    public :: roster_t, frag_t, roster, roster_load, roster_clear
@@ -54,10 +55,12 @@ module config_roster
       real(8) :: box_ly = 0.0d0                ! unit-cell y edge length [Å] (old BOXLY)
       real(8) :: box_pad = 2.0d0               ! half-width of the random cluster drop box [Å]
       ! (old RND_BOX, venus_input.f90:307)
+      ! input-owned through the BOXPAD key (a surface-window key - written only by
+      ! the roster_load step-6 reconcile, its single write site)
       real(8) :: a_lat = 0.0d0                ! surface lattice constant [Å] (system parameter - no
       ! generic default: the old-library Au value 2.94998 from venus_data.f90:585 is a system bias and
-      ! is not carried over; surface paradigms must supply it via input/container - roster_load
-      ! validation intercepts a missing value)
+      ! is not carried over; surface paradigms must supply the A_LAT input key - the
+      ! roster_load window reconcile intercepts a missing value and is its only write site)
       ! Left blank (content, not form - E15 settled the form): what the surface-paradigm fragment
       ! rows carry beyond the homogeneous shape (the old fragment-B table held the four surface
       ! unit-cell atoms, venus_input.f90:743-766) -
@@ -108,14 +111,21 @@ contains
    !      in-plane vector is a degenerate cell -> loud-stop (old :74-79 statute); no cell
    !      staged -> the box scalars stay at their defaults
    !   5. validation (D4) on the assembled table: per fragment nat <= atom count, list
-   !      indices in range, all masses positive, surface paradigm with a_lat <= 0 ->
-   !      loud-stop naming the missing lattice constant (a system parameter with no
-   !      generic default - the 2026-09-08 audit removed the old-library Au bias 2.94998)
+   !      indices in range, all masses positive
+   !   6. surface-window reconcile: the paradigm condition of the A_LAT/BOXPAD input
+   !      keys executes HERE - assembly time, the sampler count-check precedent (the
+   !      input layer holds no system knowledge, E12). Molecular paradigm: neither
+   !      window key may be staged (loud-stop naming the key - the molecular paradigm
+   !      has no surface window). Surface paradigm: both keys are required (E23 - no
+   !      generic default exists for a lattice constant) and their staged values are
+   !      pulled into roster%a_lat/box_pad
    ! Ownership note: roster_load re-fills only the DERIVED members (mass/symb/frag/q0/
-   ! skew/box_lx/box_ly); a_lat and box_pad are input-owned but C4 has NO input key for
-   ! them (the C4.4 key table carries neither A_LAT nor BOXPAD) - they arrive with the
-   ! C5 surface-window keys (A_LAT/BOXPAD) and are carried through untouched here until
-   ! then; a_lat is validated in step 5, never written
+   ! skew/box_lx/box_ly); a_lat and box_pad are input-owned window scalars - config
+   ! carries no relay field for them, so the keys' values land in the INPUT STAGING
+   ! and step 6 pulls them through the input staging accessors (the S2-shaped one-way
+   ! transfer - the registered slot path). reset_derived zeroes both ahead of the
+   ! pull, so every roster_load re-derives them from the staging of the input
+   ! actually loaded - no cross-load leak
    ! Phase-C blanks (field notes, not fill): the rigid-surface huge-mass fixing (~1d30,
    ! old :752) and the surface-row extra content - the staging API records the cell as a
    ! single system-level fact without per-fragment provenance, so which rows are surface
@@ -228,11 +238,10 @@ contains
             call stop_assembly(trim(msg))
          end if
       end do
-      if (reactants%surface_model /= 0 .and. roster%a_lat <= 0.0d0) then
-         call stop_assembly('surface paradigm (surface_model=1) is missing the surface lattice '// &
-                            'constant (a_lat <= 0) - a system parameter with no generic default; '// &
-                            'supply it via input')
-      end if
+
+      ! 6. surface-window reconcile (the paradigm condition of A_LAT/BOXPAD - the
+      !    single write site of the window scalars; see the ownership note above)
+      call window_reconcile()
    end subroutine roster_load
 
    !------------------------------------------------------------------
@@ -259,8 +268,9 @@ contains
    !------------------------------------------------------------------
 
    ! reset_derived() - drop only the DERIVED members ahead of a re-fill (roster_load's
-   ! internal reset; the input-owned scalars a_lat/box_pad are NOT touched here - the
-   ! full reset including them is roster_clear, the public entry)
+   ! internal reset); the window scalars a_lat/box_pad reset to their generic defaults
+   ! here too - step 6 re-pulls them from the input staging of the load actually
+   ! running, so a re-load cannot inherit the previous load's window values
    subroutine reset_derived()
       if (allocated(roster%mass)) deallocate (roster%mass)
       if (allocated(roster%symb)) deallocate (roster%symb)
@@ -269,7 +279,69 @@ contains
       roster%skew = 0.0d0
       roster%box_lx = 0.0d0
       roster%box_ly = 0.0d0
+      roster%box_pad = 2.0d0
+      roster%a_lat = 0.0d0
    end subroutine reset_derived
+
+   ! window_reconcile() - roster_load step 6: the surface-window key reconcile (the
+   ! paradigm condition of A_LAT/BOXPAD, executed at assembly time - the sampler
+   ! count-check precedent; the input layer holds no system knowledge, E12).
+   ! Molecular paradigm: neither key may appear. Surface paradigm: both required,
+   ! staged values pulled into the roster - the single write site of the window
+   ! scalars (the S2-shaped one-way transfer: input stages, the roster pulls)
+   subroutine window_reconcile()
+      integer :: k
+      real(8) :: v
+      character(len=512) :: sval    ! staging-value buffer (an internal read needs a
+                                    ! variable, not an accessor call, as its unit)
+      if (reactants%surface_model == 0) then
+         if (user_row('A_LAT') > 0) then
+            call stop_assembly('key A_LAT is a surface-paradigm key, but this system derived '// &
+                               'the molecular paradigm (surface_model = 0) - the molecular '// &
+                               'paradigm carries no surface lattice constant')
+         end if
+         if (user_row('BOXPAD') > 0) then
+            call stop_assembly('key BOXPAD is a surface-paradigm key, but this system derived '// &
+                               'the molecular paradigm (surface_model = 0) - the molecular '// &
+                               'paradigm has no periodic-box fill half-width')
+         end if
+         return
+      end if
+      k = user_row('A_LAT')
+      if (k == 0) then
+         call stop_assembly('surface paradigm (surface_model = 1) is missing the required key '// &
+                            'A_LAT - the surface lattice constant has no generic default; '// &
+                            'supply it in the input')
+      end if
+      sval = staging_val(k)
+      read (sval, *) v
+      roster%a_lat = v
+      k = user_row('BOXPAD')
+      if (k == 0) then
+         call stop_assembly('surface paradigm (surface_model = 1) is missing the required key '// &
+                            'BOXPAD - the periodic-box fill half-width is required alongside '// &
+                            'A_LAT; supply it in the input')
+      end if
+      sval = staging_val(k)
+      read (sval, *) v
+      roster%box_pad = v
+   end subroutine window_reconcile
+
+   ! user_row(key) - staging row of an input key the USER wrote (0 = absent). For
+   ! the conditional window keys any staged row is a user row: the input layer
+   ! never injects a default for them (cond flag), so presence here is presence
+   ! in the user's file
+   integer function user_row(key)
+      character(len=*), intent(in) :: key
+      integer :: i
+      user_row = 0
+      do i = 1, staging_n_rows()
+         if (trim(staging_key(i)) == trim(key)) then
+            user_row = i
+            return
+         end if
+      end do
+   end function user_row
 
    ! stop_assembly(msg) - the loud-stop channel (same semantics as sysdef_facade C4.2:
    ! name the caller, print the named message, STOP 1)

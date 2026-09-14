@@ -4,9 +4,11 @@
 !                            program executes them)
 ! Compile (from src/; modules in use-order first, -Jbuild keeps the .mod
 ! files out of the source tree):
-!   gfortran -Jbuild globals/consts.f90 globals/config.f90 utils/specio.f90 &
-!            facade/sysdef_facade.f90 globals/config_roster.f90 globals/state.f90 &
-!            utils/rng.f90 utils/linalg.f90 facade/sampler.f90 methods/dist_rotation.f90 &
+!   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
+!            utils/specio.f90 facade/sysdef_facade.f90 input.f90 &
+!            globals/config_roster.f90 globals/state.f90 &
+!            utils/rng.f90 utils/linalg.f90 utils/geometry.f90 facade/sampler.f90 &
+!            methods/dist_rotation.f90 &
 !            ../scripts/check_dist_rotation.f90 -o build/check_dist_rotation.exe
 ! All artifacts are written under build/ - the source tree stays clean.
 ! Synthetic-parameter statute: the member is driven by directly

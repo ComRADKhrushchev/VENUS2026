@@ -2,9 +2,11 @@
 ! check_roster.f90 - C4.3 acceptance criteria program (criteria defined FIRST in
 !                    docs/plans/C4.md; this program executes them)
 ! Compile (from src/; modules in use-order first, -Jbuild keeps the .mod files out
-! of the source tree):
-!   gfortran -Jbuild globals/config.f90 utils/specio.f90 facade/sysdef_facade.f90 &
-!            globals/config_roster.f90 ../scripts/check_roster.f90 -o build/check_roster.exe
+! of the source tree; control/input enter because the window keys travel the real
+! input route - read_input stages them, roster_load pulls them):
+!   gfortran -Jbuild globals/control.f90 globals/config.f90 utils/specio.f90 &
+!            facade/sysdef_facade.f90 input.f90 globals/config_roster.f90 &
+!            ../scripts/check_roster.f90 -o build/check_roster.exe
 ! All sample folders/files are written under build/ - the source tree stays clean.
 ! Loud-stop verification approach (same scheme as check_sysdef): the loud-stop
 ! criteria (d)/(e)/(f) run as CHILD PROCESSES - the check re-spawns itself with a
@@ -35,32 +37,40 @@
 !       vector; no cell -> skew/box_lx/box_ly 0; box_pad 2.0; a_lat 0; size(frag)
 !       = reactants%n_frag; surface_model 0
 !   (b) end-to-end surface chain: skewed-cell POSCAR (a1=(4,0,0), a2=(1,3,0),
-!       Cartesian mode - see the sample note below) + probe.xyz, roster%a_lat = 3
-!       preset BEFORE roster_load (the input route stands in - a_lat is input-owned,
-!       validated not derived) -> box_lx = 4, box_ly = sqrt(10),
+!       Cartesian mode - see the sample note below) + probe.xyz; the input route
+!       supplies the window keys (read_input stages A_LAT = 3.0 / BOXPAD = 2.5,
+!       roster_load pulls them - input-owned, validated not derived) ->
+!       box_lx = 4, box_ly = sqrt(10),
 !       skew = acos(1/sqrt(10)) exactly (law of cosines on the staged cell vectors);
-!       a_lat carried through untouched (3.0); slab rows before probe (name order:
-!       a_slab < probe)
+!       a_lat = 3.0 and box_pad = 2.5 landed from the staged input; slab rows
+!       before probe (name order: a_slab < probe)
 !   (c) D4 invariants positive-path: on BOTH assembled rosters every fragment
 !       nat <= atom count, every list index within 1..n_atoms, all masses positive
+!       (the molecular re-load here re-reads the MOLECULAR input first - the input
+!       staging persists module-side and must not carry the surface window rows
+!       into a molecular load)
 !   (d) guard loud-stop (child): roster_load with no prior sysdef_load -> nonzero
 !       exit, stderr names roster_load and the assembly-order error
-!   (e) D4 a_lat loud-stop (child): surface folder loaded clean, a_lat left at its
-!       default 0 -> nonzero exit, stderr names roster_load and the missing
-!       surface lattice constant (E12 ruling text: no generic default)
+!   (e) missing window key loud-stop (child): surface folder loaded clean, no
+!       A_LAT staged -> nonzero exit, stderr names roster_load and the missing
+!       required key A_LAT (a system parameter with no generic default)
 !   (f) degenerate-cell loud-stop (child): POSCAR with a zero in-plane lattice
 !       vector -> nonzero exit, stderr names roster_load and the degenerate cell
 !       (old SURF.f:74-79 statute)
 !   (g) roster_clear + re-load: clear deallocates every member and resets every
 !       scalar to its default (skew/box_lx/box_ly/a_lat 0, box_pad 2.0); a
-!       molecular re-load after the surface load leaves exactly the molecular
-!       roster - no cross-load leakage
+!       molecular re-load (its own input re-read first - same staging-persistence
+!       statute as (c)) after the surface load leaves exactly the molecular
+!       roster - no cross-load leakage (the window scalars included: the surface
+!       load left a_lat 3.0/box_pad 2.5, the molecular re-load must return them
+!       to 0/2.0)
 !=====================================================================
 program check_roster
    use config_roster, only: roster, roster_load, roster_clear
    use sysdef_facade, only: sysdef_load
    use config, only: reactants
    use specio, only: elem_mass
+   use input, only: read_input
    implicit none
    integer :: nfail = 0, nfail0
    character(len=256) :: mode
@@ -118,6 +128,19 @@ program check_roster
       'check_roster degenerate-cell sample', '1.0', &
       '0.0 0.0 0.0', '0.0 2.0 0.0', '0.0 0.0 2.0', &
       'Si', '1', 'Direct', '0.00 0.00 0.00' ])
+   ! (b) surface-window input: the six required keys + both window keys (the
+   ! values the surface chain must land in the roster)
+   call write_sample('build/roster_case_surf_input.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/roster_case_surf', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann', &
+      'A_LAT = 3.0', 'BOXPAD = 2.5' ])
+   ! the molecular-window input: the six required keys only (the molecular
+   ! paradigm admits no window keys)
+   call write_sample('build/roster_case_mol_input.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/roster_case_mol', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann' ])
 
    ! ---------- (a) end-to-end molecular chain ----------
    nfail0 = nfail
@@ -134,8 +157,8 @@ program check_roster
 
    ! ---------- (b) end-to-end surface chain ----------
    nfail0 = nfail
+   call read_input('build/roster_case_surf_input.txt')   ! the real input route stages the window keys
    call sysdef_load('build/roster_case_surf')
-   roster%a_lat = 3.0d0            ! the input route stands in (a_lat input-owned)
    call roster_load()
    dev = -1.0d0
    if (allocated(roster%q0)) dev = maxval(abs(roster%q0 - wq0_surf))
@@ -152,6 +175,7 @@ program check_roster
       print '(a)', 'FAIL (c): D4 invariants violated on the assembled surface roster'
       nfail = nfail + 1
    end if
+   call read_input('build/roster_case_mol_input.txt')   ! staging re-read: the surface window rows must not survive
    call sysdef_load('build/roster_case_mol')
    call roster_load()
    if (.not. d4_invariants_hold()) then
@@ -164,8 +188,8 @@ program check_roster
    ! ---------- (d)-(f) loud-stop criteria (child processes) ----------
    call expect_loudstop('c-guard', 'sysdef_load must run first', 'roster_load', &
                         '(d) no-staging guard loud-stop')
-   call expect_loudstop('c-alat',  'lattice constant', 'roster_load', &
-                        '(e) missing-a_lat loud-stop (D4)')
+   call expect_loudstop('c-alat',  'A_LAT', 'roster_load', &
+                        '(e) missing-A_LAT loud-stop (the required window key)')
    call expect_loudstop('c-degen', 'degenerate unit cell', 'roster_load', &
                         '(f) degenerate-cell loud-stop')
 
@@ -179,6 +203,7 @@ program check_roster
       print '(a)', 'FAIL (g) roster_clear: members not deallocated / scalars not reset'
       nfail = nfail + 1
    end if
+   call read_input('build/roster_case_mol_input.txt')   ! staging re-read (same statute as (c))
    call sysdef_load('build/roster_case_mol')
    call roster_load()
    dev = -1.0d0
@@ -239,7 +264,7 @@ contains
       if (.not. equal_reals(roster%frag(1)%qz, [2.0d0,0.0d0,0.0d0,0.5d0,1.5d0,0.0d0])) return
       if (.not. equal_reals(roster%frag(2)%qz, [0.0d0,0.0d0,6.0d0])) return
       if (roster%box_lx /= w_lx .or. roster%box_ly /= w_ly .or. abs(roster%skew - w_skew) > 0.0d0) return
-      if (roster%a_lat /= 3.0d0) return      ! input-owned value carried through
+      if (roster%a_lat /= 3.0d0 .or. roster%box_pad /= 2.5d0) return   ! window keys pulled from the input staging
       surface_roster_ok = .true.
    end function surface_roster_ok
 

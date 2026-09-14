@@ -2,7 +2,8 @@
 ! dist_thermalize.f90 - distribution member (methods/ library): MD
 !              equilibration mechanism - Maxwell velocity seed of the
 !              owned components at the target temperature, exact drift
-!              removal (per-component owned-set mean subtracted), then a
+!              removal (the mass-weighted COM-velocity projection
+!              p'_i = p_i - (m_i/M)*P onto zero net momentum), then a
 !              bounded equilibration run of n_eq propagation steps at
 !              the member step size through the evolution service.
 ! Conservation algebra (the declaration this member carries):

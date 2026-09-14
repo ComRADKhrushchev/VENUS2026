@@ -31,8 +31,10 @@
 !   E14 generalization: container-defined material (composition / masses / geometry /
 !       unit cell / surface paradigm - sysdef material) is NOT part of the grammar.
 !   E12 reverse stance: the input layer holds ZERO system knowledge - the required/
-!       default split follows system-independence only; the sole value-domain check is
-!       the formal GWRITE_LEVEL recording-level set {0,1,2,5}.
+!       default split follows system-independence only; the value-domain checks are
+!       purely formal (the GWRITE_LEVEL recording-level set {0,1,2,5}; the
+!       positive-real domain of the surface-window keys below; the slot-width
+!       column - all form, no system semantics).
 !   i_seed: rng_init eats a SCALAR decimal seed (src/utils/rng.f90) - the 8-word
 !       base-256 conversion lives rng-side, so the scalar is stored directly into
 !       control%i_seed(1) (words 2-8 stay zero; the field's (8) shape is the rng-side
@@ -44,6 +46,20 @@
 !       staged values are delivered to the owning member's init by the assembly
 !       wiring (read_input itself carries no member knowledge, E12) - here the
 !       grammar layer only admits, stages and rejects empty values.
+!   Surface-window keys (E23): A_LAT/BOXPAD are paradigm-CONDITIONAL block-two
+!       keys - required-and-legal only under the derived surface paradigm. The
+!       grammar side carries no paradigm knowledge (E12): the keys stage like
+!       member keys (no default injection, no unconditional requirement - the
+!       cond flag; any staged row is a user row), the value domain is the formal
+!       positive reals (kind_posreal), and the paradigm condition itself executes
+!       at ASSEMBLY time in roster_load (the sampler count-check precedent), which
+!       pulls the staged values through the staging accessors - the S2-shaped
+!       one-way transfer (config carries no relay field for these slots).
+!   Slot-width column: every character key registers its value-slot width (= the
+!       target field's width); an over-wide value loud-stops at slot mapping
+!       naming key + line + actual width - the assignment-time silent truncation
+!       of the four char-slot families is closed (TITLE 80 / ELEC_METHOD+PES_MAIN
+!       32 / SYSTEM_DIR 128 / OBSERVABLES 256).
 !=====================================================================
 module input
    use control, only: task, n_traj, title, i_seed, max_steps
@@ -70,6 +86,8 @@ module input
    integer, parameter :: kind_level = 5    ! integer restricted to {0,1,2,5}
    integer, parameter :: kind_enum = 6     ! registry word -> internal code (scalar)
    integer, parameter :: kind_elist = 7    ! comma list of registry words -> code array
+   integer, parameter :: kind_posreal = 8  ! positive real scalar (formal domain: parses as a
+                                           ! real AND is > 0 - the surface-window lengths)
 
    ! enumeration families (which registry a kind_enum/kind_elist key maps through)
    integer, parameter :: enum_none = 0, enum_task = 1, enum_integ = 2, enum_dist = 3
@@ -88,7 +106,13 @@ module input
    ! Key registry: the first-version key set, block one first (the whole grammar in
    ! one table - a new key is one row, the framework does not change). def = the
    ! Ruling-D per-key default (injected when the user has not set the key);
-   ! required = no system-independent default exists (the row's def stays unused)
+   ! required = no system-independent default exists (the row's def stays unused);
+   ! slotw = the value-slot width (= the target field's width - an over-wide value
+   ! loud-stops at slot mapping instead of silently truncating; 0 = no fixed slot);
+   ! cond = paradigm-conditional key (E23 surface window): never default-injected,
+   ! never unconditionally required - required-and-legal only under the derived
+   ! surface paradigm, the condition evaluated at assembly time (the value stays
+   ! staged for the assembly-time pull)
    type :: key_spec_t
       character(len=key_len) :: name = ''
       integer :: blk = 0
@@ -96,6 +120,8 @@ module input
       integer :: enum_id = enum_none
       logical :: required = .false.
       character(len=val_len) :: def = ''
+      integer :: slotw = 0
+      logical :: cond = .false.
    end type key_spec_t
 
    type :: enum_row_t
@@ -103,28 +129,30 @@ module input
       integer :: code = 0
    end type enum_row_t
 
-   type(key_spec_t), parameter :: key_tab(21) = [ &
+   type(key_spec_t), parameter :: key_tab(23) = [ &
       key_spec_t('TASK',         blk_flow,   kind_enum,  enum_task,  .false., 'TRAJECTORY'), &
       key_spec_t('N_TRAJ',       blk_flow,   kind_int,   enum_none,  .false., '1'), &
-      key_spec_t('TITLE',        blk_flow,   kind_char,  enum_none,  .false., ''), &
+      key_spec_t('TITLE',        blk_flow,   kind_char,  enum_none,  .false., '', slotw=80), &
       key_spec_t('ISEED',        blk_flow,   kind_int,   enum_none,  .false., '1'), &
       key_spec_t('MAX_STEPS',    blk_flow,   kind_int,   enum_none,  .false., '100000'), &
       key_spec_t('INTEGRATOR',   blk_flow,   kind_enum,  enum_integ, .false., 'VERLET'), &
       key_spec_t('DT',           blk_flow,   kind_real,  enum_none,  .true.,  ''), &
       key_spec_t('ORDER',        blk_flow,   kind_int,   enum_none,  .false., '1'), &
-      key_spec_t('ELEC_METHOD',  blk_flow,   kind_char,  enum_none,  .false., 'ADIABATIC'), &
+      key_spec_t('ELEC_METHOD',  blk_flow,   kind_char,  enum_none,  .false., 'ADIABATIC', slotw=32), &
       key_spec_t('N_SURF',       blk_flow,   kind_int,   enum_none,  .false., '0'), &
-      key_spec_t('PES_MAIN',     blk_flow,   kind_char,  enum_none,  .false., '1'), &
+      key_spec_t('PES_MAIN',     blk_flow,   kind_char,  enum_none,  .false., '1', slotw=32), &
       key_spec_t('GWRITE_LEVEL', blk_flow,   kind_level, enum_none,  .false., '1'), &
-      key_spec_t('OBSERVABLES',  blk_flow,   kind_char,  enum_none,  .false., ''), &
+      key_spec_t('OBSERVABLES',  blk_flow,   kind_char,  enum_none,  .false., '', slotw=256), &
       key_spec_t('E_KIN',        blk_flow,   kind_log,   enum_none,  .false., 'F'), &
       key_spec_t('E_POT',        blk_flow,   kind_log,   enum_none,  .false., 'F'), &
       key_spec_t('E_TOT',        blk_flow,   kind_log,   enum_none,  .false., 'F'), &
-      key_spec_t('SYSTEM_DIR',   blk_system, kind_char,  enum_none,  .true.,  ''), &
+      key_spec_t('SYSTEM_DIR',   blk_system, kind_char,  enum_none,  .true.,  '', slotw=128), &
       key_spec_t('E_REL',        blk_system, kind_real,  enum_none,  .true.,  ''), &
       key_spec_t('B_MAX',        blk_system, kind_real,  enum_none,  .true.,  ''), &
       key_spec_t('R_SEP',        blk_system, kind_real,  enum_none,  .true.,  ''), &
-      key_spec_t('DIST_SCHEME',  blk_system, kind_elist, enum_dist,  .true.,  '') ]
+      key_spec_t('DIST_SCHEME',  blk_system, kind_elist, enum_dist,  .true.,  ''), &
+      key_spec_t('A_LAT',        blk_system, kind_posreal, enum_none, .false., '', cond=.true.), &
+      key_spec_t('BOXPAD',       blk_system, kind_posreal, enum_none, .false., '', cond=.true.) ]
 
    ! Enumeration registries (param_mapping precedent, table-driven). Codes:
    !   task  - 1 = TRAJECTORY (the one task this program runs; other task words arrive
@@ -414,6 +442,8 @@ contains
       integer :: r
       do r = 1, size(key_tab)
          if (key_tab(r)%required) cycle
+         if (key_tab(r)%cond) cycle     ! E23 conditional keys never inject: no generic default
+                                       ! exists (a staged row is always a user row)
          if (staged_index(trim(key_tab(r)%name)) > 0) cycle
          ! capacity guard (defensive, the phase's fail-safe stance): unreachable while
          ! the user table holds fewer rows than the registry (a full user table has no
@@ -457,6 +487,8 @@ contains
          ! guaranteed staged: required keys were checked, per-key defaults injected (the
          ! guard is fail-safe against a future key-table row flipping the flags wrongly)
          if (k == 0) then
+            if (sp%cond) cycle    ! conditional key absent: nothing to map - the
+                                  ! paradigm condition is assembly-side (E12)
             ok = .false.
             errmsg = 'internal: key '//trim(sp%name)//' neither user-set nor defaulted'
             return
@@ -478,12 +510,24 @@ contains
             call parse_enum(sp, sval, ln, ival, ok, errmsg)
          case (kind_elist)
             call parse_elist(sp, sval, ln, ivec, ok, errmsg)
+         case (kind_posreal)
+            call parse_posreal(sp, sval, ln, rval, ok, errmsg)
          case default
             ok = .false.                          ! stale-ok leak guard (family fourth site)
             errmsg = 'internal: unhandled key kind for '//trim(sp%name)
             return
          end select
          if (.not. ok) return
+         ! slot-width guard: the staged value must fit the target field's width - an
+         ! over-wide value loud-stops (key + line + actual width) instead of silently
+         ! truncating at the slot write below (the four char-slot families closed)
+         if (sp%slotw > 0 .and. len_trim(sval) > sp%slotw) then
+            ok = .false.
+            errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': value width '// &
+                     trim(i2s(len_trim(sval)))//' exceeds its slot width '//trim(i2s(sp%slotw))// &
+                     ' (silent truncation closed - loud-stop)'
+            return
+         end if
          select case (trim(sp%name))
          case ('TASK')                                  ! block one: run control
             task = ival
@@ -533,6 +577,11 @@ contains
             allocate (reactants%dist_scheme(size(ivec)))
             reactants%dist_scheme = ivec                 ! per-fragment code array (E15; the
                                                          ! size-vs-n_frag reconcile is C5 wiring)
+         case ('A_LAT', 'BOXPAD')                        ! surface-window keys: no slot write
+            continue                                     ! here - config carries no relay field; the
+                                                         ! value stays staged and roster_load pulls it
+                                                         ! at assembly time (the registered S2-shaped
+                                                         ! transfer, paradigm condition included)
          case default
             ok = .false.
             errmsg = 'internal: unhandled key slot for '//trim(sp%name)
@@ -604,6 +653,24 @@ contains
       end if
       ok = .true.
    end subroutine parse_real
+
+   subroutine parse_posreal(sp, sval, ln, rval, ok, errmsg)
+      type(key_spec_t), intent(in) :: sp
+      character(len=*), intent(in) :: sval
+      integer, intent(in) :: ln
+      real(8), intent(out) :: rval
+      logical, intent(out) :: ok
+      character(len=*), intent(out) :: errmsg
+      call parse_real(sp, sval, ln, rval, ok, errmsg)
+      if (.not. ok) return
+      if (rval <= 0.0d0) then
+         ok = .false.
+         errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': value must be positive ("'// &
+                  trim(sval)//'" - the surface-window keys carry lengths)'
+         return
+      end if
+      ok = .true.
+   end subroutine parse_posreal
 
    subroutine parse_log(sp, sval, ln, lval, ok, errmsg)
       type(key_spec_t), intent(in) :: sp
