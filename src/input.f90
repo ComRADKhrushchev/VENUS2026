@@ -13,8 +13,11 @@
 !       spec §6), map_task :80-101, map_integrator
 !       :106-121+, map_init_sampling, map_old_nsurf - string enumerations -> integer codes,
 !       illegal values stop with the name printed);
-!       venus2026/presets.f90:33-100 (apply_preset: MODEL key -> five-preset dispatch,
-!       preset body = a set_default default-key table);
+!       venus2026/presets.f90:33-100 (apply_preset - WITHDRAWN by E22: the MODEL key and the
+!       five-preset framework are not ported; the preset bodies decompose into sysdef-derived
+!       paradigm / the C5 subdivision key / DIST_SCHEME / member parameters, generic defaults
+!       become per-key defaults; a stray MODEL is an unknown-key loud-stop. set_default itself
+!       survives only as the per-key default mechanism, input_parser.f90:489-502);
 !       venus2026/venus_input.f90:187-204 (loading + MODEL preset + old sequential grammar
 !       rejection site :200-204), :209-231 (TITLE x2 / ELEC_METHOD new keys and CALTYP old key
 !       dual-track fallback :214-222 / NATOMS / GWRITE_LEVEL), :248-256 (ATOM_MASSES mass
@@ -60,9 +63,11 @@ contains
       !    sequential grammar - read back as the old integer-keyword stream (old venus_input.f90:200-204
       !    hard-rejected instead; whether the new version falls back reading or prints a conversion note
       !    is a C4 decision - the skeleton provides the "detect + fallback slot" without hardwiring a policy)
-      ! 3. Preset expansion: MODEL key -> preset dispatch (five presets - gas phase / relaxed surface / rigid
-      !    surface / full surface / GLO surface); the preset body injects default keys (never overriding
-      !    user-set keys - set_default semantics, input_parser.f90:489-502; old presets.f90:33-100)
+      ! 3. Preset expansion WITHDRAWN (E22): the MODEL key and the five-preset framework are not ported
+      !    (the preset bodies decompose: paradigm <- sysdef derivation, rigid/relaxed/full/GLO <- the C5
+      !    subdivision key, sampling <- DIST_SCHEME, numeric defaults <- member parameters); generic
+      !    defaults are PER-KEY (set_default semantics, input_parser.f90:489-502 - never overriding
+      !    user-set keys); keys formerly backstopped by presets are required or per-key-defaulted
       ! 4. Enumeration mapping (mapping-table family idea - param_mapping.f90): string enumeration ->
       !    internal key, illegal values stop with the name printed - electron law -> electronic%method
       !    (a package-name string, E13; E14: the assembly key into the methods/ library registry -

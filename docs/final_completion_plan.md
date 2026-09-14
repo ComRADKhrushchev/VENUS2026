@@ -53,7 +53,14 @@ by a unit-test framework.
 2. Build with `make` (under venus2026/; on Windows run in Git Bash, linker path variable overrides see CLAUDE.md);
    flags `-r8 -double-size=64 -i8 -O2 -w`.
 3. Input accepts only the `KEYWORD=VALUE` grammar (input_parser); new keywords always go through the
-   param_mapping registry pattern; fallback to the old integer keywords is retained.
+   param_mapping registry pattern. [E21 2026-09-14: the former clause "fallback to the old integer
+   keywords is retained" is WITHDRAWN — the program is standalone; the grammar divides into two
+   logical blocks (computation control + scattering-system definition) and NOTHING already defined
+   in the container (composition/masses/geometry/cell/paradigm) is repeated in the input.]
+   [E22 2026-09-14: the MODEL key / five-preset framework is WITHDRAWN (K2.md E22) — the preset
+   bodies decompose into sysdef-derived paradigm / the C5 subdivision key / DIST_SCHEME / member
+   parameters; generic defaults become per-key defaults. A stray MODEL is an unknown-key
+   loud-stop.]
 4. No operator-class calls during the evolution phase (phase restriction, spec 2.5); preparation members internally
    calling evolution services is legal (boundary 4).
 5. Single random stream: the new program is single-stream from C1 onward (rng.f90, Knuth RAND0 family, ISEED
@@ -139,7 +146,7 @@ Phase C concretization (file by file; per file, outline first then expand after 
  historical — only the sequence changed. Execution order: C1 → C4 → C5 → C6 → C7 → C8
  → C2(interface) → V → S. sysdef_facade joins C4 (the assembly-chain data entry).]
    C1 L5 instruments: rng (single random stream) / linalg / geometry   ← DONE 2026-09-13 (bfc0289)
-   C4 recorder + config_roster + input grammar + sysdef   ← reference GWRITE/HIST/input_parser/param_mapping/presets/venus_input (stripping the violations listed in the audit)
+   C4 recorder + config_roster + input grammar + sysdef   ← reference GWRITE/HIST/input_parser/param_mapping/venus_input (presets NOT ported — E22; stripping the violations listed in the audit)
    C5 sampler + dist_* member table                       ← reference SELECT/THRMAN/INITEBK/SURF/…
    C6 propagator closed family (verlet/symple/radau)      ← reference VERLET/SYMPLE/RADAU (orchestration stripped)
    C7 driver assembly-chain concretization                ← reference VENUS.f90 three-phase orchestration (outcome classification is container-side since E19)
