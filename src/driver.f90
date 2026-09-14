@@ -143,8 +143,11 @@ program venus
    !    observable-vs-container contradictions loud-stop; the POTPRE-type member-init
    !    routines run container-side in its reg module - where larger ontic containers are
    !    reallocated, spec §4 allocation timing)
-   ! 8. rec_select(observables%rec_level) (or rec_select(observables%obs_list)
-   !    list entry) - recording column-group selection (registration precedes column selection)
+   ! 8. rec_select(observables%rec_level) first, then rec_select(observables%obs_list)
+   !    when the list key is non-empty - recording column-group selection (registration
+   !    precedes column selection); the two entries coexist with UNION semantics: the
+   !    level entry sets the preset column group and resets both section gates, the list
+   !    entry appends its named columns - the recorded set is the union of both entries
    ! 9. (E18: pred_parse withdrawn - termination is the container's own judgment, bound by
    !    its reg module's container_bind_term at step 6; E19: outcome_tbl parsing withdrawn
    !    likewise - classification is the container's container_bind_classify; no
