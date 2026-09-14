@@ -32,6 +32,9 @@
 !        knowledge (member = code + its own data; sta is the one runtime
 !        channel), and each member writes only the q/p/s components it
 !        owns.
+!   samp_code(name) - the scheme-code table row of a member word (0 =
+!     absent); the single source a member init consults for its fragment
+!     binding (which dist_scheme rows select it).
 !     5. incident channel ONCE, AFTER all fragment members - dispatched
 !        unless the system is single-fragment gas-phase (one fragment and
 !        surface_model = 0: a lone gas-phase molecule has no collision
@@ -49,7 +52,7 @@ module sampler
    use config_roster, only: roster
    implicit none
    private
-   public :: samp_reg, samp_run
+   public :: samp_reg, samp_run, samp_code
 
    ! Distribution member interface: members sample (q0,p0,s0) from their own
    ! distribution and write the components they own into the physical state
@@ -74,11 +77,30 @@ module sampler
    ! Scheme-code table: the integer codes of reactants%dist_scheme denote
    ! member names (the same words the input grammar accepts for DIST_SCHEME);
    ! a new member adds its grammar word together with its row here, next to
-   ! its registration line
-   integer, parameter :: n_scheme_code = 3
+   ! its registration line. The incident channel is NOT a per-fragment
+   ! scheme word: it is selected by the samp_run scheme argument, so it
+   ! carries no row here (its registration row in the member table above
+   ! stays - the scheme-argument lookup path uses it)
+   integer, parameter :: n_scheme_code = 2
    character(len=32), parameter :: scheme_code_name(n_scheme_code) = &
-      [ character(len=32) :: 'boltzmann', 'ebk', 'incident' ]
+      [ character(len=32) :: 'boltzmann', 'ebk' ]
 contains
+   !------------------------------------------------------------------
+   ! samp_code(name) - scheme-code table row of a member word (0 = absent):
+   !                   the single source a member init consults to find which
+   !                   dist_scheme rows select it (fragment binding)
+   pure integer function samp_code(name)
+      character(len=*), intent(in) :: name  ! member word (e.g. 'boltzmann')
+      integer :: i
+      samp_code = 0
+      do i = 1, n_scheme_code
+         if (trim(scheme_code_name(i)) == trim(name)) then
+            samp_code = i
+            exit
+         end if
+      end do
+   end function samp_code
+
    !------------------------------------------------------------------
    ! samp_reg(name, proc) - register a distribution member into the member table
    subroutine samp_reg(name, proc)

@@ -7,10 +7,10 @@
 !            ../scripts/check_input.f90 -o build/check_input.exe
 ! All sample input files are written under build/ - the source tree stays clean.
 ! Loud-stop verification approach (same scheme as check_sysdef): the loud-stop
-! criteria (e)/(f)/(g)/(h) run as CHILD PROCESSES - the check re-spawns itself
-! with a mode argument (execute_command_line); the child calls the REAL read_input
-! on a prepared bad file and must print a naming message on stderr and exit
-! nonzero. The parent asserts the exit status and the stderr content (the
+! criteria (e)/(f)/(g)/(h)/(k)/(l) run as CHILD PROCESSES - the check re-spawns
+! itself with a mode argument (execute_command_line); the child calls the REAL
+! read_input on a prepared bad file and must print a naming message on stderr and
+! exit nonzero. The parent asserts the exit status and the stderr content (the
 ! print+STOP behavior itself is verified, not a softened internal flag); a child
 ! that returns without stopping exits 0 and fails the criterion.
 ! Criteria (C4.md C4.4 step + task-4 brief Ruling D):
@@ -39,8 +39,9 @@
 !       turn -> loud-stop (child) naming the key
 !   (f) unknown keys - the standalone grammar has NO fallback track (E21/E22):
 !       MODEL (preset key withdrawn), old key names CALTYP/NACTA, withdrawn
-!       event keys TERMINATE/OUTCOME (E18/E19), member key TRV_A (dispatch
-!       table empty) -> loud-stop (child) naming key + line number
+!       event keys TERMINATE/OUTCOME (E18/E19), old member key TRV_A (no dispatch
+!       row carries it - the semantic member keys replace it) -> loud-stop
+!       (child) naming key + line number
 !   (g) bad values -> loud-stop (child) naming key + line: bad integer N_TRAJ,
 !       illegal enums TASK/INTEGRATOR/DIST_SCHEME, GWRITE_LEVEL outside {0,1,2,5},
 !       bad logical E_KIN, bad real DT
@@ -49,18 +50,31 @@
 !   (i) E21 two-block partition visible in the parse staging: after the (a) load
 !       every staged row carries its key-table block (16 block-one rows, 5
 !       block-two rows; line numbers of the source preserved)
+!   (j) member-key admission (the central dispatch table's rows): a file with
+!       all 11 member keys (T_VIB_A/T_VIB_B boltzmann; N_E_REL/T_TRANS/V_WIDTH/
+!       N_THTA/THTA_MAX/N_CHI/CHI/N_B/N_AIM incident) parses WITHOUT a stop -
+!       no longer unknown keys - and every key stages in block two with its
+!       value VERBATIM (the raw trimmed string: '350.0', '2', ...) and the
+!       source line number kept
+!   (k) Ruling F (the INCIDENT word withdrawal): DIST_SCHEME = incident ->
+!       illegal-value loud-stop (child) naming DIST_SCHEME (the incident
+!       channel is selected by the samp_run scheme argument, never by a
+!       per-fragment scheme row)
+!   (l) empty member-parameter value loud-stop (child): 'THTA_MAX =' with no
+!       value -> loud-stop naming THTA_MAX + line
 !=====================================================================
 program check_input
    use input,   only: read_input, staging_n_rows, staging_key, staging_block, &
-                      staging_line
+                      staging_line, staging_val
    use control, only: task, n_traj, title, i_seed, max_steps
    use config,  only: propagator, electronic, reactants, observables
    implicit none
-   integer :: nfail = 0, nfail0, i, nrows
+   integer :: nfail = 0, nfail0, i, k, nrows
    character(len=32) :: mode
    character(len=32) :: kname
    logical :: ok_arr, ok_part
    character(len=16) :: blk1(16), blk2(5)
+   character(len=16) :: mkey(11), mval(11)
 
    ! ---------- child dispatch: one bad case per spawn, must loud-stop ----------
    ! bad-file naming convention: build/input_case_<mode>.txt (bad-nofile excepted)
@@ -144,11 +158,30 @@ program check_input
       'B_MAX = 2.0', &
       'R_SEP = 8.0', &
       'DT = 0.02', &
-      'DIST_SCHEME = incident', &
+      'DIST_SCHEME = ebk', &
       'N_TRAJ = 7', &
       'INTEGRATOR = radau', &
       'ORDER = 6', &
       'ISEED = 42' ])
+   ! (j) the 11 dispatch-table member keys: minimal six + every member key
+   call write_sample('build/input_case_mkeys.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/sysdef_case_mol', &
+      'E_REL = 5.0', &
+      'B_MAX = 3.0', &
+      'R_SEP = 8.0', &
+      'DT = 0.01', &
+      'DIST_SCHEME = boltzmann', &
+      'T_VIB_A = 350.0', &
+      'T_VIB_B = 300.0', &
+      'N_E_REL = 2', &
+      'T_TRANS = 0.0', &
+      'V_WIDTH = 0.3', &
+      'N_THTA = 0', &
+      'THTA_MAX = 1.1', &
+      'N_CHI = 0', &
+      'CHI = 0.9', &
+      'N_B = 0', &
+      'N_AIM = 0' ])
 
    ! ---------- bad sample files (one per child loud-stop case) ----------
    ! (e) one required key removed each time
@@ -191,6 +224,13 @@ program check_input
    call write_sample('build/input_case_v-dt.txt', [ character(len=64) :: &
       'DT = fast', 'SYSTEM_DIR = build/sysdef_case_mol', 'E_REL = 1.0', 'B_MAX = 2.0', &
       'R_SEP = 8.0', 'DIST_SCHEME = boltzmann' ])
+   ! (k) Ruling F: DIST_SCHEME = incident is an ILLEGAL per-fragment scheme word
+   ! (offending line replaces the minimal copy - DIST_SCHEME is one of the six)
+   call write_sample('build/input_case_v-incid.txt', [ character(len=64) :: &
+      'DIST_SCHEME = incident', 'SYSTEM_DIR = build/sysdef_case_mol', 'E_REL = 1.0', &
+      'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01' ])
+   ! (l) a member key with an EMPTY value (line 1, then the minimal six)
+   call write_case('m-empty', 'THTA_MAX =')
 
    ! ---------- (a) full key sweep ----------
    call read_input('build/input_case_full.txt')
@@ -256,7 +296,7 @@ program check_input
    call read_input('build/input_case_over.txt')
    ok_arr = allocated(reactants%dist_scheme)
    if (ok_arr) ok_arr = size(reactants%dist_scheme) == 1 .and. &
-                        reactants%dist_scheme(1) == 3
+                        reactants%dist_scheme(1) == 2
    if (n_traj /= 7 .or. propagator%id /= 3 .or. propagator%order /= 6 .or. &
        i_seed(1) /= 42 .or. propagator%dt /= 0.02d0 .or. .not. ok_arr .or. &
        task /= 1 .or. max_steps /= 100000 .or. &
@@ -281,7 +321,7 @@ program check_input
    call expect_loudstop('u-nacta',     'NACTA',     'line 1', '(f3) old integer key NACTA intercepted (E21)')
    call expect_loudstop('u-terminate', 'TERMINATE', 'line 1', '(f4) withdrawn TERMINATE= stays out (E18)')
    call expect_loudstop('u-outcome',   'OUTCOME',   'line 1', '(f5) withdrawn OUTCOME= stays out (E19)')
-   call expect_loudstop('u-trv_a',     'TRV_A',     'line 1', '(f6) member key TRV_A intercepted (empty dispatch table)')
+   call expect_loudstop('u-trv_a',     'TRV_A',     'line 1', '(f6) old member key TRV_A intercepted (no dispatch row - semantic names)')
 
    ! ---------- (g) bad values (children) ----------
    call expect_loudstop('v-ntraj', 'N_TRAJ',       'line 1', '(g1) bad integer N_TRAJ')
@@ -296,11 +336,56 @@ program check_input
    call expect_loudstop('p-noeq',     'line 1',  '', '(h1) no-= line loud-stop (line number reported)')
    call expect_loudstop('bad-nofile', 'not found', '', '(h2) missing input file loud-stop')
 
+   ! ---------- (j) member-key admission (dispatch rows stage, verbatim) ----------
+   nfail0 = nfail
+   call read_input('build/input_case_mkeys.txt')
+   mkey = [ character(len=16) :: 'T_VIB_A', 'T_VIB_B', 'N_E_REL', 'T_TRANS', 'V_WIDTH', &
+            'N_THTA', 'THTA_MAX', 'N_CHI', 'CHI', 'N_B', 'N_AIM' ]
+   mval = [ character(len=16) :: '350.0', '300.0', '2', '0.0', '0.3', &
+            '0', '1.1', '0', '0.9', '0', '0' ]
+   ok_part = (staging_n_rows() == 32)      ! 17 user rows (six registry + eleven member
+                                            ! keys) + the 15 injected per-key defaults
+   do i = 1, size(mkey)
+      k = staged_row(trim(mkey(i)))
+      if (k == 0 .or. staging_block(k) /= 2 .or. trim(staging_val(k)) /= trim(mval(i))) then
+         ok_part = .false.
+         exit
+      end if
+   end do
+   k = staged_row('T_VIB_A')               ! line numbers preserved (line 7 of the file)
+   if (k == 0 .or. staging_line(k) /= 7) ok_part = .false.
+   if (ok_part) then
+      print '(a)', '(j) member-key admission: PASS (11 dispatch keys staged block two, values verbatim)'
+   else
+      print '(a)', 'FAIL (j) member-key admission: a member key missing, wrong block, or value altered'
+      nfail = nfail + 1
+   end if
+
+   ! ---------- (k)/(l) member-key loud-stops (children) ----------
+   call expect_loudstop('v-incid',  'DIST_SCHEME', 'line 1', &
+                        '(k) DIST_SCHEME=INCIDENT illegal value (Ruling F word withdrawal)')
+   call expect_loudstop('m-empty',  'THTA_MAX',    'line 1', &
+                        '(l) empty member-parameter value loud-stop')
+
    print '(a,i0,a)', '=== check_input: ', nfail, ' failure(s) ==='
    if (nfail > 0) stop 1
    stop 0
 
 contains
+
+   ! staged_row(key) - staging row index of a key (0 = not staged; a scan over the
+   ! public accessors, mirroring what the assembly wiring does to find member keys)
+   function staged_row(key) result(idx)
+      character(len=*), intent(in) :: key
+      integer :: idx, j
+      idx = 0
+      do j = 1, staging_n_rows()
+         if (trim(staging_key(j)) == trim(key)) then
+            idx = j
+            return
+         end if
+      end do
+   end function staged_row
 
    ! the slot assertions shared by (a) and (b): identical content, different syntax
    subroutine assert_full(label)

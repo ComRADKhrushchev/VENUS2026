@@ -37,10 +37,13 @@
 !       base-256 conversion lives rng-side, so the scalar is stored directly into
 !       control%i_seed(1) (words 2-8 stay zero; the field's (8) shape is the rng-side
 !       digit form).
-!   Member-parameter dispatch: the central table below is framework-only THIS round
-!       (empty - rows arrive with the members in C2(interface)/C5); an empty table
-!       means such keys (TRV_A ...) are intercepted as UNKNOWN keys at parse time -
-!       no silent swallowing.
+!   Member-parameter dispatch: the central table below carries the member keys
+!       admitted so far (the boltzmann temperatures and the incident mode/shape
+!       keys - semantic uppercase field names; the old TRV_A-style names stay
+!       unknown keys, E21 no-fallback). Member keys stage in block two; the
+!       staged values are delivered to the owning member's init by the assembly
+!       wiring (read_input itself carries no member knowledge, E12) - here the
+!       grammar layer only admits, stages and rejects empty values.
 !=====================================================================
 module input
    use control, only: task, n_traj, title, i_seed, max_steps
@@ -48,7 +51,7 @@ module input
    implicit none
    private
    public :: read_input
-   public :: staging_n_rows, staging_key, staging_block, staging_line
+   public :: staging_n_rows, staging_key, staging_block, staging_line, staging_val
 
    integer, parameter :: key_len  = 32     ! keyword capacity [character]
    integer, parameter :: val_len  = 512    ! value capacity [character]
@@ -127,27 +130,46 @@ module input
    !   task  - 1 = TRAJECTORY (the one task this program runs; other task words arrive
    !            with their own drivers if ever needed - an unlisted word loud-stops)
    !   integ - the propagator closed-family codes (prop_reg ids, dynamics/propagator.f90)
-   !   dist  - the dist_* member families (boltzmann/ebk/incident, methods/); the
-   !            integer-code -> member-name mapping is wired at C5
+   !   dist  - the PER-FRAGMENT scheme words only (boltzmann/ebk - the same word table
+   !            sampler's scheme-code lookup resolves). 'INCIDENT' is withdrawn from
+   !            this registry by Ruling F: the incident channel is selected by the
+   !            samp_run scheme argument, not by a DIST_SCHEME row - as a per-fragment
+   !            word it is an ILLEGAL value (it would dispatch the collision-assembly
+   !            member as a fragment member)
    type(enum_row_t), parameter :: task_tbl(1) = [ &
       enum_row_t('TRAJECTORY', 1) ]
    type(enum_row_t), parameter :: integ_tbl(3) = [ &
       enum_row_t('VERLET', 1), enum_row_t('SYMPLECTIC', 2), enum_row_t('RADAU', 3) ]
-   type(enum_row_t), parameter :: dist_tbl(3) = [ &
-      enum_row_t('BOLTZMANN', 1), enum_row_t('EBK', 2), enum_row_t('INCIDENT', 3) ]
+   type(enum_row_t), parameter :: dist_tbl(2) = [ &
+      enum_row_t('BOLTZMANN', 1), enum_row_t('EBK', 2) ]
 
    ! GWRITE_LEVEL recording-level set (the four-level semantics, N3.1 - the formal
    ! domain of observables%rec_level; recorder opens sec_qp/sec_frc at >=2/>=5)
    integer, parameter :: level_set(4) = [ 0, 1, 2, 5 ]
 
    ! Member-parameter central dispatch table (one row per member parameter key -> the
-   ! owning member's init; row-fill rounds C2(interface)/C5). EMPTY this round: such
-   ! keys never pass the unknown-key gate, so nothing is silently swallowed
+   ! owning member's init). Key names are the SEMANTIC uppercase of the member's
+   ! field names (T_VIB_A for boltzmann's t_vib_a, N_E_REL for incident's n_e_rel,
+   ! ...); the old TRV_A-style names are not revived (E21 no-fallback). Rows
+   ! admitted so far: the boltzmann temperatures and the full incident mode/shape
+   ! set; a member key outside this table is an unknown key at parse time (no
+   ! silent swallowing)
    type :: dispatch_row_t
-      character(len=key_len) :: key = ''    ! member parameter key (e.g. 'TRV_A')
+      character(len=key_len) :: key = ''    ! member parameter key (e.g. 'T_VIB_A')
       character(len=32) :: member = ''      ! owning member name (init target)
    end type dispatch_row_t
-   type(dispatch_row_t), parameter :: dispatch_tbl(0) = [ dispatch_row_t :: ]
+   type(dispatch_row_t), parameter :: dispatch_tbl(11) = [ &
+      dispatch_row_t('T_VIB_A',  'boltzmann'), &
+      dispatch_row_t('T_VIB_B',  'boltzmann'), &
+      dispatch_row_t('N_E_REL',  'incident'), &
+      dispatch_row_t('T_TRANS',  'incident'), &
+      dispatch_row_t('V_WIDTH',  'incident'), &
+      dispatch_row_t('N_THTA',   'incident'), &
+      dispatch_row_t('THTA_MAX', 'incident'), &
+      dispatch_row_t('N_CHI',    'incident'), &
+      dispatch_row_t('CHI',      'incident'), &
+      dispatch_row_t('N_B',      'incident'), &
+      dispatch_row_t('N_AIM',    'incident') ]
 contains
    !------------------------------------------------------------------
    ! read_input(file) - read and map the input (parse -> required check -> per-key
@@ -195,6 +217,13 @@ contains
       if (i >= 1 .and. i <= n_kv) staging_line = kv_tbl(i)%ln
    end function staging_line
 
+   function staging_val(i) result(v)
+      integer, intent(in) :: i
+      character(len=val_len) :: v
+      v = ''
+      if (i >= 1 .and. i <= n_kv) v = kv_tbl(i)%val
+   end function staging_val
+
    !------------------------------------------------------------------
    ! collect_input(file, ok, errmsg) - the whole flow on the soft ok/errmsg channel
    !              (detection layer; read_input converts a bad return into the loud-stop):
@@ -223,8 +252,8 @@ contains
    !              split on '='; a trailing ',' in the value absorbs continuation lines;
    !              uppercase keys; line numbers feed the error channel. A data line
    !              without '=' is a PARSE ERROR (E21: no sequential-grammar fallback);
-   !              unknown keys (old names, MODEL, member keys ahead of their members)
-   !              and duplicate keys loud-stop with key + line number
+   !              unknown keys (old names, MODEL, member keys outside the dispatch
+   !              table) and duplicate keys loud-stop with key + line number
    ! Reference: input_parser.f90:97-148 (the loop this modernizes)
    subroutine parse_file(file, ok, errmsg)
       character(len=*), intent(in) :: file
@@ -291,7 +320,7 @@ contains
          if (ri == 0 .and. dispatch_index(trim(kw)) == 0) then
             errmsg = 'unknown key '//trim(kw)//' (line '//trim(i2s(kln))//'): not in the key table '// &
                      '(old key names, withdrawn keys and MODEL are intercepted as unknown - '// &
-                     'E21/E22; member-parameter keys arrive with their members, C2/C5)'
+                     'E21/E22; member keys outside the dispatch table likewise)'
             close (u)
             return
          end if
@@ -308,13 +337,13 @@ contains
             blk = blk_system   ! member-parameter keys sit in block two (the E21 table's last row)
          end if
          ! capacity guard (the known tripwire of C4.4's deferred list): kv_tbl is sized
-         ! to the key table - the moment dispatch rows go real (C2/C5), member keys
-         ! reach here too and must NOT write past the table (same defect class as the
-         ! phase's other OOB bugs; loud-stop, never a silent overflow)
+         ! to the key table PLUS the dispatch rows (member keys stage here too and must
+         ! NOT write past the table - same defect class as the phase's other OOB bugs;
+         ! loud-stop, never a silent overflow)
          if (n_kv >= size(kv_tbl)) then
             errmsg = 'staging capacity exhausted at key '//trim(kw)//' (line '//trim(i2s(kln))// &
-                     '): distinct staged keys exceed size(kv_tbl) (sized to the key table - '// &
-                     'member-parameter keys need their dispatch rows counted, C2/C5)'
+                     '): distinct staged keys exceed size(kv_tbl) (sized to the key table '// &
+                     'plus the dispatch rows)'
             close (u)
             return
          end if
@@ -384,7 +413,7 @@ contains
    !              (block one first, block two after): for every key the staged value is
    !              parsed per its kind (bad values loud-stop with key + line) and written
    !              into its control/config slot; the member-parameter dispatch loop
-   !              follows (empty table this round)
+   !              follows (staged member keys must be non-empty)
    subroutine map_slots(ok, errmsg)
       logical, intent(out) :: ok
       character(len=*), intent(out) :: errmsg
@@ -402,6 +431,7 @@ contains
          ! guaranteed staged: required keys were checked, per-key defaults injected (the
          ! guard is fail-safe against a future key-table row flipping the flags wrongly)
          if (k == 0) then
+            ok = .false.
             errmsg = 'internal: key '//trim(sp%name)//' neither user-set nor defaulted'
             return
          end if
@@ -477,14 +507,24 @@ contains
             reactants%dist_scheme = ivec                 ! per-fragment code array (E15; the
                                                          ! size-vs-n_frag reconcile is C5 wiring)
          case default
+            ok = .false.
             errmsg = 'internal: unhandled key slot for '//trim(sp%name)
             return
          end select
       end do
-      ! member-parameter dispatch (central table -> member init; EMPTY this round - see
-      ! the dispatch_tbl declaration; the loop site is the fixed framework)
+      ! member-parameter dispatch (central table): a staged member key must carry a
+      ! non-empty value (key + line named on failure - the value semantics themselves
+      ! are member-side knowledge, E12; the assembly wiring reads the staged values
+      ! back through the staging accessors and hands them to the member inits)
       do d = 1, size(dispatch_tbl)
-         ! row-fill round (C2(interface)/C5): stage the key's value into dispatch_tbl(d)
+         k = staged_index(trim(dispatch_tbl(d)%key))
+         if (k > 0 .and. len_trim(kv_tbl(k)%val) == 0) then
+            ok = .false.
+            errmsg = 'key '//trim(dispatch_tbl(d)%key)//trim(line_tag(kv_tbl(k)%ln))// &
+                     ': empty member-parameter value (the owning member "'// &
+                     trim(dispatch_tbl(d)%member)//'" would receive nothing)'
+            return
+         end if
       end do
       ok = .true.
    end subroutine map_slots
@@ -651,11 +691,13 @@ contains
    !------------------------------------------------------------------
    subroutine reset_staging()
       if (allocated(kv_tbl)) deallocate (kv_tbl)
-      allocate (kv_tbl(size(key_tab)))   ! one row per registry key at most (unknown
-      n_kv = 0                           ! keys rejected, duplicates rejected); BOTH
-                                         ! fill sites (parse_file / inject_defaults)
-                                         ! guard their increment with a capacity
-                                         ! loud-stop - capacity is code, not memory
+      allocate (kv_tbl(size(key_tab) + size(dispatch_tbl)))   ! one row per registry key
+      n_kv = 0                           ! PLUS one per dispatch row (member keys stage
+                                         ! too; unknown keys rejected, duplicates
+                                         ! rejected); BOTH fill sites (parse_file /
+                                         ! inject_defaults) guard their increment with
+                                         ! a capacity loud-stop - capacity is code,
+                                         ! not memory
    end subroutine reset_staging
 
    ! key_index(key) - registry row of a key (0 = not a key-table key)

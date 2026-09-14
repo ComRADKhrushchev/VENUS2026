@@ -134,8 +134,8 @@ program venus
    !    prop_reg(1, verlet_step), prop_reg(2, symple_step),
    !    prop_reg(3, radau_step) (the integrator closed three-member set - X4, unifying the
    !    old :423-465 three branches; fixed program stock, not drag-in material);
-   !    dist_* registration is absent by design - C5 per the T6 note (the batch-3 skeleton
-   !    members boltzmann/ebk/incident wait for the sampler wiring window)
+   !    dist_* registration arrives through the same aggregate (methods/reg_dist_*.f90 -
+   !    the sampler member table; one thin reg file per distribution member)
    ! 7. container_init() - assembly + purely formal validation spanning BOTH facades (the
    !    single assembly entry point of the whole container, E14/E17 naming - the entry names
    !    the action; slot bound, H forms matched (h_form subset-of h_deliver, E17(5)), method
@@ -173,7 +173,9 @@ program venus
    ! 1. samp_run(scheme, sta) - per-trajectory initial-state preparation (an operational-class call - spec §2.3
    !    boundary 4: actual calls in the assembly phase include distribution members, and preparation members
    !    count as assembly-like calls; located at the trajectory-loop head, outside the integration loop;
-   !    old :349 SELECT site. scheme takes the member name mapped from reactants%dist_scheme(k) - C5 wiring)
+   !    old :349 SELECT site. scheme is the INCIDENT-CHANNEL member name (the one orchestration member
+   !    not selected per-fragment - the driver passes 'incident'); the per-fragment schemes arrive inside
+   !    samp_run through config%reactants%dist_scheme)
    ! 2. force_eval(sta, e0) - initial force and total energy of the initial state (old :402-403
    !    DVDQ_1/ENERGY_1; E14 naming statute - the pure force entry names the action; no dt
    !    argument)
