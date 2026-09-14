@@ -51,8 +51,10 @@
 !       every staged row carries its key-table block (16 block-one rows, 5
 !       block-two rows; line numbers of the source preserved)
 !   (j) member-key admission (the central dispatch table's rows): a file with
-!       all 11 member keys (T_VIB_A/T_VIB_B boltzmann; N_E_REL/T_TRANS/V_WIDTH/
-!       N_THTA/THTA_MAX/N_CHI/CHI/N_B/N_AIM incident) parses WITHOUT a stop -
+!       all 22 member keys (T_VIB_A/T_VIB_B boltzmann; N_E_REL/T_TRANS/V_WIDTH/
+!       N_THTA/THTA_MAX/N_CHI/CHI/N_B/N_AIM incident; T_ROT j; J_ROT rotation;
+!       N_OSC/T_OSC/N_LEVEL/K_OSC surface_oscillator; E_VIB normalmode;
+!       E_STAB/N_E_BAR/E_BAR/T_BAR barrier_excitation) parses WITHOUT a stop -
 !       no longer unknown keys - and every key stages in block two with its
 !       value VERBATIM (the raw trimmed string: '350.0', '2', ...) and the
 !       source line number kept
@@ -62,6 +64,17 @@
 !       per-fragment scheme row)
 !   (l) empty member-parameter value loud-stop (child): 'THTA_MAX =' with no
 !       value -> loud-stop naming THTA_MAX + line
+!   (m) the five new per-fragment scheme words parse to their codes:
+!       DIST_SCHEME = rotation, j, surface_oscillator, normalmode,
+!       barrier_excitation -> reactants%dist_scheme = [3,4,5,6,7] (the same
+!       word/code pairing the sampler scheme-code table carries, now seven
+!       words)
+! Sweep-along note: the map_slots key-kind select's case-default guard
+!       (the stale-ok leak fix, fourth site of the family) is UNREACHABLE
+!       from any input file - every key in the table carries kind 1..7, so
+!       no file can drive a non-listed kind into that branch; the guard
+!       completes the fixed family and is recorded here rather than
+!       exercised by a child.
 !=====================================================================
 program check_input
    use input,   only: read_input, staging_n_rows, staging_key, staging_block, &
@@ -74,7 +87,7 @@ program check_input
    character(len=32) :: kname
    logical :: ok_arr, ok_part
    character(len=16) :: blk1(16), blk2(5)
-   character(len=16) :: mkey(11), mval(11)
+   character(len=16) :: mkey(22), mval(22)
 
    ! ---------- child dispatch: one bad case per spawn, must loud-stop ----------
    ! bad-file naming convention: build/input_case_<mode>.txt (bad-nofile excepted)
@@ -181,7 +194,27 @@ program check_input
       'N_CHI = 0', &
       'CHI = 0.9', &
       'N_B = 0', &
-      'N_AIM = 0' ])
+      'N_AIM = 0', &
+      'T_ROT = 300.0', &
+      'J_ROT = 2', &
+      'N_OSC = 1', &
+      'T_OSC = 180.0', &
+      'N_LEVEL = 3', &
+      'K_OSC = 42.0', &
+      'E_VIB = 12.5', &
+      'E_STAB = 8.0', &
+      'N_E_BAR = 0', &
+      'E_BAR = 5.0', &
+      'T_BAR = 900.0' ])
+   ! (m) the five new per-fragment scheme words in one list (order kept)
+   call write_sample('build/input_case_newdist.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/sysdef_case_mol', &
+      'E_REL = 5.0', &
+      'B_MAX = 3.0', &
+      'R_SEP = 8.0', &
+      'DT = 0.01', &
+      'DIST_SCHEME = rotation, j, surface_oscillator,', &
+      '   normalmode, barrier_excitation' ])
 
    ! ---------- bad sample files (one per child loud-stop case) ----------
    ! (e) one required key removed each time
@@ -340,10 +373,13 @@ program check_input
    nfail0 = nfail
    call read_input('build/input_case_mkeys.txt')
    mkey = [ character(len=16) :: 'T_VIB_A', 'T_VIB_B', 'N_E_REL', 'T_TRANS', 'V_WIDTH', &
-            'N_THTA', 'THTA_MAX', 'N_CHI', 'CHI', 'N_B', 'N_AIM' ]
+            'N_THTA', 'THTA_MAX', 'N_CHI', 'CHI', 'N_B', 'N_AIM', 'T_ROT', 'J_ROT', &
+            'N_OSC', 'T_OSC', 'N_LEVEL', 'K_OSC', 'E_VIB', 'E_STAB', 'N_E_BAR', &
+            'E_BAR', 'T_BAR' ]
    mval = [ character(len=16) :: '350.0', '300.0', '2', '0.0', '0.3', &
-            '0', '1.1', '0', '0.9', '0', '0' ]
-   ok_part = (staging_n_rows() == 32)      ! 17 user rows (six registry + eleven member
+            '0', '1.1', '0', '0.9', '0', '0', '300.0', '2', '1', '180.0', &
+            '3', '42.0', '12.5', '8.0', '0', '5.0', '900.0' ]
+   ok_part = (staging_n_rows() == 43)      ! 28 user rows (six registry + 22 member
                                             ! keys) + the 15 injected per-key defaults
    do i = 1, size(mkey)
       k = staged_row(trim(mkey(i)))
@@ -355,7 +391,7 @@ program check_input
    k = staged_row('T_VIB_A')               ! line numbers preserved (line 7 of the file)
    if (k == 0 .or. staging_line(k) /= 7) ok_part = .false.
    if (ok_part) then
-      print '(a)', '(j) member-key admission: PASS (11 dispatch keys staged block two, values verbatim)'
+      print '(a)', '(j) member-key admission: PASS (22 dispatch keys staged block two, values verbatim)'
    else
       print '(a)', 'FAIL (j) member-key admission: a member key missing, wrong block, or value altered'
       nfail = nfail + 1
@@ -366,6 +402,20 @@ program check_input
                         '(k) DIST_SCHEME=INCIDENT illegal value (Ruling F word withdrawal)')
    call expect_loudstop('m-empty',  'THTA_MAX',    'line 1', &
                         '(l) empty member-parameter value loud-stop')
+
+   ! ---------- (m) the five new scheme words parse to codes 3..7 ----------
+   nfail0 = nfail
+   call read_input('build/input_case_newdist.txt')
+   ok_arr = allocated(reactants%dist_scheme)
+   if (ok_arr) ok_arr = size(reactants%dist_scheme) == 5 .and. &
+                        all(reactants%dist_scheme == [ 3, 4, 5, 6, 7 ])
+   if (ok_arr) then
+      print '(a)', '(m) new scheme words: PASS (rotation/j/surface_oscillator/'// &
+         'normalmode/barrier_excitation -> codes 3,4,5,6,7)'
+   else
+      print '(a)', 'FAIL (m) new scheme words: DIST_SCHEME list did not map to codes 3..7'
+      nfail = nfail + 1
+   end if
 
    print '(a,i0,a)', '=== check_input: ', nfail, ' failure(s) ==='
    if (nfail > 0) stop 1

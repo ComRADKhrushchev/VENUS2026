@@ -130,18 +130,22 @@ module input
    !   task  - 1 = TRAJECTORY (the one task this program runs; other task words arrive
    !            with their own drivers if ever needed - an unlisted word loud-stops)
    !   integ - the propagator closed-family codes (prop_reg ids, dynamics/propagator.f90)
-   !   dist  - the PER-FRAGMENT scheme words only (boltzmann/ebk - the same word table
-   !            sampler's scheme-code lookup resolves). 'INCIDENT' is withdrawn from
-   !            this registry by Ruling F: the incident channel is selected by the
-   !            samp_run scheme argument, not by a DIST_SCHEME row - as a per-fragment
-   !            word it is an ILLEGAL value (it would dispatch the collision-assembly
-   !            member as a fragment member)
+   !   dist  - the PER-FRAGMENT scheme words (the same word/code table sampler's
+   !            scheme-code lookup resolves: boltzmann/ebk/rotation/j/
+   !            surface_oscillator/normalmode/barrier_excitation). 'INCIDENT' is
+   !            withdrawn from this registry by Ruling F: the incident channel is
+   !            selected by the samp_run scheme argument, not by a DIST_SCHEME row -
+   !            as a per-fragment word it is an ILLEGAL value (it would dispatch the
+   !            collision-assembly member as a fragment member)
    type(enum_row_t), parameter :: task_tbl(1) = [ &
       enum_row_t('TRAJECTORY', 1) ]
    type(enum_row_t), parameter :: integ_tbl(3) = [ &
       enum_row_t('VERLET', 1), enum_row_t('SYMPLECTIC', 2), enum_row_t('RADAU', 3) ]
-   type(enum_row_t), parameter :: dist_tbl(2) = [ &
-      enum_row_t('BOLTZMANN', 1), enum_row_t('EBK', 2) ]
+   type(enum_row_t), parameter :: dist_tbl(7) = [ &
+      enum_row_t('BOLTZMANN', 1), enum_row_t('EBK', 2), &
+      enum_row_t('ROTATION', 3), enum_row_t('J', 4), &
+      enum_row_t('SURFACE_OSCILLATOR', 5), enum_row_t('NORMALMODE', 6), &
+      enum_row_t('BARRIER_EXCITATION', 7) ]
 
    ! GWRITE_LEVEL recording-level set (the four-level semantics, N3.1 - the formal
    ! domain of observables%rec_level; recorder opens sec_qp/sec_frc at >=2/>=5)
@@ -158,7 +162,7 @@ module input
       character(len=key_len) :: key = ''    ! member parameter key (e.g. 'T_VIB_A')
       character(len=32) :: member = ''      ! owning member name (init target)
    end type dispatch_row_t
-   type(dispatch_row_t), parameter :: dispatch_tbl(11) = [ &
+   type(dispatch_row_t), parameter :: dispatch_tbl(22) = [ &
       dispatch_row_t('T_VIB_A',  'boltzmann'), &
       dispatch_row_t('T_VIB_B',  'boltzmann'), &
       dispatch_row_t('N_E_REL',  'incident'), &
@@ -169,7 +173,18 @@ module input
       dispatch_row_t('N_CHI',    'incident'), &
       dispatch_row_t('CHI',      'incident'), &
       dispatch_row_t('N_B',      'incident'), &
-      dispatch_row_t('N_AIM',    'incident') ]
+      dispatch_row_t('N_AIM',    'incident'), &
+      dispatch_row_t('T_ROT',    'j'), &
+      dispatch_row_t('J_ROT',    'rotation'), &
+      dispatch_row_t('N_OSC',    'surface_oscillator'), &
+      dispatch_row_t('T_OSC',    'surface_oscillator'), &
+      dispatch_row_t('N_LEVEL',  'surface_oscillator'), &
+      dispatch_row_t('K_OSC',    'surface_oscillator'), &
+      dispatch_row_t('E_VIB',    'normalmode'), &
+      dispatch_row_t('E_STAB',   'barrier_excitation'), &
+      dispatch_row_t('N_E_BAR',  'barrier_excitation'), &
+      dispatch_row_t('E_BAR',    'barrier_excitation'), &
+      dispatch_row_t('T_BAR',    'barrier_excitation') ]
 contains
    !------------------------------------------------------------------
    ! read_input(file) - read and map the input (parse -> required check -> per-key
@@ -453,6 +468,7 @@ contains
          case (kind_elist)
             call parse_elist(sp, sval, ln, ivec, ok, errmsg)
          case default
+            ok = .false.                          ! stale-ok leak guard (family fourth site)
             errmsg = 'internal: unhandled key kind for '//trim(sp%name)
             return
          end select

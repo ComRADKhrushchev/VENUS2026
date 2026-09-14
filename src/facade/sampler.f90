@@ -81,9 +81,10 @@ module sampler
    ! scheme word: it is selected by the samp_run scheme argument, so it
    ! carries no row here (its registration row in the member table above
    ! stays - the scheme-argument lookup path uses it)
-   integer, parameter :: n_scheme_code = 2
+   integer, parameter :: n_scheme_code = 7
    character(len=32), parameter :: scheme_code_name(n_scheme_code) = &
-      [ character(len=32) :: 'boltzmann', 'ebk' ]
+      [ character(len=32) :: 'boltzmann', 'ebk', 'rotation', 'j', &
+                              'surface_oscillator', 'normalmode', 'barrier_excitation' ]
 contains
    !------------------------------------------------------------------
    ! samp_code(name) - scheme-code table row of a member word (0 = absent):

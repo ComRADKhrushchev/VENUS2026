@@ -41,8 +41,9 @@
 !   (f) unregistered fragment member loud-stop (child): a valid scheme code
 !       whose member name is not registered -> stderr names samp_run, the
 !       member name and the fragment
-!   (g) out-of-range scheme code loud-stop (child): code 7 in fragment 2 ->
-!       stderr names samp_run, the code and the fragment
+!   (g) out-of-range scheme code loud-stop (child): code 8 in fragment 2 ->
+!       stderr names samp_run, the code and the fragment (sweep-along: the
+!       probe moved off 7 when the scheme-code table grew to seven words)
 !   (h) duplicate-registration loud-stop (child): samp_reg twice with the
 !       same name -> stderr names samp_reg and the duplicate
 !   (i) full-table loud-stop (child): 16 rows registered, the 17th -> stderr
@@ -152,10 +153,10 @@ program check_sampler
          call set_scheme([1, 2])
          call state_create(sta, 4)
          call samp_run('incident', sta)
-      case ('bad-code')     ! (g): code 7 in fragment 2
+      case ('bad-code')     ! (g): code 8 in fragment 2
          call reg_base()
          call setup_mol(2)
-         call set_scheme([1, 7])
+         call set_scheme([1, 8])
          call state_create(sta, 4)
          call samp_run('incident', sta)
       case ('bad-dup')      ! (h): same name twice
@@ -245,7 +246,7 @@ program check_sampler
                         '(e) unregistered-scheme loud-stop')
    call expect_loudstop('bad-member',   'samp_run', 'ebk',              'fragment 2', &
                         '(f) unregistered-member loud-stop')
-   call expect_loudstop('bad-code',     'samp_run', 'code 7',           'fragment 2', &
+   call expect_loudstop('bad-code',     'samp_run', 'code 8',           'fragment 2', &
                         '(g) out-of-range-code loud-stop')
    call expect_loudstop('bad-dup',      'samp_reg', 'boltzmann',        'already registered', &
                         '(h) duplicate-registration loud-stop')
