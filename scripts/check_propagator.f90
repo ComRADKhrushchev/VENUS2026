@@ -187,8 +187,14 @@
 !       dt = dt_min = 0.7, order 12: the diverged trial's probe clamps back UP
 !       to the trial length and the equality path of the accept test would
 !       admit the garbage with no naming (the retry cap only sees FAILED
-!       comparisons on this path) - the diverged-trial guard of the header's
-!       TERMINATION GUARD family stops it named, at the hv estimate
+!       comparisons on this path). The child asserts the shared 'diverged'
+!       name of the TERMINATION GUARD family's two arms and must fire at ANY
+!       optimization level: the estimate arm (hv non-finite / > 1e30, named
+!       at the hv computation) catches the divergence early where rounding
+!       lets it see the NaN; the close-out STATE arm (per-component q/v
+!       sanity - no reduction, order-independent) is the backstop for the
+!       measured -O0 instance where the hv max() keeps the finite side and
+!       the garbage state carries NaN behind moderate maxval magnitudes
 !   Cross-sequence carry: every multi-sequence criterion above (r-b/r-c/r-e/r-f
 !       step-3/r-g) runs consecutive sequences through one member instance -
 !       the B-carry path (2-iteration later sequences) is exercised throughout
@@ -1165,7 +1171,7 @@ program check_propagator
    call expect_loudstop('c-rdt0', 'dt = 0', 'radau_step', '(r-ls) zero-dt loud-stop')
    call expect_loudstop('c-rmm', 'dt_min exceeds dt_max', 'radau_step', &
                         '(r-ls) contradictory-clamp-pair loud-stop')
-   call expect_loudstop('c-rdiv', 'diverged trial sequence', 'radau_step', &
+   call expect_loudstop('c-rdiv', 'diverged', 'radau_step', &
                         '(r-ls) floor-pinned-diverged-trial loud-stop')
 
    pot_sel = 1   ! restore the harmonic default for anything that follows

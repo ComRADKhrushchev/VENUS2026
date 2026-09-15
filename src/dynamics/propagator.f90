@@ -154,6 +154,20 @@
 !   legitimate measured hv peaks near 9e8 (quartic wall, seed 0.2, order 12),
 !   free flight gives exactly 0, diverged trials land >= 1e50 - the bound keeps
 !   >20 decades of margin above the legitimate maximum.
+!   CLOSE-OUT STATE GUARD (the backstop, after the estimate's own blind side was
+!   measured): hv is assembled through a max() reduction, and Fortran's max with
+!   a NaN argument is PROCESSOR-DEPENDENT - at -O0 a measured instance keeps the
+!   finite side, so a diverged floor-pinned trial whose B carries NaN in some
+!   components closes out hv below the bound, accepts through the equality path,
+!   and writes a state with NaN components hiding behind moderate maxval
+!   magnitudes. The backstop tests the closed-out state itself, PER COMPONENT
+!   (no reduction, no evaluation-order dependence): non-finite q or v, |q| beyond
+!   the physical-absurdity bound 1e8 A (legitimate runs peak |q| ~ 5), or |v|
+!   beyond 1e10 A/(10 fs) (legitimate peaks ~ 50; p = m*v rides the v test) -
+!   garbage sits 7+ decades from every legitimate value, beyond the reach of any
+!   rounding-level difference. The estimate guard stays (it names the divergence
+!   EARLY, before wasted close-out work); the state guard is the one that cannot
+!   be rounded past.
 !
 !   TCORR (for the record): the next-length exponent constant is 1.0 - the
 !   10^(-112/9) alternative of the source material remains its commented-out
@@ -544,6 +558,30 @@ contains
                     + rad_bb(3, k)*rad_u(3) + rad_bb(4, k)*rad_u(4) + rad_bb(5, k)*rad_u(5) &
                     + rad_bb(6, k)*rad_u(6) + rad_bb(7, k)*rad_u(7))
       end do
+
+      ! ---- close-out state sanity (the backstop the hv estimate cannot be): the
+      ! estimate guard above reads hv through a max() REDUCTION, and Fortran's max
+      ! with a NaN argument is processor-dependent - a measured -O0 instance keeps
+      ! the finite side, hv stays below the bound, the floor-pinned equality path
+      ! accepts, and the closed-out state carries NaN components with moderate
+      ! maxval magnitudes (q ~ 1, p ~ 40 - invisible to any aggregate print).
+      ! This guard tests EVERY component directly (no reduction, no evaluation
+      ! order to depend on) and fires on non-finite or physically-absurd values:
+      ! |q| > 1e8 A (a centimeter-wide molecule; legitimate runs peak |q| ~ 5) or
+      ! |v| > 1e10 A/(10 fs) (legitimate peaks ~ 50; p = m*v rides the same test).
+      ! Garbage is 7+ decades away from every legitimate value - rounding-level
+      ! differences cannot bridge that, at any optimization level ----
+      do k = 1, nq
+         if (sta%q(k) /= sta%q(k) .or. rad_v(k) /= rad_v(k) &
+             .or. abs(sta%q(k)) > 1.0d8 .or. abs(rad_v(k)) > 1.0d10) then
+            call stop_prop('radau_step', 'diverged sequence state: a closed-out'// &
+                           ' q/p component is non-finite or beyond the physical-'// &
+                           'absurdity bound (q 1e8 A, v 1e10 A/(10 fs)) - the'// &
+                           ' accepted sequence was garbage (the dt seed or the'// &
+                           ' dt_min floor exceeds what this force law supports)')
+         end if
+      end do
+
       sta%t = sta%t + tt
       rad_seq_ok = .true.
       rad_ns = rad_ns + 1
