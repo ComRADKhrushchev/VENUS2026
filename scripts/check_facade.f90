@@ -88,6 +88,10 @@
 !   process - the bit-level comparison is in-process by design (one
 !   executable, one floating-point arithmetic; a cross-executable
 !   comparison via printed tables could not carry the last bits).
+!   Red-phase lesson (the fake-green first run): the children respawn
+!   THIS executable at its own path - a broken red-phase copy must
+!   occupy the spawn path itself (same -o target), or the child
+!   criteria run the intact binary and pass green for nothing.
 ! Criteria:
 !   (a) handle identity: two ws_handle() calls yield pointers to the SAME
 !       target (pointer association comparison), and a field written
@@ -135,7 +139,9 @@
 !       SURVIVES the call (the one-step conveyance to the electronic
 !       phases)
 !   (f) conversion single-site: a recursive scan of every src/ .f90 file
-!       (findstr on a Windows host, grep elsewhere) lists the files whose
+!       (findstr on a Windows host, grep elsewhere; paths under build/ are
+!       build artifacts - stale check copies, generated registries - and
+!       sit OUTSIDE the scan domain) lists the files whose
 !       text contains the conversion literal; each listed file is then
 !       scanned line by line, and exactly ONE occurrence of the literal
 !       sits at EXECUTABLE position (not inside a comment) in the whole
@@ -639,6 +645,9 @@ program check_facade
          end if
          if (path(1:2) == './') path = adjustl(path(3:))
          if (len_trim(path) == 0) cycle
+         ! the scan domain is the SOURCE tree: paths under build/ (stale
+         ! check copies, generated material) are artifacts and are skipped
+         if (index(path, 'build/') > 0 .or. index(path, 'build\') > 0) cycle
          call scan_exec_hits(trim(path), nhit)
          if (nhit > 0) then
             nexec = nexec + nhit
@@ -1152,9 +1161,13 @@ contains
       real(8) :: d1, e1, d2, e2              ! accumulated max rel deviations (1x1 / 2x2)
       logical :: bit1, bit2                  ! the bitwise attempt accumulators
       integer :: jg, i9
-      deallocate (roster%mass)               ! the LEPS state needs a 3-atom roster (the
-      allocate (roster%mass(3))              ! masses enter t_kin only - identical on both
-      roster%mass = 1.0d0                    ! legs, so the comparison is mass-blind)
+      deallocate (roster%mass)               ! REQUIRED, not style: the (e)-(j) batch left a
+      allocate (roster%mass(3))              ! size-2 roster allocated in this process - the
+      roster%mass = 1.0d0                    ! deallocate guards the allocate (allocating an
+                                            ! already-allocated array is a runtime error, and
+                                            ! silent reuse would read mass(3) out of bounds).
+                                            ! The masses enter t_kin only - identical on both
+                                            ! legs, so the comparison is mass-blind
       call state_create(sb9, 3)
       bit1 = .true.
       bit2 = .true.
@@ -1196,8 +1209,10 @@ contains
             ' channel: force and e_tot identical bit for bit, all three geometries)'
       else if (d1 <= 1.0d-15 .and. e1 <= 1.0d-15) then
          print '(a)', '(r) degenerate equivalence, 1x1 leg: PASS at the 1e-15 fallback'// &
-            ' (bitwise attempt failed - arithmetic-order deviation, max rel dev force '// &
-            trim(d2s(d1))//', e_tot '//trim(d2s(e1))//')'
+            ' (bitwise attempt failed - DORMANT branch: the n == 1 guard folds by identity,'// &
+            ' no difference source is anticipated on this leg, so if this branch ever fires'// &
+            ' a cause analysis must precede acceptance; max rel dev force '//trim(d2s(d1))// &
+            ', e_tot '//trim(d2s(e1))//')'
       else
          call fail('(r) degenerate equivalence, 1x1 leg: deviates beyond 1e-15 (max rel'// &
             ' dev force '//trim(d2s(d1))//', e_tot '//trim(d2s(e1))//') - locate the'// &
