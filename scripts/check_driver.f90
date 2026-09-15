@@ -101,10 +101,16 @@
 !   (f) STATISTICS FIRST VERSION: the no-classification run prints the skipped
 !       semantics line 'outcome counts: none (no classification bound -
 !       skipped)' and the conservation-drift summary line; the
-!       classification-bound run (E_SPLIT in the parameter file) prints a
-!       non-empty outcome table 'outcome counts: <name>=<n>' (the channel is
-!       what is verified - the final-state quantity computation behind fin is
-!       a later landing, so the bound name reads the initialized defaults)
+!       classification-bound run (E_SPLIT = 1.0 in the parameter file) prints
+!       the outcome table over the REAL final-state values: E_REL = 200
+!       kcal/mol leaves the pair's final relative radial energy two orders
+!       above the split at the Q_TERM termination point (the weak well
+!       K = 0.04 barely deflects the fly-by), so both trajectories classify
+!       'scattering' -> 'outcome counts: scattering=2'. Expectation migrated
+!       from the earlier 'capture=2', which read the zero-initialized fin
+!       before the final-state quantity computation existed (e_rel = 0 sits
+!       below any positive split); the real-value margin to the threshold is
+!       two orders of magnitude, not a knife-edge
 !   (g) SAMPLING CHAIN: (a)'s run drives samp_run through the real-input
 !       DIST_SCHEME (the thermalize member on fragment 1, the rotation member
 !       on fragment 2 - both on the real force chain) and the incident channel
@@ -576,13 +582,15 @@ contains
                   trim(obuf_a)//'"')
          return
       end if
-      if (index(obuf_t, 'outcome counts: capture=2') == 0) then
+      if (index(obuf_t, 'outcome counts: scattering=2') == 0) then
          call fail('(f): the classification-bound run must print the outcome table'// &
-                  ' (capture=2) - got "'//trim(obuf_t)//'"')
+                  ' (scattering=2 on the real final-state values) - got "'// &
+                  trim(obuf_t)//'"')
          return
       end if
       print '(a)', '(f): PASS - unbound run: skipped line + drift summary; bound run:'// &
-           ' outcome table capture=2'
+           ' outcome table scattering=2 (the real fin values: the high-energy'// &
+           ' pair stays above the split)'
    end subroutine crit_f
 
    !------------------------------------------------------------------

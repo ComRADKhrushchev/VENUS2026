@@ -49,7 +49,7 @@
 !   calling it is the legal no-classification run).
 !=====================================================================
 module final_state
-   use consts,        only: hbar_code, e_conv, dtor
+   use consts,        only: hbar_code, e_conv, dtor, two_pi
    use state,         only: state_t
    use config,        only: reactants
    use config_roster, only: roster
@@ -116,61 +116,192 @@ contains
    ! Reference: FINAL.f:100-174, :356-410, :432-531, :538-637 (sections per the module header)
    subroutine fin_eval(sta, fin)
       type(state_t), intent(in) :: sta    ! physical state (final-state snapshot - read-only;
-                                          ! the fragment-geometry staging trick is in step 2,
-      ! never modifying sta itself)
+                                          ! the rotation subtraction and the staged-geometry
+      ! evaluation ride local copies, never modifying sta itself)
       type(fin_t), intent(out) :: fin     ! final-state quantity receiver (the sole output of this routine)
-      ! Pseudocode:
-      ! 1. Fragment-A properties (old :100-109): cenmas(sta, roster%mass, roster%frag(1)%list,
-      !    q_cm_a, v_cm_a) builds the COM frame; amom(..., j_a, e_rot_a, omega_a) - j_a and
-      !    j_mag_a folded to hbar units (divide hbar_code, old /C7); one-atom fragments all zero (old :24-33)
-      ! 2. Fragment-A internal energy (old :113-129): internal kinetic = COM-frame
-      !    sum p^2/(2*mass)/e_conv;
-      !    internal potential = v from force_eval at the fragment's equilibrium-arrangement
-      !    coordinates (the old :49-62 QZB+QCMB
-      !    staging-evaluation trick - the new version evaluates via the facade on a locally
-      !    staged state; the delivery request reads the trajectory-final occupation set
-      !    (the elec_facade holder, E16 - occ_get) - the adiab-mode delivery
-      !    request source of force_eval, spec §4 (the old scalar surface request generalized
-      !    to the occupation vector; length 1 = the degenerate form), never writing back to
-      !    sta) minus the reference
-      !    dissociation energy (old V-DELH; the DELH energy reference belongs to the assembly
-      !    phase - finalized in phase C);
-      !    e_int_a(3) = (1)+(2)
-      ! 3. Fragment-B same form (old :264-301; B table deferred with the roster - phase C)
-      ! 4. e_cm (old :356-372): summed over all atoms, sum of the three squared p components /
-      !    sum(mass) / 2 / e_conv
-      ! 5. Relative motion (old :376-410): reduced mass mu per the roster fragment table -
-      !    two-fragment gas-phase form
-      !    mu = m_a*m_b/(m_a+m_b), surface form (single active fragment) mu = m_a (old :376-385
-      !    two branches unified as fragment-table data-driven, reactants%surface_model only picks
-      !    the channel);
-      !    q_r = q_cm_a - q_cm_b, v_r likewise; e_rel = mu*(v_r.q̂_r)^2/2/e_conv (radial
-      !    projection, old :394-401); e_rel_sq = mu*|v_r|^2/2/e_conv; oam = mu*(q_r x v_r)
-      !    folded to hbar (old :403-410); b_fin = |oam|/mu/|v_r| (old :407)
-      ! 6. Gas-phase scattering angles ang(1..16) (old :432-531): the initial/final relative
-      ! velocity vectors (VI and v_r)
-      !    against the orbital/rotational angular momentum vectors (OAMI/OAM, AMAI/AMBI and
-      !    j_a/j_b), pairwise dot products
-      !    then acos, divided by dtor to degrees (old /C4); angular momenta with magnitude < 1e-5
-      !    skip the term (old :460/:482
-      !    thresholds); dot products clamped to [-1,1] (old :435-436); the initial values
-      !    VI/OAMI/AMAI/AMBI
-      !    come from the initial-state snapshot (deferred channel)
-      ! 7. Surface angles ang(17..20) (old :598-637): incident angles from the initial velocity
-      !    VI (theta/chi two forms :600-612),
-      !    scattering angles from the active-fragment COM velocity v_cm_a (:614-637; the NZDOWN
-      !    hardwired branch not carried over - excision warning in the module header); polar
-      !    degenerate positions (|v_xy| <= 1e-6 ->
-      !    chi=0, old :604-611/:629-636); surface-normal reference (old :543-555 from the
-      !    reference three-atom
-      !    cross product - as data via roster/unit-cell fields, finalized in phase C)
-      ! 8. Final-state archive (old :149-174): COM-frame coordinates/momenta after angvel
-      !    removes rigid-body rotation
-      !    -> q_fin/p_fin (for normal-mode analysis - consumed by density/members)
-      ! 9. t_life = sta%t*10 [fs] (internal time 10 fs -> fs, the old TLIFE convention)
-      ! 10. Boundary: GFINAL's recording duties (AErelS/AThtaS :199-202) belong to the recorder;
-      !     the hardwired EREL overwrite (GFINAL.f:78-81) is not carried over - e_rel keeps the
-      !     step-5 generalized form
+      type(state_t) :: wrk, stg           ! working copy (rotation subtraction) / staged state
+      real(8) :: qcms(2, 3), vcms(2, 3)   ! per-fragment COM position / velocity
+      real(8) :: q_cm(3), v_cm(3)         ! one fragment's COM (the cenmas returns)
+      real(8) :: ptot(3)                  ! the whole-system linear momentum (per component)
+      real(8) :: j_vec(3), e_rot, omg(3)  ! one fragment's angular momentum / energy / omega
+      real(8) :: tkin, e_pot              ! internal kinetic / staged potential [kcal/mol]
+      real(8) :: qr(3), vr(3)             ! relative COM position / velocity
+      real(8) :: qr_mag, vr_mag, v_rad    ! their magnitudes + the radial speed
+      real(8) :: mu, m_a, m_b             ! reduced / fragment masses [amu]
+      real(8) :: oam_v(3), oam_m          ! orbital angular momentum (physical / magnitude)
+      real(8) :: cs, v_xy                 ! an angle cosine / the transverse speed
+      integer :: nf, i, j, k, a, d        ! fragment / atom / component loop indices
+      ! ---- guards: the fragment table must be assembled, agree with the state, and fit
+      ! the two fragment channels of the receiver (a single fragment is the legal
+      ! degenerate run: every pair quantity stays zero)
+      if (.not. allocated(roster%mass) .or. .not. allocated(roster%frag)) then
+         write (0, '(a)') 'fin_eval: the roster was never assembled (no fragment table - '// &
+                          'the final-state quantities need the fragment masses and lists)'
+         write (0, '(a)') 'fin_eval: loud-stop (the final-state quantities are not computable)'
+         stop 1
+      end if
+      if (size(sta%q) /= 3*size(roster%mass)) then
+         write (0, '(a,i0,a,i0)') 'fin_eval: state/roster size mismatch: size(q) = ', size(sta%q), &
+            ', 3*roster atoms = ', 3*size(roster%mass)
+         write (0, '(a)') 'fin_eval: loud-stop (the state and the fragment table disagree)'
+         stop 1
+      end if
+      nf = size(roster%frag)
+      if (nf < 1 .or. nf > 2) then
+         write (0, '(a,i0)') 'fin_eval: illegal fragment count in the roster: ', nf
+         write (0, '(a)') 'fin_eval: loud-stop (the receiver carries two fragment channels)'
+         stop 1
+      end if
+      ! ---- per-fragment properties + the COM-frame archive ----
+      ! Each fragment in turn: build its COM frame, take the angular momentum /
+      ! rotational energy / internal kinetic, strip the rigid-body rotation from the
+      ! working momenta, then archive the fragment's rows relative to its own COM.
+      ! A one-atom fragment carries no internal structure: every internal quantity
+      ! stays zero and its archive rows stay zero (the lone atom sits at its own COM).
+      wrk = sta
+      allocate (fin%q_fin(size(sta%q)), fin%p_fin(size(sta%q)))
+      fin%q_fin = 0.0d0
+      fin%p_fin = 0.0d0
+      do i = 1, nf
+         call cenmas(wrk, roster%mass, roster%frag(i)%list, q_cm, v_cm)
+         qcms(i, :) = q_cm
+         vcms(i, :) = v_cm
+         if (roster%frag(i)%nat < 2) cycle
+         omg = 0.0d0                         ! a linear fragment computes no omega
+         call amom(wrk, roster%mass, roster%frag(i)%list, j_vec, e_rot, omg)
+         tkin = 0.0d0
+         do k = 1, roster%frag(i)%nat
+            a = roster%frag(i)%list(k)
+            do d = 1, 3
+               tkin = tkin + (wrk%p(3*(a - 1) + d) - roster%mass(a)*v_cm(d))**2 &
+                              /(2.0d0*roster%mass(a))
+            end do
+         end do
+         call angvel(wrk, roster%mass, roster%frag(i)%list, omg)
+         do k = 1, roster%frag(i)%nat
+            a = roster%frag(i)%list(k)
+            do d = 1, 3
+               fin%q_fin(3*(a - 1) + d) = wrk%q(3*(a - 1) + d) - q_cm(d)
+               fin%p_fin(3*(a - 1) + d) = wrk%p(3*(a - 1) + d) - roster%mass(a)*v_cm(d)
+            end do
+         end do
+         if (i == 1) then
+            fin%e_int_a(1) = tkin/e_conv
+            fin%j_a = j_vec/hbar_code
+            fin%j_mag_a = sqrt(dot_product(j_vec, j_vec))/hbar_code
+            fin%e_rot_a = e_rot
+         else
+            fin%e_int_b(1) = tkin/e_conv
+            fin%j_b = j_vec/hbar_code
+            fin%j_mag_b = sqrt(dot_product(j_vec, j_vec))/hbar_code
+            fin%e_rot_b = e_rot
+         end if
+      end do
+      ! ---- internal potentials: the staged-geometry evaluation ----
+      ! The internal potential of fragment i is the potential energy of the FULL
+      ! configuration that keeps fragment i at its current geometry and places every
+      ! OTHER fragment at its tabulated equilibrium arrangement about that other
+      ! fragment's own center of mass - the inter-fragment posture is left as it is,
+      ! the other fragments' internal distortion is removed. The evaluation rides a
+      ! zero-momentum local copy (the total energy then carries the potential alone),
+      ! and the physical state is never touched. No reference energy is subtracted
+      ! yet (the dissociation reference arrives with the assembly seam).
+      do i = 1, nf
+         if (roster%frag(i)%nat < 2) cycle
+         stg = sta
+         stg%p = 0.0d0
+         do j = 1, nf
+            if (j == i) cycle
+            do k = 1, roster%frag(j)%nat
+               a = roster%frag(j)%list(k)
+               do d = 1, 3
+                  stg%q(3*(a - 1) + d) = roster%frag(j)%qz(3*(k - 1) + d) + qcms(j, d)
+               end do
+            end do
+         end do
+         call force_eval(stg, e_pot)
+         if (i == 1) then
+            fin%e_int_a(2) = e_pot
+         else
+            fin%e_int_b(2) = e_pot
+         end if
+      end do
+      fin%e_int_a(3) = fin%e_int_a(1) + fin%e_int_a(2)
+      fin%e_int_b(3) = fin%e_int_b(1) + fin%e_int_b(2)
+      ! ---- whole-system COM translational energy (a whole-state quantity: computed
+      ! for every fragment count, single-fragment runs included): the square of the
+      ! per-component momentum SUMS - the COM drifts as one body of mass sum(m);
+      ! the sum of squared momenta would instead re-count the per-fragment internal
+      ! kinetic channels
+      do d = 1, 3
+         ptot(d) = sum(sta%p(d::3))
+      end do
+      fin%e_cm = dot_product(ptot, ptot)/(2.0d0*sum(roster%mass))/e_conv
+      ! ---- relative motion of the fragment pair (two fragments only)
+      if (nf == 2) then
+         m_a = roster%frag(1)%mass
+         m_b = roster%frag(2)%mass
+         if (reactants%surface_model == 0) then
+            mu = m_a*m_b/(m_a + m_b)         ! the gas-phase pair form
+         else
+            mu = m_a                         ! the surface form: the active fragment alone
+         end if
+         qr = qcms(1, :) - qcms(2, :)
+         vr = vcms(1, :) - vcms(2, :)
+         qr_mag = sqrt(dot_product(qr, qr))
+         vr_mag = sqrt(dot_product(vr, vr))
+         if (qr_mag >= 1.0d-12) then
+            v_rad = dot_product(vr, qr)/qr_mag
+         else
+            v_rad = 0.0d0                    ! coincident centers: no radial direction
+         end if
+         fin%e_rel = mu*v_rad*v_rad/2.0d0/e_conv
+         fin%e_rel_sq = mu*dot_product(vr, vr)/2.0d0/e_conv
+         oam_v(1) = mu*(qr(2)*vr(3) - qr(3)*vr(2))
+         oam_v(2) = mu*(qr(3)*vr(1) - qr(1)*vr(3))
+         oam_v(3) = mu*(qr(1)*vr(2) - qr(2)*vr(1))
+         oam_m = sqrt(dot_product(oam_v, oam_v))
+         fin%oam = oam_v/hbar_code
+         fin%oam_mag = oam_m/hbar_code
+         if (vr_mag >= 1.0d-12) fin%b_fin = oam_m/(mu*vr_mag)
+      end if
+      ! ---- final-value scattering angles (the family that needs no initial values;
+      ! the initial-value channels of the angle family stay at their deferred zero)
+      if (nf == 2 .and. roster%frag(1)%nat /= 1 .and. roster%frag(2)%nat /= 1) then
+         if (fin%oam_mag >= 1.0d-5 .and. fin%j_mag_a >= 1.0d-5) then
+            cs = dot_product(fin%oam, fin%j_a)/(fin%oam_mag*fin%j_mag_a)
+            fin%ang(1) = acos(max(-1.0d0, min(1.0d0, cs)))/dtor
+         end if
+         if (fin%oam_mag >= 1.0d-5 .and. fin%j_mag_b >= 1.0d-5) then
+            cs = dot_product(fin%oam, fin%j_b)/(fin%oam_mag*fin%j_mag_b)
+            fin%ang(2) = acos(max(-1.0d0, min(1.0d0, cs)))/dtor
+         end if
+         if (fin%j_mag_a >= 1.0d-5 .and. fin%j_mag_b >= 1.0d-5) then
+            cs = dot_product(fin%j_a, fin%j_b)/(fin%j_mag_a*fin%j_mag_b)
+            fin%ang(3) = acos(max(-1.0d0, min(1.0d0, cs)))/dtor
+         end if
+      end if
+      ! ---- surface scattering pair (the polar/equatorial angles of the active
+      ! fragment's COM velocity; the incident pair needs the initial velocity and
+      ! stays deferred with it)
+      if (reactants%surface_model /= 0) then
+         vr_mag = sqrt(dot_product(vcms(1, :), vcms(1, :)))
+         if (vr_mag >= 1.0d-12) then
+            cs = vcms(1, 3)/vr_mag
+            fin%ang(19) = acos(max(-1.0d0, min(1.0d0, cs)))/dtor
+         end if
+         v_xy = sqrt(vcms(1, 1)**2 + vcms(1, 2)**2)
+         if (v_xy > 1.0d-6) then
+            cs = vcms(1, 1)/v_xy
+            if (vcms(1, 2) >= 0.0d0) then
+               fin%ang(20) = acos(max(-1.0d0, min(1.0d0, cs)))/dtor
+            else
+               fin%ang(20) = (two_pi - acos(max(-1.0d0, min(1.0d0, cs))))/dtor
+            end if
+         end if
+      end if
+      ! ---- trajectory lifetime (internal time unit 10 fs -> fs)
+      fin%t_life = sta%t*10.0d0
    end subroutine fin_eval
    !------------------------------------------------------------------
    ! container_bind_classify(proc) - E19 single-slot assembly injection: bind the
