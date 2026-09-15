@@ -104,6 +104,13 @@ contains
          write (0, '(a)') 'plot_hist: loud-stop (the bin geometry is not computable)'
          stop 1
       end if
+      if (spec%kind /= k_pos .and. spec%v_hi <= spec%v_lo) then
+         write (0, '(2(a,es12.4))') 'plot_hist: empty histogram range v_hi <= v_lo (v_lo = ', &
+            spec%v_lo, ', v_hi = ', spec%v_hi, ')'
+         write (0, '(a)') 'plot_hist: loud-stop (the bin width would be nonpositive -'// &
+            ' the range must satisfy v_hi > v_lo)'
+         stop 1
+      end if
       nb = spec%n_bin
       if (nb > 1000) nb = 1000                   ! the fixed-count array bound
       mrg = spec%merge_at

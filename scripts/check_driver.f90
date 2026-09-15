@@ -24,6 +24,7 @@
 !            methods/reg_dist_normalmode.f90 methods/reg_dist_barrier_excitation.f90 &
 !            methods/reg_dist_thermostat.f90 methods/reg_dist_glo_target.f90 &
 !            methods/reg_dist_thermalize.f90 output/recorder.f90 output/final_state.f90 &
+!            output/plot_hist.f90 &
 !            ../systems/reference/reference_pot.f90 &
 !            ../systems/reference/reference_box.f90 &
 !            ../systems/reference/reg_reference.f90 &
@@ -166,6 +167,47 @@
 !       compile, so a container-free registry is no longer instantiable
 !       through the real build - that posture was verified while the tree was
 !       container-free; the classification slot keeps the fail-loud witness.)
+!   (l) HISTOGRAM FILES (the statistics-phase data products): the term+classify
+!       case's run directory carries 'hist_e_rel.dat' and 'hist_thta.dat' (the
+!       driver's registered statistics output names), each 40 bin lines + one
+!       TOTAL & P line; bin centers constant-spaced with the first at half the
+!       spacing (the driver-side range rule [0, column max + 1) puts every row
+!       in range by construction); the e_rel file counts BOTH trajectories
+!       (TOTAL = 2, P = 2/2 = 1); the theta file's truth is fully derived: the
+!       gas-phase run leaves the surface scattering angle bitwise 0, so every
+!       row lands in bin 1 (bin-1 count 2, all other bins 0, spacing exactly
+!       0.025 = 1.0/40)
+!   (m) SUMMARY TRUTH: stdout carries the histogram line 'histograms: rows=2
+!       files=hist_e_rel.dat hist_thta.dat' after the drift line; and the
+!       PRINTED conservation drift matches the file-derived drift - per
+!       trajectory, |final-row e_tot - first-frame e_tot| read back from
+!       trajectories.txt, max over trajectories, within 1e-3 + 1e-3*|derived|
+!       (the printed field is es12.4, the file's e_tot digits es24.16 - the
+!       tolerance covers only the print width)
+!   (n) OCCUPATION COLUMNS END TO END: OBSERVABLES = occ,n_hop on a
+!       two-trajectory safety-net case -> the assembly line reads columns=5,
+!       and EVERY frame column line and every final row in trajectories.txt
+!       carries occ = 1.0 and n_hop = 0.0 - the degenerate adiabatic values
+!       through the whole chain (input key -> selection union -> extractor ->
+!       getter -> file)
+!   (phg) RANGE GUARD (child 'phguard', self-respawn): plot_hist on a spec
+!       with v_hi <= v_lo (kind 1) -> nonzero exit, stderr names plot_hist -
+!       the bin-width choke point guards every caller
+!   (q) NON-LINEAR FRAGMENT ANCHOR (child 'nlfrag', self-respawn; the
+!       rotation-strip anchor the final-state criteria program deferred - its
+!       constructed fragments were all linear): a real 3-atom non-collinear
+!       fragment (the centered H3 triangle staged in the case folder, real
+!       roster masses), pure rigid rotation about z (p_i = m_i*(omega x r_i),
+!       omega = 0.07 z-hat): fin_eval must recover j_a = (0,0,I_zz*omega) in
+!       hbar units, e_rot_a = (I_zz*omega^2/2) in kcal/mol, the internal
+!       kinetic e_int_a(1) EQUAL to it (two computational paths to one number
+!       - the cross-identity), the archive rotation STRIPPED (max|p_fin| <=
+!       1e-10 against a p scale of ~0.06 - THE non-linear anchor; linear
+!       fragments keep their rotation by design), q_fin the COM-shifted
+!       triangle, e_int_a(2) the staged well on a check-staged constant
+!       (calibrated through the bound container), e_cm bitwise 0 (a pure
+!       rotation carries no net momentum) and the pair/B fields bitwise 0
+!       (the single-fragment skip)
 ! Child-process scheme (the sibling checks' discipline): every loud-stop path
 !   runs in a child - driver-exe children run with cwd = their case directory
 !   (the driver reads ./input_qct.txt relative to its cwd; 'cd <case> && exe'
@@ -180,16 +222,22 @@
 !=====================================================================
 program check_driver
    use control,       only: i_seed
+   use consts,        only: e_conv, hbar_code
    use config,        only: reactants, observables, electronic, prop_cfg => propagator
    use config_roster, only: roster, roster_load
    use state,         only: state_t, state_create
    use rng,           only: rng_init
    use sysdef_facade, only: sysdef_load
    use registry_gen,  only: registry_gen_all, registry_gen_init
-   use force_facade,  only: container_init, container_term
+   use force_facade,  only: container_init, container_term, container_bind_pes, force_eval
    use sampler,       only: samp_n_dist
    use recorder,      only: rec_select, rec_n_sel
-   use final_state,   only: fin_t, container_classify
+   use final_state,   only: fin_t, fin_eval, container_classify
+   use hist,          only: hist_spec_t, hist_data_t, lat_t, plot_hist, k_e_hist
+   use elec_facade,   only: method_bind
+   use reg_adiabatic, only: reg_adiabatic_all
+   use reference_pot, only: harm_set_constant
+   use reference_box, only: reference_pes
    use input,         only: read_input
    use dist_glo_target, only: glo_target_t_glo, glo_target_gamma, glo_target_w, &
                               glo_target_dt_loaded
@@ -205,6 +253,10 @@ program check_driver
       select case (trim(cmode))
       case ('eclass')
          call child_eclass()
+      case ('phguard')
+         call child_phguard()
+      case ('nlfrag')
+         call child_nlfrag()
       case default
          print '(a)', 'check_driver: unknown child mode '//trim(cmode)
          stop 2
@@ -231,6 +283,11 @@ program check_driver
    call crit_j1()     ! (j1) seam round-trip + unbound container_term
    call crit_j2()     ! (j2) bad member value
    call crit_k()      ! (k) unbound-classification child
+   call crit_l()      ! (l) the histogram files (existence/format/count truth)
+   call crit_m()      ! (m) the summary lines (histogram line + drift vs file)
+   call crit_n()      ! (n) occ/n_hop end to end through the real driver
+   call crit_phg()    ! (phg) the plot_hist range guard (child)
+   call crit_q()      ! (q) the non-linear fragment anchor (child)
 
    if (nfail == 0) then
       print '(a)', 'check_driver: ALL PASS'
@@ -259,6 +316,120 @@ contains
       nm = container_classify(fc)  ! the unbound call - must loud-stop here
       print '(a)', 'child eclass: container_classify returned ', trim(nm)
    end subroutine child_eclass
+
+   !------------------------------------------------------------------
+   ! child_phguard() - the (phg) child: plot_hist on an inverted range
+   !                  (v_hi < v_lo, kind 1) - the bin-width choke point must
+   !                  loud-stop here
+   subroutine child_phguard()
+      type(hist_spec_t) :: sh
+      type(hist_data_t) :: dh
+      type(lat_t) :: la
+      allocate (dh%e_rel(1))
+      dh%e_rel = 1.0d0
+      dh%n_traj = 1
+      sh = hist_spec_t(k_e_hist, 'build/drv_phg.dat', 2.0d0, 1.0d0, 4, 0, .true.)
+      call plot_hist(sh, dh, la)   ! the inverted range - must loud-stop here
+   end subroutine child_phguard
+
+   !------------------------------------------------------------------
+   ! child_nlfrag() - the (q) child: the real 3-atom non-collinear roster (the
+   !                  centered H3 triangle of the case folder, real masses)
+   !                  driven through the analysis chain, one pure rigid
+   !                  rotation about z constructed on it, fin_eval, and every
+   !                  anchor asserted (derivations: the header criterion (q))
+   subroutine child_nlfrag()
+      type(state_t) :: stc
+      type(fin_t) :: fc
+      real(8), parameter :: kk = 0.123d0   ! the check-staged well constant [eV/A^2]
+      real(8), parameter :: omg = 0.07d0   ! the constructed rotation rate [rad/(10 fs)]
+      real(8) :: rc(3), m3(3), ii_zz, ee, cal, sq, pmax
+      integer :: a, d
+      call read_input('build/drv_case_n/input_nlfrag.txt')
+      call rng_init(i_seed(1))
+      call sysdef_load(reactants%system_dir)
+      call roster_load()
+      ! the analysis chain: degenerate method row + the reference PES + the
+      ! check's own well constant (the staged-potential anchor rides the staged
+      ! value, not the package default)
+      call reg_adiabatic_all()
+      call method_bind('adiabatic')
+      call container_bind_pes(reference_pes, 'scalar')
+      call harm_set_constant(kk)
+      call state_create(stc, size(roster%mass), max(electronic%n_surf, 1))
+      ! conversion calibration: one force_eval at a single-offset geometry with
+      ! p = 0 (V = kk/2 * |q|^2 eV) measures the kcal/mol-per-eV factor through
+      ! the bound container - the conversion literal never lands here
+      stc%q = 0.0d0
+      stc%p = 0.0d0
+      stc%f = 0.0d0
+      stc%q(1) = 1.0d0
+      call force_eval(stc, ee)
+      cal = 2.0d0*ee/kk
+      ! the constructed pure rotation on the real triangle: rc = COM(qz),
+      ! I_zz about z, p_i = m_i*(omega x r_i) with omega = omg*z-hat (no COM
+      ! velocity - the rotation is the whole motion)
+      rc = 0.0d0
+      m3 = roster%mass(1:3)
+      do a = 1, 3
+         rc(:) = rc(:) + m3(a)*roster%frag(1)%qz(3*a-2:3*a)
+      end do
+      rc = rc(:)/sum(m3)
+      ii_zz = 0.0d0
+      sq = 0.0d0
+      do a = 1, 3
+         stc%q(3*a-2:3*a) = roster%frag(1)%qz(3*a-2:3*a)
+         stc%p(3*a-2) = -m3(a)*omg*(stc%q(3*a-1) - rc(2))
+         stc%p(3*a-1) =  m3(a)*omg*(stc%q(3*a-2) - rc(1))
+         stc%p(3*a)   = 0.0d0
+         ii_zz = ii_zz + m3(a)*((stc%q(3*a-2) - rc(1))**2 + (stc%q(3*a-1) - rc(2))**2)
+      end do
+      do d = 1, 9
+         sq = sq + roster%frag(1)%qz(d)**2
+      end do
+      stc%f = 0.0d0
+      stc%t = 0.4d0
+      call fin_eval(stc, fc)
+      ! ---- anchors ----
+      call chk_nl('(q) j_a(3)', fc%j_a(3), ii_zz*omg/hbar_code)
+      call chk_z('(q) j_a(1)', fc%j_a(1))
+      call chk_z('(q) j_a(2)', fc%j_a(2))
+      call chk_nl('(q) j_mag_a', fc%j_mag_a, ii_zz*omg/hbar_code)
+      call chk_nl('(q) e_rot_a [inertia-tensor path]', fc%e_rot_a, &
+                  0.5d0*ii_zz*omg*omg/e_conv)
+      call chk_nl('(q) e_int_a(1) [COM-frame path - the cross-identity]', fc%e_int_a(1), &
+                  0.5d0*ii_zz*omg*omg/e_conv)
+      call chk_nl('(q) e_int_a(2) [staged well, check-staged constant]', fc%e_int_a(2), &
+                  cal*(kk/2.0d0)*sq)
+      call chk_z('(q) e_cm [pure rotation carries no net momentum]', fc%e_cm)
+      call chk_z('(q) e_rel [single fragment]', fc%e_rel)
+      call chk_z('(q) oam_mag [single fragment]', fc%oam_mag)
+      call chk_z('(q) b_fin [single fragment]', fc%b_fin)
+      call chk_z('(q) ang(19) [gas: no surface pair]', fc%ang(19))
+      call chk_z('(q) e_int_b(1) [no second fragment]', fc%e_int_b(1))
+      call chk_nl('(q) t_life', fc%t_life, 4.0d0)
+      ! the archive: rotation stripped (THE non-linear anchor) + COM-shifted rows
+      pmax = 0.0d0
+      do d = 1, 9
+         pmax = max(pmax, abs(fc%p_fin(d)))
+      end do
+      if (pmax > 1.0d-10) then
+         call fail('(q) the non-linear fragment archive must strip the rotation:'// &
+                   ' max|p_fin| = '//d2s(pmax)//' (the p scale is ~0.06)')
+      end if
+      do a = 1, 3
+         do d = 1, 3
+            call chk_nl('(q) q_fin (COM-shifted triangle)', fc%q_fin(3*(a-1) + d), &
+                        roster%frag(1)%qz(3*(a-1) + d) - rc(d))
+         end do
+      end do
+      if (nfail == 0) then
+         print '(a)', 'nlfrag: non-linear fragment anchors hold (rotation stripped,'// &
+            ' j/e_rot/kinetic cross-identity, staged well, COM-shifted archive)'
+         stop 0
+      end if
+      stop 1
+   end subroutine child_nlfrag
 
    !------------------------------------------------------------------
    ! crit_a() - (a): the real driver exe end to end through the two-fragment
@@ -821,6 +992,231 @@ contains
    end subroutine crit_k
 
    !------------------------------------------------------------------
+   ! crit_l() - (l): the two histogram files of the term+classify case -
+   !             existence, 40+1 line shape, constant spacing, count truth
+   subroutine crit_l()
+      real(8) :: cen(50), cnt(50), tot, pp, dlt
+      integer :: nbin, nv, k, bad
+      ! ---- hist_e_rel.dat ----
+      call read_hist('build/drv_case_t/hist_e_rel.dat', 50, cen, cnt, nbin, tot, pp, nv)
+      if (nv == 0) then
+         call fail('(l): hist_e_rel.dat was not created in the case directory')
+         return
+      end if
+      if (nv /= 41 .or. nbin /= 40) then
+         call fail('(l): hist_e_rel.dat expected 40 bin lines + 1 TOTAL line, got '// &
+                  i2s(nv)//' lines / '//i2s(nbin)//' bins')
+         return
+      end if
+      bad = 0
+      dlt = cen(2) - cen(1)
+      if (abs(cen(1) - dlt/2.0d0) > 1.0d-4) bad = bad + 1
+      do k = 2, 39
+         if (abs((cen(k+1) - cen(k)) - dlt) > 1.0d-4) bad = bad + 1
+      end do
+      if (abs(sum(cnt(1:40)) - 2.0d0) > 1.0d-6) bad = bad + 1
+      if (abs(tot - 2.0d0) > 1.0d-6 .or. abs(pp - 1.0d0) > 1.0d-6) bad = bad + 1
+      if (bad > 0) then
+         call fail('(l): hist_e_rel.dat violates the shape/count truth (spacing,'// &
+                  ' first center, TOTAL/P)')
+         return
+      end if
+      ! ---- hist_thta.dat (the fully derived truth: bitwise-0 angles) ----
+      call read_hist('build/drv_case_t/hist_thta.dat', 50, cen, cnt, nbin, tot, pp, nv)
+      if (nv == 0) then
+         call fail('(l): hist_thta.dat was not created in the case directory')
+         return
+      end if
+      if (nv /= 41 .or. nbin /= 40) then
+         call fail('(l): hist_thta.dat expected 40 bin lines + 1 TOTAL line, got '// &
+                  i2s(nv)//' lines / '//i2s(nbin)//' bins')
+         return
+      end if
+      bad = 0
+      dlt = cen(2) - cen(1)
+      if (abs(dlt - 0.025d0) > 1.0d-4 .or. abs(cen(1) - 0.0125d0) > 1.0d-4) bad = bad + 1
+      if (abs(cnt(1) - 2.0d0) > 1.0d-6) bad = bad + 1
+      do k = 2, 40
+         if (abs(cnt(k)) > 1.0d-6) bad = bad + 1
+      end do
+      if (abs(tot - 2.0d0) > 1.0d-6 .or. abs(pp - 1.0d0) > 1.0d-6) bad = bad + 1
+      if (bad > 0) then
+         call fail('(l): hist_thta.dat violates the derived truth (bin-1 count 2,'// &
+                  ' spacing 0.025, TOTAL/P)')
+         return
+      end if
+      print '(a)', '(l): PASS - both histogram files exist with the 40+TOTAL shape;'// &
+           ' e_rel counts both rows (P=1); theta bin 1 carries all rows (gas-phase'// &
+           ' angle bitwise 0, spacing exactly 0.025)'
+   end subroutine crit_l
+
+   !------------------------------------------------------------------
+   ! crit_m() - (m): the histogram summary line + the printed drift vs the
+   !             file-derived drift
+   subroutine crit_m()
+      integer, parameter :: max_traj = 8
+      real(8) :: e_first(max_traj), dev_max(max_traj), efin(max_traj)
+      integer :: ntr(max_traj), cur, nfin, p, ios, t
+      real(8) :: printed, derived
+      if (index(obuf_t, 'histograms: rows=2 files=hist_e_rel.dat hist_thta.dat') == 0) then
+         call fail('(m): stdout missing the histogram summary line - got "'// &
+                  trim(obuf_t)//'"')
+         return
+      end if
+      p = index(obuf_t, 'max|e_fin-e0|=')
+      if (p == 0) then
+         call fail('(m): stdout missing the drift line - got "'//trim(obuf_t)//'"')
+         return
+      end if
+      read (obuf_t(p+14:), *, iostat=ios) printed
+      if (ios /= 0) then
+         call fail('(m): the printed drift value is unparseable - got "'// &
+                  trim(obuf_t(p+14:p+25))//'"')
+         return
+      end if
+      call scan_columns('build/drv_case_t/trajectories.txt', max_traj, ntr, e_first, &
+                        dev_max, cur)
+      call scan_finals('build/drv_case_t/trajectories.txt', max_traj, efin, nfin)
+      if (cur < 2 .or. nfin < 2 .or. any(ntr(1:2) == 0)) then
+         call fail('(m): could not parse first frames and final rows for both'// &
+                  ' trajectories')
+         return
+      end if
+      derived = 0.0d0
+      do t = 1, cur
+         derived = max(derived, abs(efin(t) - e_first(t)))
+      end do
+      if (abs(printed - derived) > 1.0d-3 + 1.0d-3*abs(derived)) then
+         call fail('(m): the printed drift '//d2s(printed)//' disagrees with the'// &
+                  ' file-derived '//d2s(derived)//' kcal/mol')
+         return
+      end if
+      print '(a)', '(m): PASS - the histograms summary line present; printed drift '// &
+           d2s(printed)//' = file-derived max|final e_tot - first e_tot| '//d2s(derived)
+   end subroutine crit_m
+
+   !------------------------------------------------------------------
+   ! crit_n() - (n): occ/n_hop through the real driver, every frame line and
+   !             final row (the degenerate adiabatic values end to end)
+   subroutine crit_n()
+      character(len=2048) :: obuf, ebuf
+      character(len=512) :: line
+      integer :: stat, v, ios, nfr, nfin, bad, tj
+      real(8) :: tt, w1, w2, w3, vo, vn
+      logical :: want_col
+      call run_driver('drv_case_o', obuf, ebuf, stat)
+      if (stat /= 0) then
+         call fail('(n): the driver child exited nonzero - stderr: '//trim(ebuf))
+         return
+      end if
+      if (index(obuf, 'columns=5') == 0) then
+         call fail('(n): the assembly line must read columns=5 (energy three + the'// &
+                  ' two occupation columns) - got "'//trim(obuf)//'"')
+         return
+      end if
+      nfr = 0
+      nfin = 0
+      bad = 0
+      want_col = .false.
+      open (newunit=v, file='build/drv_case_o/trajectories.txt', status='old', &
+            action='read', iostat=ios)
+      if (ios /= 0) then
+         call fail('(n): trajectories.txt missing in the case directory')
+         return
+      end if
+      do
+         read (v, '(a)', iostat=ios) line
+         if (ios /= 0) exit
+         if (want_col) then
+            ! the frame's column line: occ/n_hop by name token
+            want_col = .false.
+            nfr = nfr + 1
+            if (tok_val(line, 'occ', vo) .and. tok_val(line, 'n_hop', vn)) then
+               if (abs(vo - 1.0d0) > 1.0d-9 .or. abs(vn) > 1.0d-9) bad = bad + 1
+            else
+               bad = bad + 1
+            end if
+         else if (index(line, '# frame traj=') == 1) then
+            want_col = .true.
+         else if (len_trim(line) > 0 .and. index(line, '#') == 0 .and. &
+                  index(line, '=') == 0) then
+            ! a final row: traj t t_kin v_pot e_tot occ n_hop (positional)
+            nfin = nfin + 1
+            read (line, *, iostat=ios) tj, tt, w1, w2, w3, vo, vn
+            if (ios /= 0 .or. abs(vo - 1.0d0) > 1.0d-9 .or. abs(vn) > 1.0d-9) then
+               bad = bad + 1
+            end if
+         end if
+      end do
+      close (v)
+      if (nfr /= 12 .or. nfin /= 2) then
+         call fail('(n): expected 12 frame column lines + 2 final rows, got '// &
+                  i2s(nfr)//' + '//i2s(nfin))
+         return
+      end if
+      if (bad > 0) then
+         call fail('(n): '//i2s(bad)//' lines carry wrong occ/n_hop values (want'// &
+                  ' 1.0 / 0.0 everywhere - the adiabatic degeneracy)')
+         return
+      end if
+      print '(a)', '(n): PASS - occ=1.0 and n_hop=0.0 on all 12 frame lines and both'// &
+           ' final rows: input key -> selection -> extractor -> getter -> file'
+   end subroutine crit_n
+
+   !------------------------------------------------------------------
+   ! crit_phg() - (phg): this check's own child drives the inverted range
+   subroutine crit_phg()
+      character(len=512) :: cmd
+      character(len=2048) :: ebuf
+      character(len=1) :: sep
+      integer :: stat
+      if (windows_host()) then
+         sep = '\'
+      else
+         sep = '/'
+      end if
+      cmd = 'build'//sep//'check_driver.exe phguard 2>build'//sep//'drv_err.txt'
+      call execute_command_line(trim(cmd), wait=.true., exitstat=stat)
+      call slurp('build/drv_err.txt', ebuf)
+      if (stat == 0) then
+         call fail('(phg): expected a loud-stop, the phguard child exited 0')
+      else if (index(ebuf, 'plot_hist') == 0) then
+         call fail('(phg): stderr does not name plot_hist - got "'//trim(ebuf)//'"')
+      else
+         print '(a)', '(phg): PASS ('//trim(ebuf)//')'
+      end if
+   end subroutine crit_phg
+
+   !------------------------------------------------------------------
+   ! crit_q() - (q): the non-linear fragment anchor child
+   subroutine crit_q()
+      character(len=512) :: cmd
+      character(len=2048) :: obuf, ebuf
+      character(len=1) :: sep
+      integer :: stat
+      if (windows_host()) then
+         sep = '\'
+      else
+         sep = '/'
+      end if
+      cmd = 'build'//sep//'check_driver.exe nlfrag >build'//sep//'drv_qout.txt'// &
+            ' 2>build'//sep//'drv_err.txt'
+      call execute_command_line(trim(cmd), wait=.true., exitstat=stat)
+      call slurp('build/drv_qout.txt', obuf)
+      call slurp('build/drv_err.txt', ebuf)
+      if (stat /= 0) then
+         call fail('(q): the nlfrag child exited nonzero - stdout: '//trim(obuf)// &
+                  ' stderr: '//trim(ebuf))
+      else if (index(obuf, 'nlfrag: non-linear fragment anchors hold') == 0) then
+         call fail('(q): the child output is missing the anchor marker - '//trim(obuf))
+      else
+         print '(a)', '(q): PASS - the 3-atom non-collinear fragment: rotation'// &
+              ' stripped from the archive (p_fin ~ 0), j/e_rot/internal-kinetic'// &
+              ' cross-identity, staged well, COM-shifted rows'
+      end if
+   end subroutine crit_q
+
+   !------------------------------------------------------------------
    ! run_driver(cdir, obuf, ebuf, stat) - spawn the driver exe with cwd = one case
    !                  directory (the driver reads ./input_qct.txt relative to its
    !                  cwd; 'cd <case> && exe' carries both shell families); stdout
@@ -850,10 +1246,10 @@ contains
    !                  execute the build's venus.e name directly; BOTH compiler
    !                  trees are probed and a missing exe is a NAMED failure)
    subroutine make_cases()
-      character(len=80) :: xyza(4), xyzb(4), xyz1(4)
+      character(len=80) :: xyza(4), xyzb(4), xyz1(4), xyz3(5)
       character(len=80) :: la(14), lb(6), ld(9), ldp(9), lec(10)
       character(len=80) :: lm(9), lt(13), lpars(3)
-      character(len=80) :: lr(15)
+      character(len=80) :: lr(15), lo(10), ln(7)
       logical :: have_g, have_i
       character(len=64) :: srcexe, srcw
       integer :: j
@@ -863,6 +1259,13 @@ contains
                'H 0.0 0.0 0.0', 'H 0.8 0.0 0.0' ]
       xyz1 = [ character(len=80) :: '2', 'diatomic test fragment', &
                'H 0.0 0.0 0.0', 'H 0.7 0.0 0.0' ]
+      ! the non-collinear triangle for the (q) anchor: centered (COM at the
+      ! origin for equal masses) and equilateral in the z = 0 plane, so the
+      ! inertia tensor is diagonal (I_xy cancels pairwise) and a z-axis
+      ! rotation exercises the full inertia-tensor / rotation-strip path
+      xyz3 = [ character(len=80) :: '3', 'non-collinear triangle fragment', &
+               'H 0.9 0.0 0.0', 'H -0.45 0.7794228634059948 0.0', &
+               'H -0.45 -0.7794228634059948 0.0' ]
       ! (a): the end-to-end case - two-fragment gas-phase system, thermalize on
       ! fragment 1, rotation on fragment 2, the incident channel for the pair;
       ! GWRITE_LEVEL=2 opens the sec_qp flattened section (the input per-key
@@ -911,6 +1314,18 @@ contains
              'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = THERMALIZE,ROTATION', &
              'T_EQ = 300.0', 'N_EQ = 25', 'DT_EQ = 0.05', 'J_ROT = 3', 'N_TRAJ = 2', &
              'MAX_STEPS = 400', 'ISEED = 20260915' ]
+      ! (n): the occupation-column case - the list entry appends occ/n_hop to
+      ! the energy three (columns=5); a short safety-net run keeps the file
+      ! small while exercising every frame line and final row
+      lo = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 1.0', 'B_MAX = 2.0', &
+             'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = ROTATION', 'N_TRAJ = 2', &
+             'MAX_STEPS = 5', 'ISEED = 20260915', 'OBSERVABLES = occ,n_hop' ]
+      ! (q): the non-linear fragment case - the child reads it from src/ with a
+      ! build-relative system dir; DIST_SCHEME satisfies the required-key
+      ! grammar but the child never samples (it binds the analysis chain itself)
+      ln = [ character(len=80) :: 'SYSTEM_DIR = build/drv_case_n/system', 'E_REL = 1.0', &
+             'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = ROTATION', &
+             'N_TRAJ = 1' ]
       lpars = [ character(len=80) :: 'K_HARM = 0.04', 'Q_TERM = 9.5', 'E_SPLIT = 1.0' ]
       ! wipe every case folder BEFORE rebuilding it: a case folder must hold
       ! exactly what THIS run writes - a stale file from an earlier round
@@ -922,12 +1337,16 @@ contains
       call wipe_dir('build/drv_case_m')
       call wipe_dir('build/drv_case_r')
       call wipe_dir('build/drv_case_t')
+      call wipe_dir('build/drv_case_o')
+      call wipe_dir('build/drv_case_n')
       call make_dir('build/drv_case_a/system')
       call make_dir('build/drv_case_b')
       call make_dir('build/drv_case_d/system')
       call make_dir('build/drv_case_m/system')
       call make_dir('build/drv_case_r/system')
       call make_dir('build/drv_case_t/system')
+      call make_dir('build/drv_case_o/system')
+      call make_dir('build/drv_case_n/system')
       call write_sample('build/drv_case_a/system/pair_a.xyz', xyza)
       call write_sample('build/drv_case_a/system/pair_b.xyz', xyzb)
       call write_sample('build/drv_case_d/system/h2.xyz', xyz1)
@@ -936,6 +1355,8 @@ contains
       call write_sample('build/drv_case_r/system/pair_b.xyz', xyzb)
       call write_sample('build/drv_case_t/system/pair_a.xyz', xyza)
       call write_sample('build/drv_case_t/system/pair_b.xyz', xyzb)
+      call write_sample('build/drv_case_o/system/h2.xyz', xyz1)
+      call write_sample('build/drv_case_n/system/h3.xyz', xyz3)
       ! the container parameter file is RUN material (cwd of the driver child),
       ! not system-definition material - the system-folder scan would reject
       ! its unknown extension
@@ -948,6 +1369,8 @@ contains
       call write_sample('build/drv_case_m/input_qct.txt', lm)
       call write_sample('build/drv_case_r/input_qct.txt', lr)
       call write_sample('build/drv_case_t/input_qct.txt', lt)
+      call write_sample('build/drv_case_o/input_qct.txt', lo)
+      call write_sample('build/drv_case_n/input_nlfrag.txt', ln)
       ! the driver exe: probe BOTH compiler trees, name the failure when neither
       ! exists (a silent copy failure is not diagnosable)
       inquire (file='build/gfortran/venus.e', exist=have_g)
@@ -1092,6 +1515,115 @@ contains
       end do
       close (v)
    end subroutine traj_summary
+
+   ! read_hist(fname, ...) - one plain histogram file back: bin centers/counts
+   ! (list-directed - format-agnostic) and the TOTAL & P line; a missing file
+   ! reports nlines = 0 (the caller's existence check)
+   subroutine read_hist(fname, cap, cen, cnt, nbin, tot, pp, nlines)
+      character(len=*), intent(in) :: fname
+      integer, intent(in) :: cap
+      real(8), intent(out) :: cen(cap), cnt(cap), tot, pp
+      integer, intent(out) :: nbin, nlines
+      character(len=256) :: line
+      integer :: v, ios, ios2
+      nbin = 0
+      nlines = 0
+      tot = -1.0d0
+      pp = -1.0d0
+      cen = 0.0d0
+      cnt = 0.0d0
+      open (newunit=v, file=fname, status='old', action='read', iostat=ios)
+      if (ios /= 0) return
+      do
+         read (v, '(a)', iostat=ios) line
+         if (ios /= 0) exit
+         nlines = nlines + 1
+         if (index(line, 'TOTAL & P') == 1) then
+            read (line(10:), *, iostat=ios2) tot, pp
+            if (ios2 /= 0) then
+               tot = -1.0d0
+               pp = -1.0d0
+            end if
+         else if (nbin < cap) then
+            nbin = nbin + 1
+            read (line, *, iostat=ios2) cen(nbin), cnt(nbin)
+            if (ios2 /= 0) then
+               nbin = nbin - 1
+               cen(nbin+1) = 0.0d0
+               cnt(nbin+1) = 0.0d0
+            end if
+         end if
+      end do
+      close (v)
+   end subroutine read_hist
+
+   ! scan_finals(fname, ...) - per trajectory the e_tot of its final row (rows
+   ! are the plain data lines: traj t <selected values>; e_tot is the third
+   ! value under the default energy-three selection; frame column lines carry
+   ! '=' and are skipped)
+   subroutine scan_finals(fname, maxt, efin, nfin)
+      character(len=*), intent(in) :: fname
+      integer, intent(in) :: maxt
+      real(8), intent(out) :: efin(maxt)
+      integer, intent(out) :: nfin
+      character(len=512) :: line
+      integer :: v, ios, tj
+      real(8) :: tt, v1, v2, v3
+      efin = 0.0d0
+      nfin = 0
+      open (newunit=v, file=fname, status='old', action='read', iostat=ios)
+      if (ios /= 0) return
+      do
+         read (v, '(a)', iostat=ios) line
+         if (ios /= 0) exit
+         if (len_trim(line) == 0) cycle
+         if (index(line, '#') == 1) cycle
+         if (index(line, '=') > 0) cycle
+         read (line, *, iostat=ios) tj, tt, v1, v2, v3
+         if (ios /= 0) cycle
+         if (tj >= 1 .and. tj <= maxt) then
+            efin(tj) = v3
+            nfin = max(nfin, tj)
+         end if
+      end do
+      close (v)
+   end subroutine scan_finals
+
+   ! tok_val(line, name, v) - read one '<name>=' token's value out of a frame
+   ! column line (token-boundary guarded - a name must start after a blank or
+   ! at the line head)
+   logical function tok_val(line, name, v)
+      character(len=*), intent(in) :: line, name
+      real(8), intent(out) :: v
+      integer :: p, ios
+      tok_val = .false.
+      v = 0.0d0
+      p = index(line, trim(name)//'=')
+      if (p == 0) return
+      if (p > 1 .and. line(p-1:p-1) /= ' ') return
+      read (line(p+len_trim(name)+1:), *, iostat=ios) v
+      tok_val = (ios == 0)
+   end function tok_val
+
+   ! chk_nl(label, got, want) - relative anchor check, tol 1e-10 with floor 1.0
+   ! (the final-state check's discipline: fixed short chains of double
+   ! operations; a wrong formula deviates at the 1e-2..1e0 level)
+   subroutine chk_nl(label, got, want)
+      character(len=*), intent(in) :: label
+      real(8), intent(in) :: got, want
+      if (abs(got - want) > 1.0d-10*max(abs(want), 1.0d0)) then
+         call fail(trim(label)//': got '//d2s(got)//', want '//d2s(want))
+      end if
+   end subroutine chk_nl
+
+   ! chk_z(label, got) - bitwise-zero check (skip-by-construction contract)
+   subroutine chk_z(label, got)
+      character(len=*), intent(in) :: label
+      real(8), intent(in) :: got
+      if (got /= 0.0d0) then
+         call fail(trim(label)//': must be bitwise zero, got '//d2s(got))
+      end if
+   end subroutine chk_z
 
    ! dev_str(d, n) - render a per-trajectory deviation list (the fail message)
    function dev_str(d, n) result(s)

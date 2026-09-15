@@ -17,11 +17,12 @@
 !   MECHANISM). Numeric assertions cover the constructible quantities: frame-header
 !   step/trajectory/time and the sec_qp q/p six-tuple rows (hand-built state_t). The
 !   force section is asserted for GATING + header/line count only (the E20 posture).
-! Placeholder statute (E16/E19): occ / n_hop columns are registered-but-inert - the
-!   occupation holder is real and seeded at method_bind, but the recorder-extractor
-!   wiring is deferred together with the electronic phases; n_hop_get is still a
-!   skeleton. Values are asserted to PARSE as finite reals only (numeric check
-!   deferred to phase V).
+! Placeholder statute -> reality: the occ / n_hop columns are REAL - the extractors
+!   read the elec_facade statistics holder through the getters (occ_get /
+!   n_hop_get), seeded at the method bind. Under the degenerate adiabatic row
+!   the holder carries occ = [1] constant and n_hop = 0, so criterion (p)
+!   asserts exactly those values end to end (file digits + the final-row
+!   read-back) - the numeric channel for any surface-hopping method later.
 ! Loud-stop verification approach (same scheme as check_sysdef/check_roster): the
 !   loud-stop criteria run as CHILD PROCESSES - the check re-spawns itself with a
 !   mode argument (execute_command_line); the child triggers the real loud-stop path
@@ -67,6 +68,14 @@
 !       e_tot fold to machine precision, the case-insensitive name lookup, and the
 !       e_tot = t_kin identity on the zero container; two children cover the named
 !       loud-stops (a name outside the selection; a read before any rec_final)
+!   (p) occupation columns on the real holder (the column-activation value
+!       channel): level 1 + the list 'occ,n_hop' -> the frame column line and
+!       the final row carry occ = 1.0 and n_hop = 0.0 exactly (the degenerate
+!       adiabatic holder values through registration -> selection -> write
+!       order), and rec_fin_val reads the same pair back - the registration /
+!       selection / write-order consistency of the two columns with the energy
+!       family, plus the whole-file trailing check (moved here from (f) when
+!       the write sequence grew the third trajectory)
 !=====================================================================
 program check_recorder
    use recorder,     only: col_val_i, rec_reg_col, rec_select, rec_frame, rec_final, &
@@ -84,7 +93,7 @@ program check_recorder
    character(len=512) :: line
    character(len=16) :: names(8)
    real(8) :: vals(8), r6(6), tt, tol
-   integer :: nlines, lp, nv, i, u, ios, traj, step
+   integer :: nlines, lp, nv, i, j, u, ios, traj, step
    type(state_t) :: sta
    ! hand-built constructible state (2 atoms): q/p/f exact short decimals, roster
    ! masses/symbols set directly (the roster instance is public and input-independent
@@ -192,6 +201,14 @@ program check_recorder
    sta%t = 1.4d0
    call rec_frame(sta, u)
    call rec_final(sta, u)
+   ! trajectory 3: the occupation columns live - level 1 + the occ/n_hop list
+   ! (the same union the driver assembles from the OBSERVABLES key); one frame
+   ! and one final row carry the degenerate adiabatic holder values
+   call rec_select(1)
+   call rec_select('occ,n_hop')
+   sta%t = 2.1d0
+   call rec_frame(sta, u)
+   call rec_final(sta, u)
    close (u)
 
    ! ---------- read the whole file back ----------
@@ -287,15 +304,14 @@ program check_recorder
    lp = lp + 2
    call expect_pref('# sec_frc end')
    call expect_final_row_only(2, 1.4d0, 3, tol)   ! selection carries into traj 2; NO header
-   if (lp <= nlines) call fail('(f) unexpected trailing lines in the frame file')
    if (nfail == nfail0) print '(a)', &
       '(f) header channel: PASS (step 1..7, t exact per frame, traj/step advance past rec_final)'
 
    ! ---------- (o) final-row read-back (the statistics-phase value channel) ----------
-   ! the module stash still holds trajectory 2's final row (the LAST rec_final) -
-   ! exactly what the driver's statistics phase reads back through rec_fin_val;
-   ! names/vals above hold that same row as parsed back from the FILE, so the
-   ! stash is checked against both the analytic fold and the written digits
+   ! the module stash holds the LAST final row (trajectory 3's - the (p) write
+   ! above overwrote it); the state never changed q/p, so its values equal
+   ! trajectory 2's parsed row digit for digit, and the analytic fold still
+   ! names them - the stash is checked against all three
    nfail0 = nfail
    tk_ana = (dot_product(p2(1:3), p2(1:3))/(2.0d0*roster%mass(1)) + &
              dot_product(p2(4:6), p2(4:6))/(2.0d0*roster%mass(2)))/e_conv
@@ -311,8 +327,8 @@ program check_recorder
       call fail('(o) v_pot must vanish on the zero container: '//d2s(rec_fin_val('v_pot')))
    end if
    i = 0
-   do lp = 1, nv
-      if (trim(names(lp)) == 'e_tot') i = lp
+   do j = 1, nv
+      if (trim(names(j)) == 'e_tot') i = j
    end do
    if (i == 0) then
       call fail('(o) e_tot missing from the parsed final-row names')
@@ -323,6 +339,38 @@ program check_recorder
    if (nfail == nfail0) print '(a)', &
       '(o) final-row read-back: PASS (e_tot = t_kin = analytic fold to 1e-10, case-insensitive'// &
       ' lookup, stash = written row)'
+
+   ! ---------- (p) occupation columns on the real holder (value channel) ----------
+   ! trajectory 3's frame: the level-1 base call REPLACED the selection (the
+   ! section gates closed again), then the occ/n_hop list appended - the column
+   ! line carries the five tokens in family order with the two degenerate
+   ! holder values EXACT; the final row carries the same pair positionally
+   ! (rows are positional per the contract - the once-written header still
+   ! names trajectory 1's three columns); the stash reads them back by name;
+   ! the whole-file trailing check lives here now that the write sequence
+   ! grew past (f)'s horizon
+   nfail0 = nfail
+   call expect_frame(3, 1, 2.1d0, tol)
+   call expect_occ_line()
+   call expect_final_row_only(3, 2.1d0, 5, tol)
+   if (vals(4) /= 1.0d0 .or. vals(5) /= 0.0d0) then
+      call fail('(p) the final row carries occ='//d2s(vals(4))//' n_hop='//d2s(vals(5))// &
+                ' (want exactly 1.0 / 0.0)')
+   end if
+   if (rec_fin_val('occ') /= 1.0d0) then
+      call fail('(p) rec_fin_val(occ) = '//d2s(rec_fin_val('occ'))//', want exactly 1.0')
+   end if
+   if (rec_fin_val('n_hop') /= 0.0d0) then
+      call fail('(p) rec_fin_val(n_hop) = '//d2s(rec_fin_val('n_hop'))//', want exactly 0.0')
+   end if
+   if (lp <= nlines) then
+      call fail('(p) unexpected trailing lines in the frame file (cursor at line '// &
+                trim(i2s(lp))//' of '//trim(i2s(nlines))//')')
+   end if
+   if (nfail == nfail0) print '(a)', &
+      '(p) occupation columns: PASS (column line + final row carry occ = 1.0 and'// &
+      ' n_hop = 0.0 exactly in family order; rec_fin_val reads the pair back;'// &
+      ' no trailing lines)'
 
    ! ---------- (h)+ loud-stop criteria (child processes) ----------
    call expect_loudstop('c-dup',     'duplicate',            'rec_reg_col', &
@@ -555,6 +603,59 @@ contains
          call fail('final row traj/t mismatch: '//trim(i2s(traj))//' '//trim(d2s(tt)))
       end if
    end subroutine expect_final_row_only
+
+   ! assert the current line is the occupation column line: exactly five
+   ! name=value tokens in family order (the energy three, then occ/n_hop in
+   ! list order - the registration/selection/write-order consistency), with
+   ! occ and n_hop carrying the degenerate holder values EXACTLY (the (p)
+   ! value channel; the energy values stay unasserted per the S1 boundary)
+   subroutine expect_occ_line()
+      character(len=512) :: l, rest, tok
+      character(len=16) :: got(8)
+      real(8) :: wv(8), v
+      integer :: n, i, ie, ios
+      if (.not. next_line(l)) return
+      rest = adjustl(l)
+      n = 0
+      do while (len_trim(rest) > 0 .and. n < 8)
+         i = index(rest, ' ')
+         if (i == 0) i = len_trim(rest) + 1
+         tok = rest(:i-1)
+         rest = adjustl(rest(i:))
+         ie = index(tok, '=')
+         if (ie == 0) then
+            call fail('(p) column token without "=": '//trim(tok))
+            return
+         end if
+         n = n + 1
+         got(n) = tok(:ie-1)
+         read (tok(ie+1:), *, iostat=ios) v
+         if (ios /= 0) then
+            call fail('(p) column value unparseable: '//trim(tok))
+            return
+         end if
+         wv(n) = v
+      end do
+      if (n /= 5) then
+         call fail('(p) expected the 5-token column line (energy three + occ/n_hop),'// &
+                   ' got '//trim(i2s(n))//' tokens: '//trim(l))
+         return
+      end if
+      if (trim(got(1)) /= 't_kin' .or. trim(got(2)) /= 'v_pot' .or. &
+          trim(got(3)) /= 'e_tot' .or. trim(got(4)) /= 'occ' .or. &
+          trim(got(5)) /= 'n_hop') then
+         call fail('(p) column order mismatch: got "'//trim(got(1))//' '//trim(got(2))//' '// &
+                   trim(got(3))//' '//trim(got(4))//' '//trim(got(5))// &
+                   '" want "t_kin v_pot e_tot occ n_hop"')
+         return
+      end if
+      if (wv(4) /= 1.0d0) then
+         call fail('(p) the column line occ = '//d2s(wv(4))//', want exactly 1.0')
+      end if
+      if (wv(5) /= 0.0d0) then
+         call fail('(p) the column line n_hop = '//d2s(wv(5))//', want exactly 0.0')
+      end if
+   end subroutine expect_occ_line
 
    ! parse '# final: traj t <names...>' into the trailing names
    subroutine parse_final_header(l, nm, n)

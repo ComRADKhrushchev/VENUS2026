@@ -62,7 +62,10 @@
 !   - output file registration: the recording unit writes 'trajectories.txt' in the
 !     run directory (cwd-relative, the semantic file name chosen for this program;
 !     every trajectory's frames, gated flattened sections and final-state rows
-!     land there; the statistics summary lines go to stdout). The name is
+!     land there; the statistics summary lines go to stdout). The statistics
+!     phase adds the two histogram files 'hist_e_rel.dat' / 'hist_thta.dat'
+!     (same cwd-relative rule; the driver-side range rule [0, column max + 1)
+!     keeps every aggregated row in range by construction). The names are
 !     registered here - criteria and tooling grep this contract.
 ! Units: none (orchestration; quantities carry their own units).
 !=====================================================================
@@ -86,7 +89,8 @@ program venus
    use recorder,       only: rec_select, rec_frame, rec_final, rec_n_sel, rec_fin_val
    use final_state,    only: fin_t, fin_eval, container_classify, container_classify_bound
    use density,        only: dens_states, eig_out
-   use hist,           only: hist_spec_t, hist_data_t, lat_t, plot_hist
+   use hist,           only: hist_spec_t, hist_data_t, lat_t, plot_hist, &
+                             k_e_hist, k_t_hist
    use input,          only: read_input
    implicit none
 
@@ -124,6 +128,9 @@ program venus
                                           ! head force_eval output - the drift reference)
    real(8), allocatable :: e_fin_traj(:)  ! per-trajectory final e_tot [kcal/mol] (the
                                           ! recorder final-state row - see the statistics note)
+   real(8), allocatable :: vpot_fin_traj(:) ! per-trajectory final v_pot [kcal/mol] (the
+                                          ! recorder final-state row again - the v_fin
+                                          ! aggregation column of the histogram row table)
    real(8) :: drift_max     ! max |e_fin - e0| over trajectories [kcal/mol]
    ! -- data structures handed between phases --
    type(state_t) :: sta                      ! physical state (held by the driver; written
@@ -139,11 +146,16 @@ program venus
                                              ! counting shape - name-keyed vs the container
                                              ! declaring its outcome-name list - decided with
                                              ! the first real container)
-   type(hist_spec_t) :: spec_hist            ! histogram specification (assembled in statistics)
-   type(hist_data_t) :: data_hist            ! trajectory row table (aggregated from recorder
-                                             ! final-state rows)
+   type(hist_spec_t) :: spec_hist            ! histogram specification (assembled in statistics:
+                                             ! kind, file name, the [0, column max + 1) range
+                                             ! rule, 40 bins, normalized)
+   type(hist_data_t) :: data_hist            ! trajectory row table (aggregated from fin truth +
+                                             ! the recorder final-state rows in statistics; the
+                                             ! system-diagnostic columns stay unaggregated - no
+                                             ! generic producer exists for them)
    type(lat_t) :: lattice                    ! lattice constants (mapped from the roster unit
-                                             ! cell - statistics phase)
+                                             ! cell - statistics phase; consumed by the
+                                             ! lattice-aware histogram kinds)
 
    ! ===== Phase 1: assembly (real - the order below is binding legislation) =====
    call read_input('input_qct.txt')                ! 1. input framework (KEYWORD=VALUE ->
@@ -192,10 +204,11 @@ program venus
    if (len_trim(observables%obs_list) > 0) then    ! 9b. named-column list entry (union
       call rec_select(trim(observables%obs_list))  !    semantics with the level entry - the
    end if                                          !    recorded set is the union of both)
-   allocate (sta_fin(n_traj), e0_traj(n_traj), e_fin_traj(n_traj))
+   allocate (sta_fin(n_traj), e0_traj(n_traj), e_fin_traj(n_traj), vpot_fin_traj(n_traj))
                                                    ! 10. inter-phase hand-off structures (the
                                                    !     snapshots + the drift reference/final
-                                                   !     pairs the statistics pass consumes)
+                                                   !     and final-row column pairs the
+                                                   !     statistics pass consumes)
    dt_eff = prop_cfg%dt                            !     staged once (the fixed-step source -
                                                    !     see the local's note)
    call cpu_time(t_cpu(1))                         !     timing start
@@ -266,15 +279,39 @@ program venus
                                         ! read here because the row stash lives only until
                                         ! the next rec_final - the data-source choice is
                                         ! stated at the drift summary below
+      vpot_fin_traj(traj_i) = rec_fin_val('v_pot')
+                                        ! the same row's potential-energy column - the
+                                        ! v_fin entry of the histogram row table (the
+                                        ! energy family is always among the selected
+                                        ! columns: preset level 0 already carries it)
    end do
 
-   ! ===== Phase 3: statistics (post-processing class) - first version =====
+   ! ===== Phase 3: statistics (post-processing class) =====
    call cpu_time(t_cpu(2))
    allocate (cnt_outc(max_outc))
    cnt_outc = 0
    n_outc = 0
+   ! the aggregation pass: ONE fin_eval per archived trajectory feeds both consumers -
+   ! the guarded classification counting and the data_hist row table. Aggregation shape
+   ! discipline: only the GENERIC columns land (the final relative energy and the
+   ! scattering angle from fin truth, the final potential energy from the recorder
+   ! row); the remaining skeleton columns carry no generic producer in this tree (the
+   ! x0/y0 initial drop point needs a recorder initial-value channel; z_min / n_bnc /
+   ! site are system diagnostics) and stay UNAGGREGATED - unallocated members, no
+   ! guessed values; only the two plain kinds below are constructed, and they read
+   ! e_rel / thta only
+   allocate (data_hist%e_rel(n_traj), data_hist%thta(n_traj), data_hist%v_fin(n_traj))
+   data_hist%n_traj = n_traj
    do traj_i = 1, n_traj
       call fin_eval(sta_fin(traj_i), fin)
+      data_hist%e_rel(traj_i) = fin%e_rel     ! the classification's own energy datum,
+                                             ! reused as the histogram column (one
+                                             ! evaluation, two consumers)
+      data_hist%thta(traj_i) = fin%ang(19)   ! the scattering-angle class of the angle
+                                             ! array (the surface channel; bitwise 0 in
+                                             ! a gas-phase run - no surface pair)
+      data_hist%v_fin(traj_i) = vpot_fin_traj(traj_i)
+                                             ! the recorder final row's potential column
       if (container_classify_bound()) then   ! the bound guard: the no-classification run
                                              ! is legal and simply never calls the slot
          outc_name = container_classify(fin)
@@ -312,16 +349,34 @@ program venus
    end if
    write (*, '(a,i0,a,es12.4,a)') 'conservation drift: trajectories=', n_traj, &
       ' max|e_fin-e0|=', drift_max, ' kcal/mol'
+   if (n_valid >= 1) then
+      ! the two plain histogram kinds over the aggregated columns. Range rule
+      ! [0, column max + 1): every aggregated row is in range by construction,
+      ! and the v_hi > v_lo invariant is owned by the guard inside plot_hist
+      ! (the single choke point every caller passes). The lattice is mapped
+      ! from the roster unit cell for the lattice-aware kinds; the two plain
+      ! kinds constructed here never read it
+      lattice%a_lat = roster%a_lat
+      lattice%skew = roster%skew
+      lattice%q_ref = 0.0d0
+      spec_hist = hist_spec_t(k_e_hist, 'hist_e_rel.dat', 0.0d0, &
+                              maxval(data_hist%e_rel) + 1.0d0, 40, 0, .true.)
+      call plot_hist(spec_hist, data_hist, lattice)
+      spec_hist = hist_spec_t(k_t_hist, 'hist_thta.dat', 0.0d0, &
+                              maxval(data_hist%thta) + 1.0d0, 40, 0, .true.)
+      call plot_hist(spec_hist, data_hist, lattice)
+      write (*, '(a,i0,a)') 'histograms: rows=', n_valid, &
+         ' files=hist_e_rel.dat hist_thta.dat'
+   end if
    write (*, '(a,f8.2,a)') 'timing: cpu=', t_cpu(2) - t_cpu(1), ' s'
-   ! Analysis call sites, prepared but not wired (the histogram machinery is a
-   ! later landing; the locals above keep the signatures honest):
-   ! call plot_hist(spec_hist, data_hist, lattice)
-   ! call dens_states(spec_hist)
-   ! call eig_out(spec_hist)
+   ! Not wired: dens_states / eig_out consume a mode-frequency set and an eigen-pair
+   ! table - products of a Hessian / normal-mode service. No such producer exists in
+   ! this tree (the roster carries geometries and masses only), so the two calls stay
+   ! out until one does; the use line above keeps the dependency face explicit
    close (u_out)
    call state_destroy(sta)
    do traj_i = 1, n_traj
       call state_destroy(sta_fin(traj_i))
    end do
-   deallocate (sta_fin, e0_traj, e_fin_traj, cnt_outc)
+   deallocate (sta_fin, e0_traj, e_fin_traj, vpot_fin_traj, cnt_outc)
 end program venus

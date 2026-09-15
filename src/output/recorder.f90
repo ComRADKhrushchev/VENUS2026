@@ -83,11 +83,12 @@
 !   force_eval (the kcal/mol e_tot of the force_facade N1 contract; v_pot = e_tot - t_kin).
 !   v_pot / e_tot call force_eval on a private COPY of the snapshot (force_eval takes an
 !   inout state; the recorded snapshot itself stays read-only).
-!   E16/E19 placeholder statute: occ / n_hop are registered-but-INERT - the elec_facade
-!   getters are no-op skeletons in C4 (occ_get would hand back an unallocated set,
-!   n_hop_get an undefined value), so the extractors return a defined 0.0 placeholder and
-!   the getter call lands when the statistics holder goes real (C-phase); their values are
-!   a phase-V posterior.
+!   E16/E19 occupation columns - REAL: the extractors read the elec_facade statistics
+!   holder through the getter pair (occ_get / n_hop_get), seeded at the method bind
+!   (occ = [1], n_hop = 0 under the degenerate adiabatic row; a hopping method's live
+!   values flow through the same channel). The occ column carries the ACTIVE-STATE
+!   INDEX - the scalar face of the occupation set; the full multi-electron vector has
+!   no scalar summary face yet (registered, not guessed).
 !   Frame-index channel: the signature froze two dummies (sta, unit), so the trajectory /
 !   step counters live as module-private state (the "closure host" of the skeleton note):
 !   step_i advances per rec_frame call, traj_i advances per rec_final call (which also
@@ -110,6 +111,7 @@ module recorder
    use config,        only: observables
    use config_roster, only: roster
    use force_facade,  only: force_eval
+   use elec_facade,   only: occ_get, n_hop_get
    use consts,        only: e_conv
    implicit none
    private
@@ -575,20 +577,25 @@ contains
       call force_eval(wrk, v)
    end function col_etot
 
-   ! occ - E16/E19 placeholder column: the occupation set is held in the elec_facade
-   ! statistics holder, read through occ_get - which is a NO-OP SKELETON in C4 (it would
-   ! hand back an unallocated set), so this extractor is registered-but-inert: a defined
-   ! placeholder until the holder goes real, its value a phase-V posterior
+   ! occ - E16/E19 occupation column: the ACTIVE-STATE INDEX of the held occupation set
+   ! (the scalar face of the set - frame/final-row columns are one real each), read from
+   ! the elec_facade statistics holder through occ_get; seeded [1] at the method bind, so
+   ! the degenerate adiabatic row records 1.0 on every line. The whole-vector summary for
+   ! a multi-electron method has no scalar face yet - registered, not guessed
    real(8) function col_occ(sta) result(v)
       type(state_t), intent(in) :: sta
-      v = 0.0d0
+      integer, allocatable :: occ(:)
+      call occ_get(occ)
+      v = dble(occ(1))
+      deallocate (occ)
    end function col_occ
 
-   ! n_hop - E16/E19 placeholder column: the hop counter via n_hop_get (same no-op-skeleton
-   ! note as col_occ - n_hop_get would return an undefined value; inert placeholder)
+   ! n_hop - E16/E19 hop-count column: the held hop counter through n_hop_get (a pure
+   ! observable per the holder statute - the recorder only reads); 0 under the adiabatic
+   ! row (no hops exist), incremented at hop detection inside the match member
    real(8) function col_nhop(sta) result(v)
       type(state_t), intent(in) :: sta
-      v = 0.0d0
+      v = dble(n_hop_get())
    end function col_nhop
 
    !------------------------------------------------------------------
