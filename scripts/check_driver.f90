@@ -24,8 +24,9 @@
 !            methods/reg_dist_normalmode.f90 methods/reg_dist_barrier_excitation.f90 &
 !            methods/reg_dist_thermostat.f90 methods/reg_dist_glo_target.f90 &
 !            methods/reg_dist_thermalize.f90 output/recorder.f90 output/final_state.f90 &
-!            ../systems/test_harmonic/harmonic_box.f90 &
-!            ../systems/test_harmonic/reg_test_harmonic.f90 &
+!            ../systems/reference/reference_pot.f90 &
+!            ../systems/reference/reference_box.f90 &
+!            ../systems/reference/reg_reference.f90 &
 !            build/gfortran/registry_gen.f90 ../scripts/check_driver.f90 &
 !            -o build/check_driver.exe
 ! Run (from src/): build\check_driver.exe
@@ -50,8 +51,8 @@
 ! Criteria:
 !   (a) END-TO-END THROUGH (the real driver exe, child process): a real input
 !       file + a real two-fragment system folder (two diatomic .xyz files -
-!       the generic hypothetical molecular system) + the dragged-in harmonic
-!       verification container -> exit 0, stdout carries the assembly-summary
+!       the generic hypothetical molecular system) + the dragged-in reference
+!       container -> exit 0, stdout carries the assembly-summary
 !       line with the expected field values (trajectories=3 atoms=4 fragments=2
 !       paradigm=0 members=11 columns=3) AND the statistics-summary block, and
 !       trajectories.txt exists and is non-empty
@@ -930,7 +931,7 @@ contains
       ! the container parameter file is RUN material (cwd of the driver child),
       ! not system-definition material - the system-folder scan would reject
       ! its unknown extension
-      call write_sample('build/drv_case_t/harmonic_pars.txt', lpars)
+      call write_sample('build/drv_case_t/reference_pars.txt', lpars)
       call write_sample('build/drv_case_a/input_qct.txt', la)
       call write_sample('build/drv_case_a/input_eclass.txt', lec)
       call write_sample('build/drv_case_b/input_qct.txt', lb)

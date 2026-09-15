@@ -1,17 +1,36 @@
 !=====================================================================
-! check_facade.f90 - facade-mechanism criteria program, batches 1-3:
+! check_facade.f90 - facade-mechanism criteria program, batches 1-4:
 !                    the frozen ws holder association (a)-(d) + the
 !                    force_eval fill chain (e)-(g) + the electronic-phase
-!                    dispatch batch (h)-(l) (criteria defined FIRST in
-!                    this header; this program executes them)
-! Compile (from src/; modules in use-order first, -Jbuild keeps the .mod
+!                    dispatch batch (h)-(l) + the reference-container
+!                    batch (m)-(p) (criteria defined FIRST in this
+!                    header; this program executes them)
+! Compile (from src/; run make FIRST - the aggregated registry module is
+! a build product; modules in use-order first, -Jbuild keeps the .mod
 ! files out of the source tree):
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 facade/sysdef_facade.f90 input.f90 &
 !            globals/config_roster.f90 globals/state.f90 facade/elec_ws.f90 &
 !            facade/elec_facade.f90 methods/elec_adiabatic.f90 &
 !            methods/reg_adiabatic.f90 utils/linalg.f90 facade/force_facade.f90 &
-!            ../scripts/check_facade.f90 -o build/check_facade.exe
+!            facade/sampler.f90 utils/geometry.f90 dynamics/propagator.f90 &
+!            methods/dist_boltzmann.f90 methods/dist_ebk.f90 methods/dist_incident.f90 &
+!            methods/dist_j.f90 methods/dist_rotation.f90 methods/dist_surface_oscillator.f90 &
+!            methods/dist_normalmode.f90 methods/dist_barrier_excitation.f90 &
+!            methods/dist_thermostat.f90 methods/dist_glo_target.f90 &
+!            methods/dist_thermalize.f90 methods/seam_cast.f90 &
+!            methods/reg_prop.f90 &
+!            methods/reg_dist_boltzmann.f90 methods/reg_dist_ebk.f90 &
+!            methods/reg_dist_incident.f90 methods/reg_dist_j.f90 &
+!            methods/reg_dist_rotation.f90 methods/reg_dist_surface_oscillator.f90 &
+!            methods/reg_dist_normalmode.f90 methods/reg_dist_barrier_excitation.f90 &
+!            methods/reg_dist_thermostat.f90 methods/reg_dist_glo_target.f90 &
+!            methods/reg_dist_thermalize.f90 output/final_state.f90 &
+!            ../systems/reference/reference_pot.f90 &
+!            ../systems/reference/reference_box.f90 &
+!            ../systems/reference/reg_reference.f90 &
+!            build/gfortran/registry_gen.f90 ../scripts/check_facade.f90 &
+!            -o build/check_facade.exe
 ! All artifacts are written under build/ - the source tree stays clean.
 ! Posture: criteria (a)-(d) exercise the holder mechanism itself - the
 !   REAL 'adiabatic' package registers through its reg module
@@ -35,7 +54,13 @@
 !   as the sibling checks): criteria (k)/(l) run as CHILD PROCESSES - the
 !   check re-spawns itself with a mode argument (execute_command_line,
 !   stderr redirected to build/); the child drives the real stop path and
-!   must print a naming message on stderr and exit nonzero.
+!   must print a naming message on stderr and exit nonzero. The batch-4
+!   real-container criteria ((m)/(n)) run as children for a second
+!   reason: the parent's single PES slot is already bound check-side for
+!   (e)-(j) (one container per process - the bind face loud-stops on a
+!   second bind), so every different container gets a fresh process; the
+!   (o) children run with cwd = build/ because the container parameter
+!   file is run-directory material.
 ! Criteria:
 !   (a) handle identity: two ws_handle() calls yield pointers to the SAME
 !       target (pointer association comparison), and a field written
@@ -132,6 +157,46 @@
 !       before any method_bind loud-stop, stderr naming the entry and
 !       method_bind (the skeleton's legislation: unbound = loud-stop,
 !       never a silent skip)
+!   (m) container registry path (child): the harmonic well bound through
+!       its OWN drag-in row - the build-generated registry_gen module,
+!       the exact registration call the driver runs - NOT the check-side
+!       direct bind of (e). The child runs registry_gen_all (which
+!       registers every method package AND binds the reference PES with
+!       delivery declared 'scalar'), registry_gen_init (the assembly
+!       seam, guard-skipped without staged input), container_init
+!       (green) and then a real force_eval: the force components and the
+!       e_tot decomposition of the default-constant well (K = 0.04
+!       eV/A^2, the numeric anchor) at two geometries through the
+!       measured conversion (1e-13 / 1e-12; the eV->internal literal
+!       never written here)
+!   (n) module direct bind (children): the morse and leps potentials of
+!       the reference module, bound through container_bind_pes by
+!       transparent check-side adapters (the direct-bind counterpart of
+!       (m)'s registry path) and driven by a real force_eval: the
+!       analytic gradient vs the CENTRAL DIFFERENCE of the module energy
+!       (tolerance 1e-8, step h = 1e-6, component-wise - the analytic-
+!       gradient criterion family), the facade fold reproducing the
+!       module gradient through the measured conversion (1e-12), and
+!       the e_tot decomposition at the same geometry with momenta
+!   (o) box parameter file (children, cwd = build/): the container's
+!       parameter channel reference_pars.txt read from the RUN directory:
+!       the ABSENT file leaves the default constant and both optional
+!       slots unbound (k = default, term = F, class = F); the GOOD file
+!       (K_HARM/Q_TERM/E_SPLIT) stages the constant and provides both
+!       optional slots (k, term = T, class = T - asserted on the child's
+!       printed marker); the BAD files (unknown keyword, duplicate
+!       keyword, unreadable value, non-positive constant) loud-stop
+!       naming reference_load and carrying the file name + the keyword
+!   (p) the leps diabatic full-matrix delivery (module face, in
+!       process): leps_diab at a fixed geometry delivers H symmetric and
+!       EVERY dh face symmetric (bitwise, both triangles); the analytic
+!       faces (1,1)/(1,2) match the central difference of the delivered
+!       H entries (1e-8, h = 1e-6); the eigen identity - eig_sym of the
+!       delivered H yields lambda_1 = the scalar leps_vg energy (1e-12) -
+!       and the eigenvector-fold gradient sum_ij u_i u_j (dH/dq)_ij
+!       computed through BOTH delivered triangles = the scalar leps_vg
+!       gradient (1e-12): the n_surf = 1 diab-vs-scalar degenerate
+!       equivalence, made executable at the module face
 !=====================================================================
 program check_facade
    use consts,        only: e_conv
@@ -143,6 +208,11 @@ program check_facade
                             method_reg, method_bind, elec_prop, mqc_statistic
    use force_facade,  only: force_eval, container_bind_pes, container_init
    use reg_adiabatic, only: reg_adiabatic_all
+   use linalg,        only: eig_sym
+   use registry_gen,  only: registry_gen_all, registry_gen_init
+   use reference_pot, only: morse_vg, leps_vg, leps_diab
+   use reference_box, only: reference_load, reference_k, reference_term_on, &
+                            reference_class_on
    implicit none
    type(ws_t) :: w, w2                     ! snapshot instances (ws_get dummies)
    type(ws_t), pointer :: p1, p2           ! handle aliases
@@ -214,6 +284,19 @@ program check_facade
          call state_create(st1, 1)
          call mqc_statistic(st1)
          call state_destroy(st1)
+      else if (trim(mode) == 'mbind') then
+         ! (m): the reference container through its own drag-in row (the
+         ! registry_gen path the driver assembles) - the child terminates
+         ! itself (marker on success, FAIL + stop 1 on any assertion)
+         call child_mbind()
+      else if (trim(mode) == 'nmorse' .or. trim(mode) == 'nleps') then
+         ! (n): one module potential direct-bound per child (fresh process -
+         ! one container slot per process)
+         call child_npot(trim(mode) == 'nmorse', trim(mode))
+      else if (trim(mode) == 'obox') then
+         ! (o): the parameter-file child (cwd = build/ - the file the parent
+         ! staged there); good posture prints the marker, bad files loud-stop
+         call child_obox()
       end if
       print '(a)', 'child: NO LOUD-STOP (the child chain returned - bug)'
       stop 0
@@ -639,6 +722,12 @@ program check_facade
    call expect_loudstop_at('mqc_statistic', 'unbound-match', 'method_bind', '', &
       '(l) unbound mqc_statistic loud-stop')
 
+   ! ---------- (m)-(p): the reference-container batch ----------
+   call crit_m()      ! (m) the harm well through the container reg path (child)
+   call crit_n()      ! (n) morse/leps module direct bind (children)
+   call crit_o()      ! (o) box parameter file parsing (children, cwd = build/)
+   call crit_p()      ! (p) leps diab full-matrix delivery + symmetry (module face)
+
    call ws_reset()                         ! leave the holder in the empty state
    call state_destroy(sa)
 
@@ -740,14 +829,20 @@ contains
 
    ! spawn the child for one loud-stop case and assert the stop: nonzero exit,
    ! stderr names the authority (the stopping entry) and carries the expected
-   ! key / extra needle (an empty needle is skipped) - the sibling checks' scheme
-   subroutine expect_loudstop_at(who, cmode, key, needle, label)
+   ! key / extra needle (an empty needle is skipped) - the sibling checks' scheme.
+   ! The optional in_build spawns the child with cwd = build/ (run-directory
+   ! material); the redirect target lands inside build/ either way
+   subroutine expect_loudstop_at(who, cmode, key, needle, label, in_build)
       character(len=*), intent(in) :: who, cmode, key, needle, label
+      logical, intent(in), optional :: in_build
       character(len=512) :: cmd, line
       character(len=1024) :: buf
       character(len=1) :: sep
+      logical :: ib
       integer :: stat, v, ios
       buf = ''
+      ib = .false.
+      if (present(in_build)) ib = in_build
       ! the shell redirect needs native separators on Windows (forward slashes make
       ! cmd misparse the redirect target)
       if (windows_host()) then
@@ -755,7 +850,14 @@ contains
       else
          sep = '/'
       end if
-      cmd = 'build'//sep//'check_facade.exe '//trim(cmode)//' 2>build'//sep//'facade_err.txt'
+      if (ib) then
+         ! cwd = build/ - the exe sits in that same directory; the EXPLICIT
+         ! .-relative path spares the shell's executable search (cmd does not
+         ! reliably search the cwd; '.' is never on a POSIX PATH)
+         cmd = 'cd build && .'//sep//'check_facade.exe '//trim(cmode)//' 2>facade_err.txt'
+      else
+         cmd = 'build'//sep//'check_facade.exe '//trim(cmode)//' 2>build'//sep//'facade_err.txt'
+      end if
       call execute_command_line(trim(cmd), wait=.true., exitstat=stat)
       open (newunit=v, file='build/facade_err.txt', status='old', action='read', iostat=ios)
       if (ios == 0) then
@@ -782,6 +884,436 @@ contains
          print '(a)', trim(label)//': PASS ('//trim(buf)//')'
       end if
    end subroutine expect_loudstop_at
+
+   !------------------------------------------------------------------
+   ! (m)/(n)/(o)/(p): the reference-container batch (criteria above)
+   !------------------------------------------------------------------
+
+   ! crit_m() - (m): the harm well through the container's own drag-in row
+   subroutine crit_m()
+      call expect_ok_child('mbind', 'mbind: OK', &
+         '(m) harm through the container reg path (registry_gen drag-in)')
+   end subroutine crit_m
+
+   ! crit_n() - (n): the morse / leps module potentials direct-bound
+   subroutine crit_n()
+      call expect_ok_child('nmorse', 'nmorse: OK', '(n) morse module direct bind')
+      call expect_ok_child('nleps', 'nleps: OK', '(n) leps module direct bind')
+   end subroutine crit_n
+
+   ! crit_o() - (o): the container parameter file (children with cwd = build/):
+   !             the absent-file default posture, the good parse, the four
+   !             named bad channels
+   subroutine crit_o()
+      character(len=80) :: lgood(3), lbad1(2), lbad2(2), lbad3(1), lbad4(1)
+      ! absent file: default constant, both optional slots unbound
+      call remove_file('build/reference_pars.txt')
+      call expect_ok_child_in('obox', 'obox: k='//trim(d2s(4.0d-2))//' term=F class=F', &
+         '(o) box parameter file absent: defaults, slots unbound')
+      ! good file: the constant staged + both optional slots provided
+      lgood = [ character(len=80) :: 'K_HARM = 0.123', 'Q_TERM = 9.5', 'E_SPLIT = 1.5' ]
+      call write_pars('build/reference_pars.txt', lgood)
+      call expect_ok_child_in('obox', 'obox: k='//trim(d2s(0.123d0))//' term=T class=T', &
+         '(o) box parameter file good parse')
+      ! bad files: every defect a named loud-stop
+      lbad1 = [ character(len=80) :: 'K_HARM = 0.1', 'FOO = 3.0' ]
+      call write_pars('build/reference_pars.txt', lbad1)
+      call expect_loudstop_at('reference_load', 'obox', 'reference_pars.txt', 'FOO', &
+         '(o) unknown-keyword loud-stop', in_build=.true.)
+      lbad2 = [ character(len=80) :: 'K_HARM = 0.1', 'K_HARM = 0.2' ]
+      call write_pars('build/reference_pars.txt', lbad2)
+      call expect_loudstop_at('reference_load', 'obox', 'reference_pars.txt', 'twice', &
+         '(o) duplicate-keyword loud-stop', in_build=.true.)
+      lbad3 = [ character(len=80) :: 'K_HARM = abc' ]
+      call write_pars('build/reference_pars.txt', lbad3)
+      call expect_loudstop_at('reference_load', 'obox', 'reference_pars.txt', 'unreadable', &
+         '(o) unreadable-value loud-stop', in_build=.true.)
+      lbad4 = [ character(len=80) :: 'K_HARM = -0.5' ]
+      call write_pars('build/reference_pars.txt', lbad4)
+      call expect_loudstop_at('reference_load', 'obox', 'reference_pars.txt', 'positive', &
+         '(o) non-positive-constant loud-stop', in_build=.true.)
+      call remove_file('build/reference_pars.txt')   ! no stale file for later children
+   end subroutine crit_o
+
+   ! crit_p() - (p): the leps diabatic full-matrix delivery at the module face
+   subroutine crit_p()
+      real(8), parameter :: hcd = 1.0d-6   ! the central-difference step [A]
+      real(8), parameter :: q3(9) = [ 0.10d0,-0.20d0, 0.15d0, 1.25d0, 0.30d0,-0.10d0, &
+                                      0.05d0, 1.90d0, 0.40d0 ]  ! the (p) geometry [A]
+      real(8) :: qh(9), ql(9)              ! the central-difference probes
+      real(8) :: vsc, gsc(9)               ! the scalar reference (energy / gradient)
+      real(8) :: hh(2, 2), dhd(9, 2, 2)    ! the diabatic delivery
+      real(8) :: hhp(2, 2), hhm(2, 2)      ! the probe deliveries
+      real(8) :: dhp(9, 2, 2), dhm(9, 2, 2)  ! (their gradient companions, scratch)
+      real(8) :: hev(2, 2), evv(2)         ! the eig_sym copy (vectors by column)
+      real(8) :: gfold(9), cd11, cd12
+      integer :: i9
+      nfail0 = nfail                       ! the (p) water level
+      call leps_vg(3, q3, vsc, gsc)
+      call leps_diab(3, q3, hh, dhd)
+      ! symmetry: H symmetric and EVERY dh face symmetric, bitwise - the
+      ! full-matrix delivery contract (both triangles)
+      if (hh(1, 2) /= hh(2, 1) .or. any(dhd(:, 2, 1) /= dhd(:, 1, 2)) .or. &
+          any(dhd(:, 2, 2) /= dhd(:, 1, 1))) then
+         call fail('(p) delivery not symmetric (H or a dh face carries'// &
+                   ' mismatched triangles)')
+      end if
+      ! the analytic faces vs the central difference of the delivered H entries
+      do i9 = 1, 9
+         qh = q3
+         qh(i9) = q3(i9) + hcd
+         ql = q3
+         ql(i9) = q3(i9) - hcd
+         call leps_diab(3, qh, hhp, dhp)
+         call leps_diab(3, ql, hhm, dhm)
+         cd11 = (hhp(1, 1) - hhm(1, 1))/(2.0d0*hcd)
+         if (abs(dhd(i9, 1, 1) - cd11) > 1.0d-8*max(abs(dhd(i9, 1, 1)), 1.0d0)) then
+            call fail('(p) dh face (1,1) vs central difference, dof '//trim(i2s(i9)))
+         end if
+         cd12 = (hhp(1, 2) - hhm(1, 2))/(2.0d0*hcd)
+         if (abs(dhd(i9, 1, 2) - cd12) > 1.0d-8*max(abs(dhd(i9, 1, 2)), 1.0d0)) then
+            call fail('(p) dh face (1,2) vs central difference, dof '//trim(i2s(i9)))
+         end if
+      end do
+      ! the eigen identity: the delivered H diagonalizes to the scalar surface
+      hev = hh
+      call eig_sym(hev, evv)
+      if (abs(evv(1) - vsc) > 1.0d-12*max(abs(vsc), 1.0d0)) then
+         call fail('(p) eigen identity: lambda_1 /= the scalar leps energy ('// &
+                   trim(d2s(evv(1)))//' vs '//trim(d2s(vsc))//')')
+      end if
+      ! the eigenvector fold through BOTH delivered triangles = the scalar gradient
+      do i9 = 1, 9
+         gfold(i9) = hev(1, 1)*hev(1, 1)*dhd(i9, 1, 1) &
+                   + hev(1, 1)*hev(2, 1)*dhd(i9, 1, 2) &
+                   + hev(2, 1)*hev(1, 1)*dhd(i9, 2, 1) &
+                   + hev(2, 1)*hev(2, 1)*dhd(i9, 2, 2)
+      end do
+      if (any(abs(gfold - gsc) > 1.0d-12*max(1.0d0, abs(gsc)))) then
+         call fail('(p) eigenvector fold /= the scalar leps gradient (max dev '// &
+                   trim(d2s(maxval(abs(gfold - gsc))))//')')
+      else if (nfail == nfail0) then
+         print '(a)', '(p) leps diab full-matrix delivery: PASS (H and every dh face'// &
+            ' symmetric bitwise; faces (1,1)/(1,2) = central difference to 1e-8;'// &
+            ' lambda_1 = the scalar energy and the two-triangle eigenvector fold ='// &
+            ' the scalar gradient, 1e-12)'
+      end if
+   end subroutine crit_p
+
+   !------------------------------------------------------------------
+   ! the batch-4 children (self-respawn modes; each terminates itself)
+   !------------------------------------------------------------------
+
+   ! child_mbind() - the (m) child: bind the reference container through the
+   !                 build-generated registry (the driver's own registration
+   !                 path), assemble, and force_eval the default-constant well
+   subroutine child_mbind()
+      real(8), parameter :: kk = 0.04d0    ! the container's default well constant [eV/A^2]
+      type(state_t) :: sb
+      real(8) :: cal, ea, eb, tk
+      integer :: i
+      ! the drag-in path exactly as the aggregated registry runs it: member
+      ! init + the PES bind, the assembly seam (guard-skipped - no input
+      ! staged), assembly, then a real force_eval
+      call registry_gen_all()
+      call registry_gen_init()
+      call container_init()
+      allocate (roster%mass(2))
+      roster%mass = [ 1.0d0, 4.0d0 ]
+      call state_create(sb, 2)
+      ! calibration: one call at a known offset (p = 0) measures the composed
+      ! conversion constant (the literal lives only in force_facade)
+      sb%q = ueA
+      sb%p = 0.0d0
+      call force_eval(sb, ea)
+      cal = -sb%f(1)/(kk*ueA(1))
+      if (cal <= 0.0d0) then
+         print '(a)', 'FAIL (m) child: measured conversion constant non-positive'
+         stop 1
+      end if
+      do i = 1, 6
+         if (abs(sb%f(i) + kk*sb%q(i)*cal) > 1.0d-13*max(abs(kk*sb%q(i)*cal), 1.0d0)) then
+            print '(a)', 'FAIL (m) child: force mismatch at the calibration geometry,'// &
+               ' dof '//trim(i2s(i))
+            stop 1
+         end if
+      end do
+      ! second geometry with momenta: force + the e_tot decomposition
+      sb%q = ueB
+      sb%p = pB
+      call force_eval(sb, eb)
+      do i = 1, 6
+         if (abs(sb%f(i) + kk*sb%q(i)*cal) > 1.0d-13*max(abs(kk*sb%q(i)*cal), 1.0d0)) then
+            print '(a)', 'FAIL (m) child: force mismatch, geometry B, dof '//trim(i2s(i))
+            stop 1
+         end if
+      end do
+      tk = 0.0d0
+      do i = 1, 2
+         tk = tk + dot_product(sb%p(3*i - 2:3*i), sb%p(3*i - 2:3*i))/(2.0d0*roster%mass(i))
+      end do
+      tk = tk/e_conv
+      if (abs(eb - (tk + 0.5d0*kk*dot_product(sb%q, sb%q)*cal/e_conv)) > &
+          1.0d-12*max(abs(eb), 1.0d0)) then
+         print '(a)', 'FAIL (m) child: e_tot decomposition mismatch: '//trim(d2s(eb))
+         stop 1
+      end if
+      print '(a)', 'mbind: OK'
+      stop 0
+   end subroutine child_mbind
+
+   ! child_npot(use_morse, tag) - the (n) child: one module potential
+   !                 direct-bound through a transparent adapter, assembled,
+   !                 and force_eval'd - analytic gradient vs central
+   !                 difference, facade fold, e_tot decomposition
+   subroutine child_npot(use_morse, tag)
+      logical, intent(in) :: use_morse
+      character(len=*), intent(in) :: tag
+      real(8), parameter :: hcd = 1.0d-6   ! the central-difference step [A]
+      real(8), parameter :: qmo(6) = [ 0.0d0, 0.0d0, 0.0d0, 1.32d0, 0.21d0,-0.17d0 ] ! morse geometry [A]
+      real(8), parameter :: qle(9) = [ 0.10d0,-0.20d0, 0.15d0, 1.25d0, 0.30d0,-0.10d0, &
+                                       0.05d0, 1.90d0, 0.40d0 ]                    ! leps geometry [A]
+      real(8), parameter :: pmo(6) = [ 0.5d0,-0.3d0, 0.4d0,-0.2d0, 0.6d0,-0.1d0 ]  ! momenta
+      real(8), parameter :: ple(9) = [ 0.3d0,-0.2d0, 0.1d0, 0.4d0,-0.3d0, 0.2d0, &
+                                       -0.1d0, 0.5d0,-0.4d0 ]
+      type(state_t) :: sb
+      real(8) :: qa(9), qh(9), ql(9), ga(9), gh(9), gl(9), gcdv(9)
+      real(8) :: va, vh, vl, cal, ea, eb, tk
+      integer :: nm, nd, i
+      qa = 0.0d0
+      ga = 0.0d0
+      if (use_morse) then
+         nm = 2
+         qa(1:6) = qmo
+         call container_bind_pes(morse_wrap)
+      else
+         nm = 3
+         qa(1:9) = qle
+         call container_bind_pes(leps_wrap)
+      end if
+      nd = 3*nm
+      ! the degenerate 'adiabatic' method row must sit in the table before
+      ! assembly (container_init binds it) - the direct-bind child registers
+      ! the real package exactly as the aggregated registry would
+      call reg_adiabatic_all()
+      call container_init()
+      allocate (roster%mass(nm))
+      roster%mass = 1.0d0
+      call state_create(sb, nm)
+      ! the analytic reference from the module face
+      if (use_morse) then
+         call morse_vg(nm, qa, va, ga)
+      else
+         call leps_vg(nm, qa, va, ga)
+      end if
+      ! the facade fold: the measured conversion carries the module gradient
+      sb%q(1:nd) = qa(1:nd)
+      sb%p = 0.0d0
+      call force_eval(sb, ea)
+      cal = -dot_product(sb%f(1:nd), ga(1:nd))/dot_product(ga(1:nd), ga(1:nd))
+      if (cal <= 0.0d0) then
+         print '(a)', 'FAIL '//trim(tag)//' child: measured conversion constant non-positive'
+         stop 1
+      end if
+      do i = 1, nd
+         if (abs(sb%f(i) + ga(i)*cal) > 1.0d-12*max(abs(ga(i)*cal), 1.0d0)) then
+            print '(a)', 'FAIL '//trim(tag)//' child: facade-fold force mismatch, dof '// &
+               trim(i2s(i))
+            stop 1
+         end if
+      end do
+      ! the analytic gradient vs the central difference of the module energy
+      do i = 1, nd
+         qh = 0.0d0
+         ql = 0.0d0
+         qh(1:nd) = qa(1:nd)
+         ql(1:nd) = qa(1:nd)
+         qh(i) = qa(i) + hcd
+         ql(i) = qa(i) - hcd
+         if (use_morse) then
+            call morse_vg(nm, qh, vh, gh)
+            call morse_vg(nm, ql, vl, gl)
+         else
+            call leps_vg(nm, qh, vh, gh)
+            call leps_vg(nm, ql, vl, gl)
+         end if
+         gcdv(i) = (vh - vl)/(2.0d0*hcd)
+         if (abs(ga(i) - gcdv(i)) > 1.0d-8*max(abs(ga(i)), 1.0d0)) then
+            print '(a)', 'FAIL '//trim(tag)//' child: analytic gradient vs central'// &
+               ' difference, dof '//trim(i2s(i))//' ('//trim(d2s(ga(i)))//' vs '// &
+               trim(d2s(gcdv(i)))//')'
+            stop 1
+         end if
+      end do
+      ! the e_tot decomposition at the same geometry with momenta
+      if (use_morse) then
+         sb%p(1:6) = pmo
+      else
+         sb%p(1:9) = ple
+      end if
+      call force_eval(sb, eb)
+      tk = 0.0d0
+      do i = 1, nm
+         tk = tk + dot_product(sb%p(3*i - 2:3*i), sb%p(3*i - 2:3*i))/(2.0d0*roster%mass(i))
+      end do
+      tk = tk/e_conv
+      if (abs(eb - (tk + va*cal/e_conv)) > 1.0d-12*max(abs(eb), 1.0d0)) then
+         print '(a)', 'FAIL '//trim(tag)//' child: e_tot decomposition mismatch: '// &
+            trim(d2s(eb))
+         stop 1
+      end if
+      print '(a)', trim(tag)//': OK'
+      stop 0
+   end subroutine child_npot
+
+   ! child_obox() - the (o) child: load the container parameter file from the
+   !                run directory (cwd = build/) and print the staged posture
+   subroutine child_obox()
+      call reference_load()
+      print '(a)', 'obox: k='//trim(d2s(reference_k()))//' term='// &
+         merge('T', 'F', reference_term_on())//' class='// &
+         merge('T', 'F', reference_class_on())
+      stop 0
+   end subroutine child_obox
+
+   ! the transparent (n) adapters: the module potentials (v, g signature)
+   ! delivered through the class-A container face (q, mass, ws) - the module
+   ! material itself, bound check-side
+   subroutine morse_wrap(q, mass, ws)
+      real(8), intent(in)  :: q(:)     ! coordinates [A]
+      real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (unused)
+      type(ws_t), intent(inout) :: ws  ! workspace (filled: scalar mode)
+      real(8) :: v                     ! the module energy return [eV]
+      ws%repr = r_scalar
+      if (allocated(ws%g_add)) deallocate (ws%g_add)
+      allocate (ws%g_add(size(q)))
+      call morse_vg(size(q)/3, q, v, ws%g_add)
+      ws%v_add = v
+   end subroutine morse_wrap
+
+   subroutine leps_wrap(q, mass, ws)
+      real(8), intent(in)  :: q(:)     ! coordinates [A]
+      real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (unused)
+      type(ws_t), intent(inout) :: ws  ! workspace (filled: scalar mode)
+      real(8) :: v                     ! the module energy return [eV]
+      ws%repr = r_scalar
+      if (allocated(ws%g_add)) deallocate (ws%g_add)
+      allocate (ws%g_add(size(q)))
+      call leps_vg(size(q)/3, q, v, ws%g_add)
+      ws%v_add = v
+   end subroutine leps_wrap
+
+   ! spawn the child for one success case (a fresh process, so its container
+   ! bind is its own) and assert exit 0 + the expected stdout marker; the
+   ! child's output (stdout, stderr merged) rides into any FAIL message
+   subroutine expect_ok_child(cmode, marker, label)
+      character(len=*), intent(in) :: cmode, marker, label
+      character(len=512) :: cmd
+      character(len=1024) :: buf
+      character(len=1) :: sep
+      integer :: stat
+      if (windows_host()) then
+         sep = '\'
+      else
+         sep = '/'
+      end if
+      cmd = 'build'//sep//'check_facade.exe '//trim(cmode)//' >build'//sep// &
+            'facade_ok.txt 2>&1'
+      call execute_command_line(trim(cmd), wait=.true., exitstat=stat)
+      call slurp_local('build/facade_ok.txt', buf)
+      if (stat /= 0) then
+         print '(a)', 'FAIL '//trim(label)//': the child exited nonzero - '//trim(buf)
+         nfail = nfail + 1
+      else if (index(buf, trim(marker)) == 0) then
+         print '(a)', 'FAIL '//trim(label)//': stdout missing "'//trim(marker)// &
+            '" - '//trim(buf)
+         nfail = nfail + 1
+      else
+         print '(a)', trim(label)//': PASS ('//trim(buf)//')'
+      end if
+   end subroutine expect_ok_child
+
+   ! the cwd = build/ variant (the (o) children: the parameter file is
+   ! run-directory material)
+   subroutine expect_ok_child_in(cmode, marker, label)
+      character(len=*), intent(in) :: cmode, marker, label
+      character(len=512) :: cmd
+      character(len=1024) :: buf
+      character(len=1) :: sep
+      integer :: stat
+      if (windows_host()) then
+         sep = '\'
+      else
+         sep = '/'
+      end if
+      ! cwd = build/ - the exe sits in that same directory; the EXPLICIT
+      ! .-relative path spares the shell's executable search (cmd does not
+      ! reliably search the cwd; '.' is never on a POSIX PATH)
+      cmd = 'cd build && .'//sep//'check_facade.exe '//trim(cmode)//' >facade_ok.txt 2>&1'
+      call execute_command_line(trim(cmd), wait=.true., exitstat=stat)
+      call slurp_local('build/facade_ok.txt', buf)
+      if (stat /= 0) then
+         print '(a)', 'FAIL '//trim(label)//': the child exited nonzero - '//trim(buf)
+         nfail = nfail + 1
+      else if (index(buf, trim(marker)) == 0) then
+         print '(a)', 'FAIL '//trim(label)//': stdout missing "'//trim(marker)// &
+            '" - '//trim(buf)
+         nfail = nfail + 1
+      else
+         print '(a)', trim(label)//': PASS ('//trim(buf)//')'
+      end if
+   end subroutine expect_ok_child_in
+
+   ! write one container parameter file (one KEYWORD = VALUE per record)
+   subroutine write_pars(fname, lines)
+      character(len=*), intent(in) :: fname, lines(:)
+      integer :: v, j
+      open (newunit=v, file=fname, status='replace', action='write')
+      do j = 1, size(lines)
+         write (v, '(a)') trim(lines(j))
+      end do
+      close (v)
+   end subroutine write_pars
+
+   ! remove one file (host-shaped; the Windows shell wants native separators)
+   subroutine remove_file(path)
+      character(len=*), intent(in) :: path
+      character(len=512) :: pnat
+      integer :: j
+      if (windows_host()) then
+         pnat = ''
+         do j = 1, len_trim(path)
+            if (path(j:j) == '/') then
+               pnat(j:j) = '\'
+            else
+               pnat(j:j) = path(j:j)
+            end if
+         end do
+         call execute_command_line('del "'//trim(pnat)//'" >nul 2>nul', wait=.true.)
+      else
+         call execute_command_line('rm -f "'//trim(path)//'"', wait=.true.)
+      end if
+   end subroutine remove_file
+
+   ! slurp one text file into a single-line buffer (bound-guarded; a missing
+   ! file leaves the buffer empty)
+   subroutine slurp_local(fname, buf)
+      character(len=*), intent(in) :: fname
+      character(len=*), intent(inout) :: buf
+      character(len=512) :: line
+      integer :: v, ios
+      buf = ''
+      open (newunit=v, file=fname, status='old', action='read', iostat=ios)
+      if (ios /= 0) return
+      do
+         read (v, '(a)', iostat=ios) line
+         if (ios /= 0) exit
+         if (len_trim(buf) + len_trim(line) + 1 < len(buf)) then
+            buf = trim(buf)//' '//trim(line)
+         end if
+      end do
+      close (v)
+   end subroutine slurp_local
 
    ! fail(msg) - record one criterion failure
    subroutine fail(msg)
