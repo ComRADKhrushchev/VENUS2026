@@ -1,0 +1,36 @@
+# case_surface_window 运行记录（2026-09-15，gfortran 树 src/build/gfortran/venus.e）
+# 运行：cd cases/case_surface_window && ../../src/build/gfortran/venus.e
+# 预期锚与逐项判定见 README.md 第 3/4 节。
+
+== stdout 全文（timing 行每次运行不同，其余双跑一致） ==
+
+assembly complete: trajectories=8 atoms=2 fragments=1 paradigm=1 members=11 init=ok columns=3
+statistics: trajectories=8 valid=8
+outcome counts: none (no classification bound - skipped)
+conservation drift: trajectories=8 max|e_fin-e0|=  7.4535E-04 kcal/mol
+histograms: rows=8 files=hist_e_rel.dat hist_thta.dat
+timing: cpu=    0.14 s
+
+== A6 组成法令探针（system/ 临时加 frag.xyz 后单跑，随后移除） ==
+
+exit=1，stderr：
+STOP 1
+inc_init: a surface-paradigm incident channel carries exactly one projectile fragment (the surface is not a roster fragment); fragment count =2
+inc_init: loud-stop (the initial state is not sampled)
+
+== 量值摘录（解析 trajectories.txt / 两直方图文件） ==
+
+- 帧级守恒：最坏帧偏移 1.9419e-03 kcal/mol（traj 6 内部帧 vs 该轨迹首帧）；
+  打印行 max|e_fin-e0| = 7.4535e-04（终帧对首帧族）；e0 ∈ [207.8, 265.9]
+  （推导包络 ≤ 400 内）。
+- 帧数 113–129（< 401）、末帧 t 5.60–6.40（< 20，Q_TERM 中途终止；无分类跑）。
+- 首帧弹丸质心 z = 8.0000000000（恰 R_SEP）×8；x ∈ [1.64, 4.79]、
+  y ∈ [-0.07, 6.29] ⊂ [-2, 8]（胞内投放 + 碰撞盘包络）。
+- thta 真值（末帧动量独立重算）146.67–171.99°，全落下行半球 (90°, 180°]；
+  hist_thta.dat 非零 bin 34/38/39/40（计数 1/2/3/2），与独立重分 bin 逐 bin
+  一致；间距 4.324647 = (max+1)/40，首中心 = 半间距；P = 1.0。
+- hist_e_rel.dat 退化如预期：bin 1 计数恰 8、其余 0、间距 0.025 = 1/40、
+  P = 1.0（表面单片段 e_rel 恒 0——与 case_harmonic_scatter 的 thta 退化
+  文件对偶，README A4 说明）。
+- A5 确定性：双跑 trajectories.txt / hist_thta.dat 逐字节一致（cmp）；stdout
+  除 timing 行外一致；stderr 均空。

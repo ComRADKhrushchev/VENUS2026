@@ -1,0 +1,7 @@
+# 谐振井容器参数（box 文件，运行材料——容器按 cwd 读取）
+# K_HARM  力常数 [eV/A^2]：V = K/2 * sum|q_i|^2 作用于弹丸全部坐标
+# Q_TERM  终止阈值 [A]：任一坐标 |q| > Q_TERM 即出射完成、轨迹终止
+# 无 E_SPLIT：分类槽不绑——单片段跑 e_rel 恒 0（fin_eval 相对运动块仅双片段计算），
+#   E_SPLIT 判决将退化为常数；合法无分类跑是本 case 的既定姿态（README 第 2 节）
+K_HARM = 0.04
+Q_TERM = 9.5
