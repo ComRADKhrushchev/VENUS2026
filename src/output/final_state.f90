@@ -87,11 +87,13 @@ module final_state
       real(8), allocatable :: p_fin(:) ! final COM-frame momentum archive [amu·Å/(10 fs)] (old PFINAL)
       ! Left blank: diatomic n/j inversion (old AN/AJ/BN/BJ - FINLNJ, finalized with the ebk
       ! member);
-      ! initial-value reference quantities (old VI/OAMI/AMAI/AMBI - snapshotted when the sampler
-      ! assembles, the hand-off channel
-      ! finalized in phase C); rotational-energy sampling fluctuations SDA/SDB (old NCROT
-      ! resampling average -
-      ! to the statistics phase); the *_b fields' content: the roster%frag(2) row (E15 arrayed)
+      ! initial-value reference quantities (old VI/OAMI/AMAI/AMBI - deferred: no producer
+      ! exists in this tree, and with them 15 of the 20 angle-family fields stay unreachable
+      ! (ang(4..18) all consume an initial value - the final-value angles ang(1..3)/ang(19..20)
+      ! alone are computed); the trigger is a sampler->statistics initial-value snapshot
+      ! channel); rotational-energy sampling fluctuations SDA/SDB (old NCROT resampling
+      ! average - deferred with the same channel: the resampling averages have no producer);
+      ! the *_b fields' content: the roster%frag(2) row (E15 arrayed)
    end type fin_t
 
    ! The outcome-classification slot - E19: the container's own classification judgment
@@ -205,7 +207,13 @@ contains
       ! the other fragments' internal distortion is removed. The evaluation rides a
       ! zero-momentum local copy (the total energy then carries the potential alone),
       ! and the physical state is never touched. No reference energy is subtracted
-      ! yet (the dissociation reference arrives with the assembly seam).
+      ! yet (the dissociation reference arrives with the assembly seam). Same family,
+      ! registered with it - the staging-posture protocol: the old gas-phase branch
+      ! staged the fragments at +ZASYM full separation before taking V, this
+      ! implementation keeps the current inter-fragment posture, so e_int(2) carries
+      ! the finite-separation residual inter-fragment potential (and the surface
+      ! branch holds a reference-translation difference); the internal-energy
+      ! reference protocol lands with the assembly seam.
       do i = 1, nf
          if (roster%frag(i)%nat < 2) cycle
          stg = sta
