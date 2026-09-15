@@ -1,0 +1,19 @@
+# case_b_layer/thermostat —— B 层 thermostat 数值后验（重置后动能目标带）
+# 体系：H4 单片段；容器：reference 谐振井（仅 K_HARM——安全网式无分类跑）
+# 锚在首帧（重置后、传播前）：chi^2_12 精确分布（逐分量 Maxwell 重抽、无投影）
+# NU_COLL 为携带数据（当前无消费面——README 第 2 节注记）
+# E_REL/B_MAX/R_SEP 为必键占位（单片段气相 incident 通道不派发）
+# 预期锚见 ../README.md 第 3 节（判据先行：两段式标定——试跑产物不入档）
+SYSTEM_DIR = system
+TITLE = b-layer thermostat posterior - H4 velocity reset target band, verlet
+E_REL = 200.0
+B_MAX = 2.0
+R_SEP = 8.0
+DT = 0.05
+DIST_SCHEME = THERMOSTAT
+T_BATH = 350.0
+NU_COLL = 0.137
+N_TRAJ = 32
+MAX_STEPS = 20
+ISEED = 20260918
+GWRITE_LEVEL = 2

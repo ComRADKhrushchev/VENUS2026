@@ -8,10 +8,14 @@ venus_test.e
 # cases 运行产物
 fort.*
 stdout*
+stderr*
 
-# 新树 case 运行产物（V：trajectories/直方图全文件不入库，README/results.txt 载摘录）
+# 新树 case 运行产物（V：trajectories/直方图全文件不入库，README/results.txt 载摘录；
+# 两级模式覆盖 case_b_layer 的成员子文件夹布局）
 cases/*/trajectories*.txt
 cases/*/hist_*.dat
+cases/*/*/trajectories*.txt
+cases/*/*/hist_*.dat
 
 # SDD 草稿区
 .superpowers/

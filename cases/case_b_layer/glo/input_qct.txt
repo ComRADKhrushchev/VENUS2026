@@ -1,0 +1,20 @@
+# case_b_layer/glo —— B 层 glo_target 数值后验（FDT 装载链上一致性，解析锚）
+# 体系：HCl 单片段（不等质量 1.008/35.45——逐原子 sigma 检查更锐利）
+# 本跑静态取证：glo_target 只画 ghost 态不写真态 -> 全帧 t_kin 逐位 0
+# 数值后验主体是 probe_glo.f90（真装配链 getter 回读 vs 手算，exit 0/1）
+# E_REL/B_MAX/R_SEP 为必键占位（单片段气相 incident 通道不派发）
+# 预期锚见 ../README.md 第 3 节（判据先行：两段式标定——试跑产物不入档）
+SYSTEM_DIR = system
+TITLE = b-layer glo_target posterior - HCl ghost FDT loading check, static run
+E_REL = 200.0
+B_MAX = 2.0
+R_SEP = 8.0
+DT = 0.02
+DIST_SCHEME = GLO_TARGET
+T_GLO = 550.0
+GAMMA_GLO = 0.09
+W_GHOST = 0.0021
+N_TRAJ = 4
+MAX_STEPS = 10
+ISEED = 20260919
+GWRITE_LEVEL = 2

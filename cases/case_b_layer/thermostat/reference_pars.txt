@@ -1,0 +1,5 @@
+# 谐振井容器参数（box 文件，运行材料——驱动器按 cwd 读取）
+# K_HARM  力常数 [eV/A^2]：V = K/2 * sum|q_i|^2 作用于全部坐标
+# 仅 K_HARM：Q_TERM/E_SPLIT 刻意缺席——安全网式无分类跑（MAX_STEPS 收尾，
+# 统计面 outcome counts: none）
+K_HARM = 0.04

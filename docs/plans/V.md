@@ -28,6 +28,10 @@ README/input/expected）；守恒判据家族全链全跑。
   + MD 平衡：平衡后动能趋近目标温度的统计带——容差与样本量写明）；
   thermostat（速度重置的平衡温度维持）；glo_target（FDT 装载的数值一致
   性：阻尼-噪声关系在链上的实现核对——解析后验而非长程统计）。
+  - 450× 备忘（V.1 移交，task-1 报告）：radau 下 thermalize 平衡覆盖约
+    450× verlet 的物理时长（自适应步长序列增长所致）——成员语义即"走
+    注册传播器"，属行为差异非缺陷；B 层平衡统计以 verlet 为标定基
+    （case 用 verlet，与标定一致），radau 复用需按其步长序列重标定。
 - S3 **链级频率真值**（C5-R1 法定 + dens/eig 前置演示）：reference 容器
   真力 → Hessian → eig_sym → 频谱（谐振体系的解析频率对照——位级/
   容差写明）→ boltzmann/normalmode 以真频率采样（几何分布/微正则锚复验
