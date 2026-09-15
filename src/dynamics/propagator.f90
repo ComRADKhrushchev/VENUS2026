@@ -136,6 +136,13 @@
 !   the sequence is DISCARDED and retried at 0.8*tp - the trial's converged B is
 !   retained as the retry's predictor (the published structure; it makes the retry
 !   converge, and the retry re-evaluates the head force afresh at the same origin).
+!   TERMINATION GUARD (legislated deviation, same family as the accept-equality
+!   note below): the restart count is capped at ten. A seed under whose force law
+!   the trial diverges (predictor overflow poisons B, hv goes non-finite, and the
+!   accept comparison never passes) would otherwise spin the trial loop forever -
+!   a measured instance is the quartic wall at seed 0.5 under ifx rounding; the
+!   cap turns that path into a named loud-stop. Every legitimate measured case
+!   needs at most two restarts, so ten carries fivefold margin.
 !
 !   ADAPTIVITY: hv = max_k |B7_k| * w(7) / tval^7 estimates the error coefficient
 !   (tval = |tt| truncated to single precision - the historical noise floor of the
@@ -145,11 +152,13 @@
 !   by the integration direction taken from dt's sign; growth is limited to 1.4*tt
 !   per sequence. dt_min/dt_max (the deferred fields this member lands) are
 !   MAGNITUDE bounds on the accepted sequence length, applied to every adaptive
-!   assignment AND to the boot seed; <=0 = unclamped. The 0.8 restart probe itself
-!   is not clamped (a retry is not an accepted length - the floor applies at the
-!   accept decision, where the retried sequence's own adaptive tp is clamped and
-!   then exceeds the shrunk trial); a positive pair with dt_min > dt_max is
-!   contradictory and loud-stops at boot, named.
+!   assignment, the boot seed, AND the 0.8 restart probe - no CONSUMED sequence
+!   length ever crosses a bound; <=0 = unclamped. With a floor active, a probe
+!   that floors back up to the trial length accepts (the accept test admits
+!   equality; in the unclamped world tp == tt is measure-zero, so this is the
+!   published strict > everywhere else) - the alternative is an infinite retry
+!   cycle, since the 0.8 shrink cannot move a floor-pinned probe. A positive
+!   pair with dt_min > dt_max is contradictory and loud-stops at boot, named.
 !=====================================================================
 module propagator
    use state,         only: state_t
@@ -367,7 +376,7 @@ contains
    ! per component; p is written back from the folded working velocity at close-out).
    subroutine radau_step(sta)
       type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
-      integer :: m, j, k, l, i, jd, ni, nq
+      integer :: m, j, k, l, i, jd, ni, nq, nrst
       real(8) :: e, s, gk, acc, temp, tt, t2, tval, hv, dir, ss, tpn, qr
       real(8) :: gg(7, size(sta%q))         ! differenced g coefficients of the sequence
       real(8) :: yy(size(sta%q))            ! predicted substep geometry
@@ -399,6 +408,7 @@ contains
       ! ---- sequence trial loop (restart-capable; the accept test fires on the first
       ! sequence only - once a sequence has been accepted the carried B makes rejection
       ! pointless, the published structure) ----
+      nrst = 0
       do
          ! g coefficients from the carried B (the triangle-d conversion): gg(i) =
          ! bb(i) + sum_{j>i} d(column j, offset i)*bb(j)
@@ -467,13 +477,23 @@ contains
 
          ! ---- first-sequence accept test: adapt from hv, clamp, and either accept or
          ! discard-and-retry at 0.8*tp (the trial's converged B survives as the retry's
-         ! predictor - the header-note semantics) ----
+         ! predictor - the header-note semantics; the probe is floored too, and a probe
+         ! that floors to the trial length ACCEPTS - the 0.8 shrink cannot move a
+         ! floor-pinned probe, so a strict > there would retry the same length forever)
          if (rad_seq_ok) exit               ! an accepted past sequence: no restart path
          tpn = (ss/hv)**(1.0d0/9.0d0)*dir
          call rad_clamp(tpn, dir)
          rad_tp = tpn
-         if (rad_tp/tt > 1.0d0) exit        ! accept
-         rad_tp = 0.8d0*rad_tp
+         if (rad_tp/tt >= 1.0d0) exit       ! accept (>= : equality is the floor-pinned
+         rad_tp = 0.8d0*rad_tp              ! case - in the unclamped world tp == tt is
+         call rad_clamp(rad_tp, dir)        ! measure-zero, so >= is the published >)
+         nrst = nrst + 1                    ! termination guard (header note): a diverging
+         if (nrst > 10) then                ! trial poisons B and never accepts - named
+            call stop_prop('radau_step', & ! loud-stop beats an eternal silent spin
+                           'first sequence failed to accept after 10 restarts (the'// &
+                           ' error estimate diverges - the dt seed is too large for'// &
+                           ' this force law, or the trial overflowed)')
+         end if
          ni = 6                             ! the retry runs the full iteration count
          call force_eval(sta, e)            ! head force afresh at the same origin
          do k = 1, nq                       ! (the retry's f1; the state never advanced)
@@ -741,8 +761,9 @@ contains
    end function radau_boot_needed
 
    ! rad_clamp(tp, dir) - apply the dt_min/dt_max MAGNITUDE bounds to one sequence
-   ! length (either sign; <=0 bound = unclamped). Applied to every adaptive assignment
-   ! and the boot seed; the 0.8 restart probe stays unclamped (header note)
+   ! length (either sign; <=0 bound = unclamped). Applied to every adaptive assignment,
+   ! the boot seed, and the 0.8 restart probe - no consumed length crosses a bound
+   ! (header note)
    subroutine rad_clamp(tp, dir)
       real(8), intent(inout) :: tp
       real(8), intent(in) :: dir

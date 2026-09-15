@@ -32,9 +32,11 @@
 !   (c) per-key default injection (E22 - no preset track): a minimal file with
 !       only the six required keys -> every Ruling-D default injected into its
 !       slot (N_TRAJ=1, ISEED=1, MAX_STEPS=100000, TITLE='', TASK=TRAJECTORY,
-!       INTEGRATOR=VERLET, ORDER=1, ELEC_METHOD='adiabatic', N_SURF=0,
+!       INTEGRATOR=VERLET, ORDER=1, DT_MIN=0.0/DT_MAX=0.0 (unclamped - the
+!       adaptive bounds' legal <=0 default, the reason both keys are kind_real
+!       not kind_posreal), ELEC_METHOD='adiabatic', N_SURF=0,
 !       PES_MAIN='1', GWRITE_LEVEL=1 -> rec_level, OBSERVABLES='' and
-!       E_KIN/E_POT/E_TOT off); staging holds 21 rows (6 user + 15 injected)
+!       E_KIN/E_POT/E_TOT off); staging holds 23 rows (6 user + 17 injected)
 !   (d) defaults never override (set_default semantics): minimal + explicit
 !       N_TRAJ/INTEGRATOR/ORDER/ISEED -> the user values win, untouched defaults
 !       still injected
@@ -48,11 +50,14 @@
 !       (child) naming key + line number
 !   (g) bad values -> loud-stop (child) naming key + line: bad integer N_TRAJ,
 !       illegal enums TASK/INTEGRATOR/DIST_SCHEME, GWRITE_LEVEL outside {0,1,2,5},
-!       bad logical E_KIN, bad real DT
+!       bad logical E_KIN, bad real DT, bad real DT_MIN/DT_MAX (the over-width
+!       reading for REAL keys: a scalar real carries no char value slot, so the
+!       width column of criterion (p) has no member - the formal-domain stop a
+!       wide garbage value hits is the bad-real parse itself)
 !   (h) parse errors -> loud-stop (child): a data line without '=' (line number
 !       reported; no sequential-grammar fallback), missing input file
 !   (i) E21 two-block partition visible in the parse staging: after the (a) load
-!       every staged row carries its key-table block (16 block-one rows, 5
+!       every staged row carries its key-table block (18 block-one rows, 5
 !       block-two rows; line numbers of the source preserved)
 !   (j) member-key admission (the central dispatch table's rows): a file with
 !       all 30 member keys (T_VIB_A/T_VIB_B boltzmann; N_E_REL/T_TRANS/V_WIDTH/
@@ -121,7 +126,7 @@ program check_input
    character(len=32) :: mode
    character(len=32) :: kname
    logical :: ok_arr, ok_part
-   character(len=16) :: blk1(16), blk2(5)
+   character(len=16) :: blk1(18), blk2(5)
    character(len=16) :: mkey(30), mval(30)
 
    ! ---------- child dispatch: one bad case per spawn, must loud-stop ----------
@@ -159,6 +164,8 @@ program check_input
       'INTEGRATOR = symplectic', &
       'DT = 0.025', &
       'ORDER = 4', &
+      'DT_MIN = 0.05', &
+      'DT_MAX = 0.5', &
       'ELEC_METHOD = Adiabatic', &
       'N_SURF = 0', &
       'PES_MAIN = 1', &
@@ -193,6 +200,8 @@ program check_input
       'integrator=SYMPLECTIC', &
       'dt=0.025', &
       'order=4', &
+      'dt_min=0.05', &
+      'dt_max=0.5', &
       'elec_method=Adiabatic', &
       'n_surf=0', &
       'pes_main=1', &
@@ -220,6 +229,8 @@ program check_input
       'N_TRAJ = 7', &
       'INTEGRATOR = radau', &
       'ORDER = 6', &
+      'DT_MIN = 0.002', &
+      'DT_MAX = 0.2', &
       'ISEED = 42' ])
    ! (j) the 11 dispatch-table member keys: minimal six + every member key
    call write_sample('build/input_case_mkeys.txt', [ character(len=64) :: &
@@ -364,6 +375,9 @@ program check_input
    call write_sample('build/input_case_v-dt.txt', [ character(len=64) :: &
       'DT = fast', 'SYSTEM_DIR = build/sysdef_case_mol', 'E_REL = 1.0', 'B_MAX = 2.0', &
       'R_SEP = 8.0', 'DIST_SCHEME = boltzmann' ])
+   ! DT_MIN/DT_MAX bad reals (the real-key over-width stop - header note of (g))
+   call write_case('v-dtmin', 'DT_MIN = narrow')
+   call write_case('v-dtmax', 'DT_MAX = wide')
    ! (k) Ruling F: DIST_SCHEME = incident is an ILLEGAL per-fragment scheme word
    ! (offending line replaces the minimal copy - DIST_SCHEME is one of the six)
    call write_sample('build/input_case_v-incid.txt', [ character(len=64) :: &
@@ -377,14 +391,14 @@ program check_input
    call assert_full('(a) full key sweep')
 
    ! ---------- (i) E21 two-block partition in the parse staging ----------
-   ! (run on the (a) staging: 21 user rows, no injected defaults among them)
+   ! (run on the (a) staging: 23 user rows, no injected defaults among them)
    nfail0 = nfail
    blk1 = [ character(len=16) :: 'TASK', 'N_TRAJ', 'TITLE', 'ISEED', 'MAX_STEPS', &
-            'INTEGRATOR', 'DT', 'ORDER', 'ELEC_METHOD', 'N_SURF', 'PES_MAIN', &
-            'GWRITE_LEVEL', 'OBSERVABLES', 'E_KIN', 'E_POT', 'E_TOT' ]
+            'INTEGRATOR', 'DT', 'ORDER', 'DT_MIN', 'DT_MAX', 'ELEC_METHOD', 'N_SURF', &
+            'PES_MAIN', 'GWRITE_LEVEL', 'OBSERVABLES', 'E_KIN', 'E_POT', 'E_TOT' ]
    blk2 = [ character(len=16) :: 'SYSTEM_DIR', 'E_REL', 'B_MAX', 'R_SEP', 'DIST_SCHEME' ]
    nrows = staging_n_rows()
-   ok_part = (nrows == 21)
+   ok_part = (nrows == 23)
    do i = 1, nrows
       kname = staging_key(i)
       if (any(blk1 == trim(kname))) then
@@ -395,13 +409,13 @@ program check_input
          ok_part = .false.
       end if
    end do
-   ! line numbers preserved into staging (SYSTEM_DIR sits on source line 17)
+   ! line numbers preserved into staging (SYSTEM_DIR sits on source line 19)
    do i = 1, nrows
       if (trim(staging_key(i)) == 'SYSTEM_DIR') exit
    end do
    if (i > nrows) ok_part = .false.
-   if (ok_part .and. staging_line(i) == 17) then
-      print '(a)', '(i) E21 two-block staging: PASS (16 block-one + 5 block-two rows tagged, line numbers kept)'
+   if (ok_part .and. staging_line(i) == 19) then
+      print '(a)', '(i) E21 two-block staging: PASS (18 block-one + 5 block-two rows tagged, line numbers kept)'
    else
       print '(a)', 'FAIL (i) E21 two-block staging: partition or line numbers wrong'
       nfail = nfail + 1
@@ -420,15 +434,16 @@ program check_input
    if (task /= 1 .or. n_traj /= 1 .or. len_trim(title(1)) /= 0 .or. &
        i_seed(1) /= 1 .or. any(i_seed(2:8) /= 0) .or. max_steps /= 100000 .or. &
        propagator%id /= 1 .or. propagator%order /= 1 .or. propagator%dt /= 0.01d0 .or. &
+       propagator%dt_min /= 0.0d0 .or. propagator%dt_max /= 0.0d0 .or. &
        trim(electronic%method) /= 'adiabatic' .or. electronic%n_surf /= 0 .or. &
        trim(electronic%pes_main) /= '1' .or. observables%rec_level /= 1 .or. &
        len_trim(observables%obs_list) /= 0 .or. observables%e_kin .or. &
        observables%e_pot .or. observables%e_tot .or. .not. ok_arr .or. &
-       staging_n_rows() /= 21) then
-      print '(a)', 'FAIL (c) default injection: a default value is wrong (or staging row count off 21)'
+       staging_n_rows() /= 23) then
+      print '(a)', 'FAIL (c) default injection: a default value is wrong (or staging row count off 23)'
       nfail = nfail + 1
    else
-      print '(a)', '(c) default injection: PASS (15 Ruling-D defaults injected, none preset-wide, staging 6+15 rows)'
+      print '(a)', '(c) default injection: PASS (17 Ruling-D defaults injected, none preset-wide, staging 6+17 rows)'
    end if
 
    ! ---------- (d) defaults never override user-set keys ----------
@@ -438,13 +453,15 @@ program check_input
    if (ok_arr) ok_arr = size(reactants%dist_scheme) == 1 .and. &
                         reactants%dist_scheme(1) == 2
    if (n_traj /= 7 .or. propagator%id /= 3 .or. propagator%order /= 6 .or. &
-       i_seed(1) /= 42 .or. propagator%dt /= 0.02d0 .or. .not. ok_arr .or. &
+       i_seed(1) /= 42 .or. propagator%dt /= 0.02d0 .or. &
+       propagator%dt_min /= 0.002d0 .or. propagator%dt_max /= 0.2d0 .or. .not. ok_arr .or. &
        task /= 1 .or. max_steps /= 100000 .or. &
        trim(electronic%method) /= 'adiabatic' .or. observables%rec_level /= 1) then
       print '(a)', 'FAIL (d) no-override: user values lost or defaults clobbered them'
       nfail = nfail + 1
    else
-      print '(a)', '(d) no-override: PASS (N_TRAJ=7/INTEGRATOR=radau/ORDER=6/ISEED=42 win; defaults hold elsewhere)'
+      print '(a)', '(d) no-override: PASS (N_TRAJ=7/INTEGRATOR=radau/ORDER=6/DT_MIN=0.002/'// &
+         'DT_MAX=0.2/ISEED=42 win; defaults hold elsewhere)'
    end if
 
    ! ---------- (e) missing required keys (children) ----------
@@ -471,6 +488,8 @@ program check_input
    call expect_loudstop('v-level', 'GWRITE_LEVEL', 'line 1', '(g5) GWRITE_LEVEL outside {0,1,2,5}')
    call expect_loudstop('v-ekin',  'E_KIN',        'line 1', '(g6) bad logical E_KIN')
    call expect_loudstop('v-dt',    'DT',           'line 1', '(g7) bad real DT')
+   call expect_loudstop('v-dtmin', 'DT_MIN',       'line 1', '(g8) bad real DT_MIN')
+   call expect_loudstop('v-dtmax', 'DT_MAX',       'line 1', '(g9) bad real DT_MAX')
 
    ! ---------- (h) parse errors (children) ----------
    call expect_loudstop('p-noeq',     'line 1',  '', '(h1) no-= line loud-stop (line number reported)')
@@ -488,8 +507,8 @@ program check_input
             '0', '1.1', '0', '0.9', '0', '0', '300.0', '2', '1', '180.0', &
             '3', '42.0', '12.5', '8.0', '0', '5.0', '900.0', '475.0', '0.137', &
             '550.0', '0.09', '0.0021', '325.0', '250', '0.0413' ]
-   ok_part = (staging_n_rows() == 51)      ! 36 user rows (six registry + 30 member
-                                            ! keys) + the 15 injected per-key defaults
+   ok_part = (staging_n_rows() == 53)      ! 36 user rows (six registry + 30 member
+                                            ! keys) + the 17 injected per-key defaults
    do i = 1, size(mkey)
       k = staged_row(trim(mkey(i)))
       if (k == 0 .or. staging_block(k) /= 2 .or. trim(staging_val(k)) /= trim(mval(i))) then
@@ -604,6 +623,7 @@ contains
           trim(title(1)) /= 'full sweep sample' .or. len_trim(title(2)) /= 0 .or. &
           i_seed(1) /= 123456 .or. any(i_seed(2:8) /= 0) .or. max_steps /= 5000 .or. &
           propagator%id /= 2 .or. propagator%order /= 4 .or. propagator%dt /= 0.025d0 .or. &
+          propagator%dt_min /= 0.05d0 .or. propagator%dt_max /= 0.5d0 .or. &
           trim(electronic%method) /= 'adiabatic' .or. electronic%n_surf /= 0 .or. &
           trim(electronic%pes_main) /= '1' .or. observables%rec_level /= 5 .or. &
           trim(observables%obs_list) /= 't_kin,e_tot' .or. .not. observables%e_kin .or. &
@@ -614,7 +634,7 @@ contains
          print '(a)', 'FAIL '//trim(label)//': slot mismatch'
          nfail = nfail + 1
       else
-         print '(a)', trim(label)//': PASS (21 keys -> exact slots; lowercase words, ISEED word-1-only)'
+         print '(a)', trim(label)//': PASS (23 keys -> exact slots; lowercase words, ISEED word-1-only)'
       end if
    end subroutine assert_full
 

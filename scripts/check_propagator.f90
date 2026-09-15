@@ -15,7 +15,8 @@
 !   default binding posture of the tree is untouched (the driver binds nothing). The
 !   bound container branches on a check-side selector: harmonic (the default - per-dof
 !   distinct stiffness and centers over 2 atoms of distinct mass), kepler two-body
-!   attraction, a uniform field, and free flight; every branch is a local procedure of
+!   attraction, a uniform field, free flight, per-dof Morse, and a per-dof quartic
+!   wall (the radau adaptive-response branches); every branch is a local procedure of
 !   this check - none of them ever enters src/.
 ! Unit notes: q [Ang]; p [amu*Ang/(10 fs)]; t and dt [10 fs]; mass [amu] (roster);
 !   facade force [internal energy units per Ang]. The eV->kcal/mol conversion
@@ -106,6 +107,75 @@
 !       order 8 kepler) sta%f equals the analytic force of the branch at the RETURNED
 !       q, component-wise (rel 1e-13, as (d))
 !   (s-ls) illegal symple order (= 5) loud-stop (child): names the order
+!   ---------- radau criteria (the RA15 adaptive member, id = 3) ----------
+!   Test potentials beyond the harmonic default: branch 4 = per-dof Morse
+!   (V = D(e^{-2au} - 2e^{-au}), D = 5 eV, a = 1.5/A - the anharmonic bound
+!   well), branch 5 = per-dof quartic wall (V = K u^4, K = 50 eV/A^4 - the
+!   STIFFNESS-GRADIENT branch: curvature 12Ku^2 grows two orders of magnitude
+!   across the orbit, so the adaptive length must respond; the implementer's
+!   documented second choice after Morse).
+!   (r-a) coefficient loading, two layers:
+!       (r-a1) node fingerprint - the first-sequence substep geometries observed
+!           through the bound container (the check logs the q of every force
+!           site) equal the closed form q0 + h*(tt*v) + h^2*tt^2*f1/2 evaluated
+!           at an INDEPENDENT transcription of the published interior nodes
+!           (uniform branch: f_j = f1 exactly, so B stays 0 and the iteration-1
+!           predictors are that closed form; rel 1e-12), the seven nodes are
+!           distinct and increasing, and the mapped nodes x = 2h-1 are roots of
+!           the Gauss-Radau defining combination P8 + P7 (Legendre recurrence,
+!           |P8+P7| < 1e-12 - the value at a non-node midpoint is ~0.27);
+!       (r-a2) machinery exactness - ONE sequence on the harmonic branch
+!           (dt 0.01, order 8): the 15th-order collocation leaves roundoff only
+!           - q and p at the sequence end equal the closed-form map to 1e-13
+!           (a wrong cc/d triangle entry anywhere breaks the corrector
+!           convergence and the error jumps above the window by orders of
+!           magnitude; the w/u close-out is exact by construction)
+!   (r-b) Morse energy conservation, long run: 6-dof Morse from rest at u ~ 2 A
+!       (bound, per-dof amplitudes), order 8, seed dt 0.02, run to T = 100
+!       (~350 well periods, hundreds of adaptive sequences): max |E(t)-E(0)| <
+!       1e-7 kcal/mol (the measured bound is ~1e-9 - the window carries two
+!       decades of margin; E itself is ~1e2 kcal/mol, so the relative drift is
+!       ~1e-11 at ss = 1e-8)
+!   (r-c) accuracy-ss subordination: harmonic branch, seed dt 0.05, run to
+!       T = 25.12 at order 6 (ss = 1e-6) vs order 7 (ss = 1e-7): the end
+!       position error against the closed form improves by at least one decade
+!       (ratio window [4, 40]; measured ~29 - err ~ ss^1.5, the controller
+!       overshoots because the early growth-limited sequences run below target;
+!       the 7-vs-8 pair is unusable: the order-8 error sits at the
+!       analytic-anchor roundoff floor ~5e-14)
+!   (r-d) restart test path (verified by COUNTING bound-container calls - one
+!       call per force_eval): a mild first sequence (harmonic, dt 0.05,
+!       order 8) accepts on the first trial: exactly 44 calls (1 boot head +
+!       6 iterations x 7 substeps + 1 endpoint close-out); a harsh one
+!       (quartic wall, dt 0.2, order 12) triggers tp/tt <= 1 and restarts:
+!       44 + 43 per restart (42 retry substeps + 1 re-head; the measured case
+!       restarts twice = 130 calls), and the accepted length lands BELOW the
+!       seed (the discard-retry path ran, not a silent accept). SEED CHOICE:
+!       0.2, not a larger one - at seed 0.5 the iteration-1 predictor
+!       overshoots the quartic wall catastrophically (geometries past 1e50;
+!       gfortran's corrector rescues the trial, ifx's never accepts and the
+!       member's restart cap fires) - the restart path is proven on a seed
+!       whose trials stay finite under BOTH compilers, and the divergent
+!       cousin is the cap's documented domain
+!   (r-e) dt_min/dt_max clamping (magnitude bounds; post-clamp step = clamp):
+!       upper - free flight (hv = 0, tp = Inf) with dt_max = 0.2, seed 0.05:
+!           the increments ramp through the 1.4 growth limiter and from the
+!           sixth sequence on EQUAL 0.2 exactly (1e-12);
+!       lower - quartic wall, order 15 (ss = 1e-15), dt_min = 0.01: the run's
+!           smallest increments EQUAL 0.01 (1e-12) while the UNCLAMPED twin run
+!           (same ICs, dt_min = 0) dips strictly below 0.01 - the clamp is
+!           active, not vacuous
+!   (r-f) endpoint-force contract (as (d)/(s-f)): after the 1st and 3rd
+!       sequences (harmonic and Morse branches, order 8) sta%f equals the
+!       analytic branch force at the RETURNED q (rel 1e-13)
+!   (r-g) dispatch: id = 3 through prop_step advances sta%t by the seed on the
+!       first sequence and by a DIFFERENT (adaptive, growth-limited) length on
+!       the second - the member is reachable and internally adaptive
+!   (r-ls) loud-stops (children): illegal radau order (= 17) names the order;
+!       dt = 0 names dt; a positive dt_min > dt_max pair names the pair
+!   Cross-sequence carry: every multi-sequence criterion above (r-b/r-c/r-e/r-f
+!       step-3/r-g) runs consecutive sequences through one member instance -
+!       the B-carry path (2-iteration later sequences) is exercised throughout
 !=====================================================================
 program check_propagator
    use consts,        only: e_conv, two_pi
@@ -131,6 +201,28 @@ program check_propagator
    real(8) :: serr(3), srat(2)
    real(8) :: bmax(10), rkmax(10)
    real(8) :: adv(3), advh(3), qk0(6), pk0(6)
+   ! ---------- radau-section state ----------
+   integer :: fcount = 0                  ! bound-container call count (= force_eval count;
+                                         ! one container call per evaluation, facade step 3)
+   logical :: rlog_on = .false.           ! substep-geometry logging flag (test_pes appends)
+   integer :: rlog_n = 0                  ! logged force-site count
+   real(8), allocatable :: rlog_q(:, :)   ! logged force-site geometries (6, site)
+   integer :: jj
+   real(8) :: tprev, inc1, inc2, hmin_c, hmin_u, mor_drift
+   real(8) :: rerr(2), pa(6), vk(6)
+   ! the independent transcription of the published RA15 interior nodes (the seven
+   ! nonzero Gauss-Radau points of the 8-point left rule) - criterion (r-a1) anchors
+   ! the member's loaded values through the OBSERVED geometries against THESE
+   real(8), parameter :: rad_node(7) = [ 0.05626256053692215d0, 0.18024069173689236d0, &
+                                        0.35262471711316964d0, 0.54715362633055538d0, &
+                                        0.73421017721541053d0, 0.88532094683909577d0, &
+                                        0.97752061356128750d0 ]
+   ! Morse / quartic-wall branch parameters (per-dof; u = q - q_ctr)
+   real(8), parameter :: D_eV = 5.0d0     ! Morse well depth [eV]
+   real(8), parameter :: a_mor = 1.5d0    ! Morse range parameter [1/A]
+   real(8), parameter :: K_wall = 50.0d0  ! quartic stiffness [eV/A^4]
+   real(8), parameter :: u_mor(6) = [ 2.0d0, 1.7d0, 2.3d0, 1.5d0, 2.1d0, 1.8d0 ] ! Morse ICs [A]
+   real(8), parameter :: u_wall(6) = [ 1.2d0, 1.0d0, 1.4d0, 0.8d0, 1.3d0, 1.1d0 ] ! wall ICs [A]
    ! bound-container branch selector + branch parameters: 1 harmonic (the default, every
    ! pre-existing criterion) / 2 kepler / 3 uniform field / otherwise free flight
    integer :: pot_sel = 1
@@ -164,9 +256,9 @@ program check_propagator
       case ('c-dup')                       ! (a1): the verlet row registered twice
          call reg_prop_all()
          call prop_reg(1, verlet_step)
-      case ('c-full')                      ! (a2): 2 shipped rows + 6 fills = 8, then one more
+      case ('c-full')                      ! (a2): 3 shipped rows + 5 fills = 8, then one more
          call reg_prop_all()
-         do i = 1, 6
+         do i = 1, 5
             call prop_reg(10 + i, verlet_step)
          end do
          call prop_reg(20, verlet_step)
@@ -190,6 +282,29 @@ program check_propagator
          call state_create(sa, 2)
          prop_cfg%id = 2
          prop_cfg%order = 5
+         call prop_step(sa)
+      case ('c-rorder')                    ! (r-ls): illegal radau order (= 17, domain 1..15)
+         call reg_prop_all()
+         call state_create(sa, 2)
+         prop_cfg%id = 3
+         prop_cfg%order = 17
+         prop_cfg%dt = 0.05d0
+         call prop_step(sa)
+      case ('c-rdt0')                      ! (r-ls): radau with dt = 0 (no seed/direction)
+         call reg_prop_all()
+         call state_create(sa, 2)
+         prop_cfg%id = 3
+         prop_cfg%order = 8
+         prop_cfg%dt = 0.0d0
+         call prop_step(sa)
+      case ('c-rmm')                       ! (r-ls): contradictory positive clamp pair
+         call reg_prop_all()               ! (dt_min > dt_max - named at boot)
+         call state_create(sa, 2)
+         prop_cfg%id = 3
+         prop_cfg%order = 8
+         prop_cfg%dt = 0.05d0
+         prop_cfg%dt_min = 0.5d0
+         prop_cfg%dt_max = 0.1d0
          call prop_step(sa)
       case default
          print '(a)', 'child: unknown mode '//trim(mode)
@@ -701,6 +816,320 @@ program check_propagator
    pot_sel = 1   ! restore the harmonic default for anything that follows
    ! ================= end symple section =================
 
+   ! ================= radau section (the RA15 adaptive member, id = 3) =================
+   ! every sub-criterion sets its own order/dt/clamps and container branch; the clamps
+   ! are restored to unclamped at the section end. pot_sel = 1 here (the symple restore)
+   prop_cfg%id = 3
+   prop_cfg%dt_min = 0.0d0
+   prop_cfg%dt_max = 0.0d0
+
+   ! ---------- (r-a1) node fingerprint: observed geometries + the P8+P7 identity ----------
+   ! uniform branch: f_j = f1 exactly, so B stays identically zero and every iteration-1
+   ! predictor is the closed form yy = q0 + h*(tt*v) + h^2*tt^2*(f1/2). The logged force
+   ! sites: site 1 = the boot head at q0, sites 2..8 = the iteration-1 substep geometries
+   ! at the seven interior nodes - they must equal the closed form at the INDEPENDENTLY
+   ! transcribed published nodes (the member's loaded hh never enters the check side)
+   pot_sel = 3
+   prop_cfg%order = 8
+   prop_cfg%dt = 0.05d0
+   allocate (rlog_q(6, 128))
+   rlog_n = 0
+   rlog_on = .true.
+   sa%q = q_ctr + uA
+   sa%p = pB
+   sa%t = 0.0d0
+   call prop_step(sa)
+   rlog_on = .false.
+   do i = 1, 6
+      vk(i) = pB(i)/roster%mass((i + 2)/3)    ! folded IC velocity
+      fa(i) = -(f_uni(i)*cal)/roster%mass((i + 2)/3)  ! folded constant acceleration f1
+   end do
+   nfail0 = nfail
+   if (maxval(abs(rlog_q(:, 1) - (q_ctr + uA))) > 1.0d-12) then
+      call fail('(r-a1) the boot head site is not the origin geometry')
+   end if
+   do jj = 1, 7
+      do i = 1, 6
+         qa(i) = q_ctr(i) + uA(i) + rad_node(jj)*0.05d0*vk(i) &
+                 + rad_node(jj)**2*(0.05d0*0.05d0)*fa(i)*0.5d0
+         if (abs(rlog_q(i, jj + 1) - qa(i)) > 1.0d-12*max(1.0d0, abs(qa(i)))) then
+            call fail('(r-a1) substep geometry at node '//trim(i2s(jj))//' dof '//trim(i2s(i))// &
+                      ': '//trim(d2s(rlog_q(i, jj + 1)))//' vs closed form '//trim(d2s(qa(i))))
+         end if
+      end do
+   end do
+   do jj = 1, 7                              ! Gauss-Radau identity + distinctness
+      if (abs(lp_sum(2.0d0*rad_node(jj) - 1.0d0)) > 1.0d-12) then
+         call fail('(r-a1) mapped node '//trim(i2s(jj))//' is not a P8+P7 root: '// &
+                   trim(d2s(lp_sum(2.0d0*rad_node(jj) - 1.0d0))))
+      end if
+      if (jj > 1) then
+         if (rad_node(jj) - rad_node(jj - 1) < 1.0d-3) then
+            call fail('(r-a1) nodes not distinct/increasing at '//trim(i2s(jj)))
+         end if
+      end if
+   end do
+   if (abs(lp_sum(0.0d0)) < 1.0d-2) then     ! contrast: a non-node point is NOT a root
+      call fail('(r-a1) P8+P7 near zero at a non-node point - the identity is vacuous')
+   end if
+   if (nfail == nfail0) print '(a)', '(r-a1) node fingerprint: PASS (first-sequence substep'// &
+      ' geometries = the closed form at the published nodes to 1e-12; P8+P7 = 0 at every'// &
+      ' mapped node (non-node value '//trim(d2s(lp_sum(0.0d0)))//'); nodes distinct)'
+
+   ! ---------- (r-a2) machinery exactness: one harmonic sequence ----------
+   ! one sequence at dt 0.01, order 8: the 15th-order collocation leaves roundoff only -
+   ! q AND p at the sequence end equal the closed-form map (a wrong cc/d triangle entry
+   ! anywhere breaks the corrector convergence; the exact-moment close-out is structural)
+   pot_sel = 1
+   prop_cfg%order = 8
+   prop_cfg%dt = 0.01d0
+   sa%q = q_ctr + u0
+   sa%p = 0.0d0
+   sa%t = 0.0d0
+   call prop_step(sa)
+   qa = q_ctr + u0*cos(om*sa%t)
+   do i = 1, 6
+      pa(i) = -u0(i)*om(i)*sin(om(i)*sa%t)*roster%mass((i + 2)/3)  ! p = m*dq/dt
+   end do
+   nfail0 = nfail
+   if (abs(sa%t - 0.01d0) > 1.0d-14) then
+      call fail('(r-a2) the first sequence did not consume the seed (t = '//trim(d2s(sa%t))//')')
+   end if
+   do i = 1, 6
+      if (abs(sa%q(i) - qa(i)) > 1.0d-13*max(1.0d0, abs(qa(i)))) then
+         call fail('(r-a2) harmonic one-sequence q mismatch, dof '//trim(i2s(i))//': '// &
+                   trim(d2s(sa%q(i)))//' vs closed form '//trim(d2s(qa(i))))
+      end if
+      if (abs(sa%p(i) - pa(i)) > 1.0d-13*max(1.0d0, abs(pa(i)))) then
+         call fail('(r-a2) harmonic one-sequence p mismatch, dof '//trim(i2s(i))//': '// &
+                   trim(d2s(sa%p(i)))//' vs closed form '//trim(d2s(pa(i))))
+      end if
+   end do
+   if (nfail == nfail0) print '(a)', '(r-a2) machinery exactness: PASS (one sequence, dt 0.01,'// &
+      ' order 8: q and p = closed-form map to 1e-13; worst q dev '// &
+      trim(d2s(maxval(abs(sa%q - qa))))//')'
+
+   ! ---------- (r-b) Morse energy conservation (long adaptive run) ----------
+   ! bound 6-dof Morse from rest at u ~ 2 A, order 8 (ss = 1e-8), seed 0.02, to T = 100
+   ! (~350 well periods, hundreds of sequences through the B-carry); |E(t)-E(0)| is
+   ! sampled after every sequence through the same force entry (e_tot channel)
+   pot_sel = 4
+   prop_cfg%order = 8
+   prop_cfg%dt = 0.02d0
+   sa%q = q_ctr + u_mor
+   sa%p = 0.0d0
+   sa%t = 0.0d0
+   call force_eval(sa, ea)
+   mor_drift = 0.0d0
+   do while (sa%t < 100.0d0)
+      call prop_step(sa)
+      call force_eval(sa, eb)
+      mor_drift = max(mor_drift, abs(eb - ea))
+   end do
+   nfail0 = nfail
+   if (mor_drift >= 1.0d-7) then
+      call fail('(r-b) Morse energy drift out of tolerance: max|E-E0| = '//trim(d2s(mor_drift))// &
+                ' kcal/mol over T = '//trim(d2s(sa%t))//' (want < 1e-7)')
+   end if
+   if (nfail == nfail0) print '(a)', '(r-b) Morse conservation: PASS (max|E-E0| = '// &
+      trim(d2s(mor_drift))//' kcal/mol over T = '//trim(d2s(sa%t))//', order 8, hundreds of'// &
+      ' adaptive sequences)'
+
+   ! ---------- (r-c) accuracy-ss subordination (orders 6 vs 7) ----------
+   ! harmonic, seed 0.05, run to T = 25.12: ss 1e-6 vs 1e-7 - the end position error
+   ! against the closed form improves by about one decade (error ~ ss per unit time).
+   ! Orders 6/7, not 7/8: the order-8 run's end error sits at the analytic-anchor
+   ! roundoff floor (~5e-14: sta%t accumulation rounding mapped through dq/dt), which
+   ! floored the 7-vs-8 ratio at ~27 - one pair lower keeps both errors honest
+   pot_sel = 1
+   do jj = 1, 2
+      prop_cfg%order = 5 + jj                ! 6 then 7
+      prop_cfg%dt = 0.05d0
+      sa%q = q_ctr + u0
+      sa%p = 0.0d0
+      sa%t = 0.0d0
+      do while (sa%t < 25.12d0)
+         call prop_step(sa)
+      end do
+      qa = q_ctr + u0*cos(om*sa%t)
+      rerr(jj) = maxval(abs(sa%q - qa))
+   end do
+   nfail0 = nfail
+   if (rerr(2) <= 0.0d0) then
+      call fail('(r-c) the order-7 end error vanished - ratio undefined')
+   else if (rerr(1)/rerr(2) < 4.0d0 .or. rerr(1)/rerr(2) > 40.0d0) then
+      call fail('(r-c) ss-subordination out of window: err(6)/err(7) = '// &
+                trim(d2s(rerr(1)/rerr(2)))//' (want [4, 40]; errors '//trim(d2s(rerr(1)))// &
+                ' / '//trim(d2s(rerr(2)))//')')
+   end if
+   if (nfail == nfail0) print '(a)', '(r-c) ss-subordination: PASS (order 6 vs 7 errors '// &
+      trim(d2s(rerr(1)))//' / '//trim(d2s(rerr(2)))//' - about one decade per ss decade)'
+
+   ! ---------- (r-d) restart test path (verified by counting container calls) ----------
+   ! one container call per force_eval: a mild first sequence (harmonic, dt 0.05,
+   ! order 8) accepts on the first trial - exactly 44 calls (1 boot head + 6x7 substeps
+   ! + 1 endpoint); a harsh one (quartic wall, dt 0.5, order 12) hits tp/tt <= 1 and
+   ! RESTARTS: 44 + 43 per restart (42 retry substeps + 1 re-head), and the accepted
+   ! length lands below the seed (the discard-retry path ran, not a silent accept)
+   pot_sel = 1
+   prop_cfg%order = 8
+   prop_cfg%dt = 0.05d0
+   sa%q = q_ctr + u0
+   sa%p = p0c
+   sa%t = 0.0d0
+   fcount = 0
+   call prop_step(sa)
+   nfail0 = nfail
+   if (fcount /= 44) then
+      call fail('(r-d) mild first sequence: '//trim(i2s(fcount))//' container calls (want 44 - '// &
+                '1 boot head + 6x7 substeps + 1 endpoint)')
+   end if
+   if (nfail == nfail0) print '(a)', '(r-d) mild first sequence: PASS ('//trim(i2s(fcount))// &
+      ' container calls = 1 boot head + 6x7 substeps + 1 endpoint - accepted first trial)'
+   pot_sel = 5
+   prop_cfg%order = 12
+   prop_cfg%dt = 0.2d0
+   sa%q = q_ctr + u_wall
+   sa%p = 0.0d0
+   sa%t = 0.0d0
+   fcount = 0
+   call prop_step(sa)
+   nfail0 = nfail
+   if (fcount == 44 .or. mod(fcount - 44, 43) /= 0) then
+      call fail('(r-d) harsh first sequence: '//trim(i2s(fcount))//' container calls (want'// &
+                ' 44 + 43 per restart - the count pattern does not decode)')
+   else if (sa%t >= 0.2d0) then
+      call fail('(r-d) harsh first sequence accepted the full seed (t = '//trim(d2s(sa%t))// &
+                ' - the restart shrink did not run)')
+   end if
+   if (nfail == nfail0) print '(a)', '(r-d) restart path: PASS ('//trim(i2s(fcount))// &
+      ' container calls = 44 + '//trim(i2s((fcount - 44)/43))//' restart(s); accepted length '// &
+      trim(d2s(sa%t))//' < seed 0.2)'
+
+   ! ---------- (r-e) dt_min/dt_max clamping (post-clamp step = clamp) ----------
+   ! upper: free flight (hv = 0 -> tp = Inf) with dt_max = 0.2, seed 0.05 - the
+   ! increments ramp through the 1.4 growth limiter (0.07, 0.098, ...) and from the
+   ! sixth sequence on EQUAL the clamp exactly (the cap is respected throughout)
+   pot_sel = 0
+   prop_cfg%order = 8
+   prop_cfg%dt = 0.05d0
+   prop_cfg%dt_min = 0.0d0
+   prop_cfg%dt_max = 0.2d0
+   sa%q = q_ctr + uA
+   sa%p = pB
+   sa%t = 0.0d0
+   tprev = 0.0d0
+   nfail0 = nfail
+   do i = 1, 10
+      call prop_step(sa)
+      if (i >= 6) then
+         if (abs((sa%t - tprev) - 0.2d0) > 1.0d-12) then
+            call fail('(r-e) dt_max clamp: increment '//trim(i2s(i))//' is '// &
+                      trim(d2s(sa%t - tprev))//' (want the clamp 0.2)')
+         end if
+      end if
+      tprev = sa%t
+   end do
+   if (nfail == nfail0) print '(a)', '(r-e) dt_max clamp: PASS (increments 6..10 all = 0.2'// &
+      ' exactly after the growth-limited ramp, free flight at seed 0.05)'
+   ! lower: quartic wall, order 15 (ss = 1e-15), dt_min = 0.01 - the run's smallest
+   ! increments EQUAL the floor while the UNCLAMPED twin dips strictly below it
+   pot_sel = 5
+   prop_cfg%order = 15
+   prop_cfg%dt = 0.02d0
+   prop_cfg%dt_min = 0.01d0
+   prop_cfg%dt_max = 0.0d0
+   sa%q = q_ctr + u_wall
+   sa%p = 0.0d0
+   sa%t = 0.0d0
+   hmin_c = huge(1.0d0)
+   tprev = 0.0d0
+   do i = 1, 40
+      call prop_step(sa)
+      hmin_c = min(hmin_c, sa%t - tprev)
+      tprev = sa%t
+   end do
+   prop_cfg%dt_min = 0.0d0                   ! the unclamped twin (same ICs, same order)
+   sa%q = q_ctr + u_wall
+   sa%p = 0.0d0
+   sa%t = 0.0d0
+   hmin_u = huge(1.0d0)
+   tprev = 0.0d0
+   do i = 1, 40
+      call prop_step(sa)
+      hmin_u = min(hmin_u, sa%t - tprev)
+      tprev = sa%t
+   end do
+   nfail0 = nfail
+   if (abs(hmin_c - 0.01d0) > 1.0d-12) then
+      call fail('(r-e) dt_min clamp: smallest increment '//trim(d2s(hmin_c))//' (want the'// &
+                ' floor 0.01 - the run must touch it)')
+   else if (hmin_u >= 0.01d0) then
+      call fail('(r-e) dt_min clamp vacuous: the unclamped twin never dips below 0.01 '// &
+                '(min '//trim(d2s(hmin_u))//')')
+   end if
+   if (nfail == nfail0) print '(a)', '(r-e) dt_min clamp: PASS (clamped run floor = 0.01;'// &
+      ' unclamped twin dips to '//trim(d2s(hmin_u))//' - the bound is active)'
+   prop_cfg%dt_min = 0.0d0
+   prop_cfg%dt_max = 0.0d0
+
+   ! ---------- (r-f) endpoint-force contract ----------
+   ! after the 1st and 3rd sequences (harmonic and Morse, order 8): sta%f equals the
+   ! analytic branch force at the RETURNED q (rel 1e-13, as (d)/(s-f))
+   pot_sel = 1
+   prop_cfg%order = 8
+   prop_cfg%dt = 0.01d0
+   nfail0 = nfail
+   sta%q = q_ctr + u0
+   sta%p = p0c
+   sta%t = 0.0d0
+   call prop_step(sta)
+   call check_endpoint_force('(r-f) harmonic seq 1')
+   call prop_step(sta)
+   call prop_step(sta)
+   call check_endpoint_force('(r-f) harmonic seq 3')
+   pot_sel = 4
+   sta%q = q_ctr + u_mor
+   sta%p = 0.0d0
+   sta%t = 0.0d0
+   call prop_step(sta)
+   call check_morse_endpoint('(r-f) Morse seq 1')
+   call prop_step(sta)
+   call prop_step(sta)
+   call check_morse_endpoint('(r-f) Morse seq 3')
+   if (nfail == nfail0) print '(a)', '(r-f) endpoint force: PASS (sta%f = analytic branch'// &
+      ' force at the returned q, harmonic + Morse, sequences 1 and 3, rel 1e-13)'
+
+   ! ---------- (r-g) dispatch: id = 3 through prop_step, adaptive increments ----------
+   pot_sel = 1
+   prop_cfg%order = 8
+   prop_cfg%dt = 0.05d0
+   sa%q = q_ctr + u0
+   sa%p = 0.0d0
+   sa%t = 0.0d0
+   call prop_step(sa)
+   inc1 = sa%t                                ! the seed consumed by sequence 1
+   call prop_step(sa)
+   inc2 = sa%t - inc1                         ! the adaptive length of sequence 2
+   nfail0 = nfail
+   if (abs(inc1 - 0.05d0) > 1.0d-14) then
+      call fail('(r-g) the first sequence did not consume the seed (inc1 = '//trim(d2s(inc1))//')')
+   else if (inc2 <= inc1 + 1.0d-12 .or. inc2 > 1.4d0*inc1 + 1.0d-12) then
+      call fail('(r-g) the second increment is not adaptive-growth-limited: inc2 = '// &
+                trim(d2s(inc2))//' vs inc1 = '//trim(d2s(inc1))//' (want (inc1, 1.4*inc1])')
+   end if
+   if (nfail == nfail0) print '(a)', '(r-g) id=3 dispatch: PASS (t advances; seed increment '// &
+      trim(d2s(inc1))//', adaptive increment '//trim(d2s(inc2))//' - growth-limited adaptivity)'
+
+   ! ---------- (r-ls) radau loud-stops (children) ----------
+   call expect_loudstop('c-rorder', 'order', 'radau_step', '(r-ls) illegal-order loud-stop')
+   call expect_loudstop('c-rdt0', 'dt = 0', 'radau_step', '(r-ls) zero-dt loud-stop')
+   call expect_loudstop('c-rmm', 'dt_min exceeds dt_max', 'radau_step', &
+                        '(r-ls) contradictory-clamp-pair loud-stop')
+
+   pot_sel = 1   ! restore the harmonic default for anything that follows
+   ! ================= end radau section =================
+
    call state_destroy(sta)
    call state_destroy(sa)
    call state_destroy(sb)
@@ -720,8 +1149,16 @@ contains
       real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (unused - pure PES branches)
       type(ws_t), intent(inout) :: ws  ! workspace (scalar channel out)
       integer :: n
-      real(8) :: rr(3), rn
+      real(8) :: rr(3), rn, ex
       n = size(q)
+      fcount = fcount + 1                     ! one container call per force_eval (facade
+                                             ! step 3) - the radau restart instrument (r-d)
+      if (rlog_on) then                       ! substep-geometry log (r-a1): append the
+         if (rlog_n < size(rlog_q, 2)) then   ! q of every force site while armed
+            rlog_n = rlog_n + 1
+            rlog_q(:, rlog_n) = q
+         end if
+      end if
       if (allocated(ws%g_add)) then
          if (size(ws%g_add) /= n) deallocate (ws%g_add)
       end if
@@ -739,6 +1176,19 @@ contains
       case (3)                                 ! uniform field: V = -f.q
          ws%g_add = f_uni
          ws%v_add = -dot_product(f_uni, q)
+      case (4)                                 ! Morse: V = D(e^{-2au} - 2e^{-au}) per dof
+         ws%v_add = 0.0d0
+         do n = 1, size(q)
+            ex = exp(-a_mor*(q(n) - q_ctr(n)))
+            ws%g_add(n) = 2.0d0*a_mor*D_eV*(ex - ex*ex)         ! dV/du [eV/A]
+            ws%v_add = ws%v_add + D_eV*(ex*ex - 2.0d0*ex)
+         end do
+      case (5)                                 ! quartic wall: V = K u^4 (curvature 12Ku^2 -
+         ws%v_add = 0.0d0                      ! the stiffness-gradient branch)
+         do n = 1, size(q)
+            ws%g_add(n) = 4.0d0*K_wall*(q(n) - q_ctr(n))**3     ! dV/du [eV/A]
+            ws%v_add = ws%v_add + K_wall*(q(n) - q_ctr(n))**4
+         end do
       case default                             ! free flight: V = 0
          ws%g_add = 0.0d0
          ws%v_add = 0.0d0
@@ -830,6 +1280,39 @@ contains
          end if
       end do
    end subroutine check_kep_endpoint
+
+   ! lp_sum(x) - the Legendre combination P8(x) + P7(x) by the Bonnet recurrence
+   ! (the Gauss-Radau defining identity: the mapped interior nodes 2h-1 are its roots)
+   real(8) function lp_sum(x)
+      real(8), intent(in) :: x
+      real(8) :: pm, pc, nx
+      integer :: nn
+      pm = 1.0d0                              ! P0
+      pc = x                                  ! P1
+      do nn = 2, 8
+         nx = ((2*nn - 1)*x*pc - (nn - 1)*pm)/nn
+         pm = pc
+         pc = nx
+      end do
+      lp_sum = pc + pm                        ! P8 + P7
+   end function lp_sum
+
+   ! assert sta%f equals the analytic Morse force at the RETURNED sta%q (branch 4 of
+   ! the container: V = D(e^{-2au} - 2e^{-au}), dV/du = 2aD(e^{-au} - e^{-2au}); the
+   ! facade applies F = -g*cal - the measured conversion, as check_endpoint_force)
+   subroutine check_morse_endpoint(tag)
+      character(len=*), intent(in) :: tag
+      integer :: i
+      real(8) :: ex
+      do i = 1, 6
+         ex = exp(-a_mor*(sta%q(i) - q_ctr(i)))
+         fa(i) = -(2.0d0*a_mor*D_eV*(ex - ex*ex))*cal
+         if (abs(sta%f(i) - fa(i)) > 1.0d-13*max(abs(fa(i)), 1.0d0)) then
+            call fail(tag//': Morse endpoint force mismatch at dof '//trim(i2s(i))//': '// &
+                      trim(d2s(sta%f(i)))//' vs analytic '//trim(d2s(fa(i))))
+         end if
+      end do
+   end subroutine check_morse_endpoint
 
    ! kepler ICs: relative orbit a = kep_a, e = kep_ecc, GM = gm_want; the center of mass
    ! at rest at the origin, perihelion on +x, prograde in xy (atom positions/momenta
