@@ -1,0 +1,23 @@
+# case_chain_frequencies/normalmode —— normalmode 腿: H3 载体, 平动投影谱 -> 微正则采样
+# 体系: H3 单片段弯曲(三等质量 1.008 amu——投影谱解析均匀 omega = sqrt(K_int/m),
+# 解析锚在平动投影后存活); 容器: reference 谐振井(仅 K_HARM = 0.04)。
+# 链级演示由 scripts/probe_chain_freq.f90 驱动(驱动程序式——README 第 2 节查明记录)。
+# DIST_SCHEME = ROTATION + J_ROT = 3 为无害占位成员(两 seam 的未选中守卫跳过
+# boltzmann/normalmode 的成员 init; 探针在装配后改写 dist_scheme 再直调成员公开面)。
+# E_VIB = 12.5 kcal/mol -> e_tot = 12.5*e_conv = 0.523 内能(与 C5 判据同参数——
+# 球分裂 s=6 模的模 1 边缘分布 Beta(1/2,5/2) 闭形式适用)。
+# E_REL/B_MAX/R_SEP 为必键占位(单片段气相 incident 通道不派发, V.2/V.3 同姿态)。
+# 预期锚见 ../README.md 第 3 节(判据先行)。
+SYSTEM_DIR = system
+TITLE = chain-frequency normalmode leg - H3 projected-spectrum microcanonical
+E_REL = 200.0
+B_MAX = 2.0
+R_SEP = 8.0
+DT = 0.05
+DIST_SCHEME = ROTATION
+J_ROT = 3
+E_VIB = 12.5
+N_TRAJ = 1
+MAX_STEPS = 10
+ISEED = 20260921
+GWRITE_LEVEL = 2

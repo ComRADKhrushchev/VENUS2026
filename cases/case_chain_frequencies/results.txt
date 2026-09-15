@@ -1,0 +1,54 @@
+# case_chain_frequencies 运行记录（2026-09-16，gfortran 树 src/build/gfortran/probe_chain_freq.exe，cwd=两腿各自子文件夹）
+# 探针不写文件——全部证据行落 stdout（此处入档）；两腿退出码均 0 = 全锚绿
+# 确定性 D：两腿各双跑 stdout 逐字节一致（cmp 无差异）；STOP 0 走 stderr 不入档
+# 判据对照与推导见 README.md 第 3/4 节；锚判定汇总：
+#   boltz（HCl 全谱腿）: F1/F2/B1/B2/B3 全绿
+#   normalmode（H3 投影谱腿）: F1/F3/N1/N2/N3 全绿（normalmode_init 成员 1e-8 电池在导出表上复验绿）
+
+## boltz/（stdout）
+probe: leg = boltz  (roster atoms = 2)  - real container forces through force_eval
+probe: K_HARM staged -> analytic K_int = K*23.0605*0.04184 = 3.859405E-02 internal/A^2
+probe: (F1) worst diagonal rel =  2.718E-13  worst off-diagonal abs =  0.000E+00
+(F1) Hessian structure: PASS (diag = K_int within 1e-10 rel, off-diag exactly 0.0;
+     central difference at the default step on the container chain)
+probe: (F2) worst omega rel =  1.359E-13
+probe:   mode  1: omega =  0.0329953 rad/(10 fs) -> nu =    17.5167 cm^-1
+probe:   mode  2: omega =  0.0329953 rad/(10 fs) -> nu =    17.5167 cm^-1
+probe:   mode  3: omega =  0.0329953 rad/(10 fs) -> nu =    17.5167 cm^-1
+probe:   mode  4: omega =  0.1956726 rad/(10 fs) -> nu =   103.8794 cm^-1
+probe:   mode  5: omega =  0.1956726 rad/(10 fs) -> nu =   103.8794 cm^-1
+probe:   mode  6: omega =  0.1956726 rad/(10 fs) -> nu =   103.8794 cm^-1
+(F2) full spectrum: PASS (3x  0.1956726 + 3x  0.0329953 = analytic {sqrt(K_int/m_a)} within 1e-10 rel)
+probe: (B1) chi2 =     5.853  (theory q =  0.237613)
+(B1) geometric chi-square: PASS (chi2 =   5.853 <= 11.07, df = 5, N = 200000)
+(B2) per-mode means: PASS (Cl group   3.6490  3.6547  3.6400 / H group   0.3132  0.3118  0.3147
+; each within its own 5 sigma)
+probe:   theory means: Cl =   3.64673  H =   0.31167
+probe:   5 sigma:    Cl =  4.60E-02  H =  7.15E-03
+(B3) quantum-number integrity: PASS (all drawn n >= 0, integers by getter type)
+=== probe_chain_freq: 0 failure(s) ===
+
+## normalmode/（stdout）
+probe: leg = normalmode  (roster atoms = 3)  - real container forces through force_eval
+probe: K_HARM staged -> analytic K_int = K*23.0605*0.04184 = 3.859405E-02 internal/A^2
+probe: (F1) worst diagonal rel =  7.213E-13  worst off-diagonal abs =  0.000E+00
+(F1) Hessian structure: PASS (diag = K_int within 1e-10 rel, off-diag exactly 0.0;
+     central difference at the default step on the container chain)
+probe: (F3) null |lambda| max =  1.388E-17  mode lambda rel =  5.408E-13 (vs K_int/m)
+probe: (F3) orthonormality dev =  9.992E-16  translation overlap =  1.974E-16  eigen-residual =  3.717E-16
+probe:   mode  1: omega =  0.1956726 rad/(10 fs) (projected spectrum)
+probe:   mode  2: omega =  0.1956726 rad/(10 fs) (projected spectrum)
+probe:   mode  3: omega =  0.1956726 rad/(10 fs) (projected spectrum)
+probe:   mode  4: omega =  0.1956726 rad/(10 fs) (projected spectrum)
+probe:   mode  5: omega =  0.1956726 rad/(10 fs) (projected spectrum)
+probe:   mode  6: omega =  0.1956726 rad/(10 fs) (projected spectrum)
+(F3) projected spectrum + table: PASS (3 nulls <= 1e-10, 6 modes =  0.1956726 = sqrt(K_int/m) within 1e-10 rel; C orthonormal 1e-12)
+     translation-orthogonal 1e-12, eigen-residual within 1e-10 of the scale
+probe:   normalmode_init PASSED on the derived table (member 1e-8 battery green)
+(N1) exact identities: PASS (E = e_vib*e_conv =   5.2300E-01 internal to 1e-10; |sum p| <= 1e-9*sqrt(2*M*E); state in span(C); COM at origin;
+     N = 2000 draws)
+probe: (N2) chi2 =     4.305  mean share =  0.166586  (theory mean 1/6)
+(N2) mode-1 energy share: PASS (chi2 =   4.305 <= 16.92, df = 9; mean  0.16659 vs Beta(1/2,5/2) mean 1/6; N = 50000)
+probe: (N3) mean KE =  2.6064E-01  vs e_tot/2 =  2.6150E-01
+(N3) phase equipartition: PASS (mean KE =  2.6064E-01 = e_tot/2 within 5 sigma; N = 50000)
+=== probe_chain_freq: 0 failure(s) ===
