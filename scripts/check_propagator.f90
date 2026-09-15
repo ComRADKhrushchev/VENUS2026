@@ -138,11 +138,20 @@
 !       ~1e-11 at ss = 1e-8)
 !   (r-c) accuracy-ss subordination: harmonic branch, seed dt 0.05, run to
 !       T = 25.12 at order 6 (ss = 1e-6) vs order 7 (ss = 1e-7): the end
-!       position error against the closed form improves by at least one decade
-!       (ratio window [4, 40]; measured ~29 - err ~ ss^1.5, the controller
-!       overshoots because the early growth-limited sequences run below target;
-!       the 7-vs-8 pair is unusable: the order-8 error sits at the
-!       analytic-anchor roundoff floor ~5e-14)
+!       position error against the closed form improves by at least one decade.
+!       MODEL BOUNDS (the window's quantitative anchor): under per-sequence
+!       error CONTROL the accumulated error scales as ss^(8/9) - each sequence
+!       contributes ~ss and the sequence count grows as ss^(-1/9) - so one ss
+!       decade buys ~8x; under pure 15th-order TRUNCATION (sequence length
+!       h ~ ss^(1/9), per-sequence error ~ h^15) a decade buys 10^(15/9) ~ 46,
+!       50-60 with controller overshoot riding in. The measured ~29 sits
+!       between the bounds; the window [4, 40] carries margin below the control
+!       bound and stops short of the truncation bound - a pair whose ratio
+!       approaches the upper edge is measuring truncation, not control.
+!       FLOOR CLEARANCE (asserted alongside the window): both end errors must
+!       exceed 100x the anchor-rounding scale 1e-14 (the measured order-8 floor
+!       is ~5e-14; the retired 7-vs-8 pair's ratio ~27 was window-compatible
+!       yet floor-contaminated - invisible to the window alone, caught here)
 !   (r-d) restart test path (verified by COUNTING bound-container calls - one
 !       call per force_eval): a mild first sequence (harmonic, dt 0.05,
 !       order 8) accepts on the first trial: exactly 44 calls (1 boot head +
@@ -153,10 +162,11 @@
 !       seed (the discard-retry path ran, not a silent accept). SEED CHOICE:
 !       0.2, not a larger one - at seed 0.5 the iteration-1 predictor
 !       overshoots the quartic wall catastrophically (geometries past 1e50;
-!       gfortran's corrector rescues the trial, ifx's never accepts and the
-!       member's restart cap fires) - the restart path is proven on a seed
-!       whose trials stay finite under BOTH compilers, and the divergent
-!       cousin is the cap's documented domain
+!       gfortran's corrector rescues the trial, ifx's never accepts - the
+!       diverged-trial guard names it at the hv estimate, the estimate being
+!       where the divergence first shows) - the restart path is proven on a
+!       seed whose trials stay finite under BOTH compilers, and the divergent
+!       cousin is the (r-ls) c-rdiv criterion's domain
 !   (r-e) dt_min/dt_max clamping (magnitude bounds; post-clamp step = clamp):
 !       upper - free flight (hv = 0, tp = Inf) with dt_max = 0.2, seed 0.05:
 !           the increments ramp through the 1.4 growth limiter and from the
@@ -172,7 +182,13 @@
 !       first sequence and by a DIFFERENT (adaptive, growth-limited) length on
 !       the second - the member is reachable and internally adaptive
 !   (r-ls) loud-stops (children): illegal radau order (= 17) names the order;
-!       dt = 0 names dt; a positive dt_min > dt_max pair names the pair
+!       dt = 0 names dt; a positive dt_min > dt_max pair names the pair; a
+!       floor-pinned diverged trial names the guard - quartic wall at seed
+!       dt = dt_min = 0.7, order 12: the diverged trial's probe clamps back UP
+!       to the trial length and the equality path of the accept test would
+!       admit the garbage with no naming (the retry cap only sees FAILED
+!       comparisons on this path) - the diverged-trial guard of the header's
+!       TERMINATION GUARD family stops it named, at the hv estimate
 !   Cross-sequence carry: every multi-sequence criterion above (r-b/r-c/r-e/r-f
 !       step-3/r-g) runs consecutive sequences through one member instance -
 !       the B-carry path (2-iteration later sequences) is exercised throughout
@@ -305,6 +321,23 @@ program check_propagator
          prop_cfg%dt = 0.05d0
          prop_cfg%dt_min = 0.5d0
          prop_cfg%dt_max = 0.1d0
+         call prop_step(sa)
+      case ('c-rdiv')                      ! (r-ls): floor-pinned diverged trial - the
+         allocate (roster%mass(2))         ! quartic branch must be bound (the trial runs
+         roster%mass = [ 1.0d0, 4.0d0 ]    ! real forces before the estimate fires)
+         call state_create(sa, 2)
+         call method_reg('adiabatic', '', noop_prop, noop_match)
+         call container_bind_pes(test_pes)
+         call container_init()
+         call reg_prop_all()
+         pot_sel = 5
+         prop_cfg%id = 3
+         prop_cfg%order = 12
+         prop_cfg%dt = 0.7d0
+         prop_cfg%dt_min = 0.7d0           ! the floor pins the retry probe to the trial
+         sa%q = q_ctr + u_wall             ! length - without the guard the equality
+         sa%p = 0.0d0                      ! path of the accept test admits the garbage
+         sa%t = 0.0d0
          call prop_step(sa)
       case default
          print '(a)', 'child: unknown mode '//trim(mode)
@@ -962,13 +995,19 @@ program check_propagator
                 trim(d2s(rerr(1)/rerr(2)))//' (want [4, 40]; errors '//trim(d2s(rerr(1)))// &
                 ' / '//trim(d2s(rerr(2)))//')')
    end if
+   if (rerr(1) <= 100.0d0*1.0d-14 .or. rerr(2) <= 100.0d0*1.0d-14) then
+      call fail('(r-c) floor clearance: an end error sits at or below 100x the'// &
+                ' anchor-rounding scale 1e-14: '//trim(d2s(rerr(1)))//' / '//trim(d2s(rerr(2)))// &
+                ' (floor-contaminated - the ratio window alone cannot see it)')
+   end if
    if (nfail == nfail0) print '(a)', '(r-c) ss-subordination: PASS (order 6 vs 7 errors '// &
-      trim(d2s(rerr(1)))//' / '//trim(d2s(rerr(2)))//' - about one decade per ss decade)'
+      trim(d2s(rerr(1)))//' / '//trim(d2s(rerr(2)))//' - about one decade per ss decade, both'// &
+      ' > 100x the 1e-14 anchor-rounding scale)'
 
    ! ---------- (r-d) restart test path (verified by counting container calls) ----------
    ! one container call per force_eval: a mild first sequence (harmonic, dt 0.05,
    ! order 8) accepts on the first trial - exactly 44 calls (1 boot head + 6x7 substeps
-   ! + 1 endpoint); a harsh one (quartic wall, dt 0.5, order 12) hits tp/tt <= 1 and
+   ! + 1 endpoint); a harsh one (quartic wall, dt 0.2, order 12) hits tp/tt <= 1 and
    ! RESTARTS: 44 + 43 per restart (42 retry substeps + 1 re-head), and the accepted
    ! length lands below the seed (the discard-retry path ran, not a silent accept)
    pot_sel = 1
@@ -1126,6 +1165,8 @@ program check_propagator
    call expect_loudstop('c-rdt0', 'dt = 0', 'radau_step', '(r-ls) zero-dt loud-stop')
    call expect_loudstop('c-rmm', 'dt_min exceeds dt_max', 'radau_step', &
                         '(r-ls) contradictory-clamp-pair loud-stop')
+   call expect_loudstop('c-rdiv', 'diverged trial sequence', 'radau_step', &
+                        '(r-ls) floor-pinned-diverged-trial loud-stop')
 
    pot_sel = 1   ! restore the harmonic default for anything that follows
    ! ================= end radau section =================

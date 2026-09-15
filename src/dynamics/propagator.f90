@@ -143,6 +143,21 @@
 !   a measured instance is the quartic wall at seed 0.5 under ifx rounding; the
 !   cap turns that path into a named loud-stop. Every legitimate measured case
 !   needs at most two restarts, so ten carries fivefold margin.
+!   DIVERGED-TRIAL GUARD (the cap's blind spot, legislated alongside it): the cap only sees
+!   FAILED accept comparisons, so the NaN variant of a divergence (hv /= hv makes
+!   every comparison false) spins into it, but a diverged trial under a dt_min
+!   floor takes the opposite exit - the probe clamps back UP to the trial length,
+!   the equality path of the accept test admits it, and garbage closes out with
+!   no naming (and later sequences run no accept test at all). The guard sits at
+!   the hv estimate itself, on every trial of every sequence: hv non-finite or
+!   beyond the divergence bound 1e30 loud-stops named. The bound's anchors:
+!   legitimate measured hv peaks near 9e8 (quartic wall, seed 0.2, order 12),
+!   free flight gives exactly 0, diverged trials land >= 1e50 - the bound keeps
+!   >20 decades of margin above the legitimate maximum.
+!
+!   TCORR (for the record): the next-length exponent constant is 1.0 - the
+!   10^(-112/9) alternative of the source material remains its commented-out
+!   state and is NOT adopted here.
 !
 !   ADAPTIVITY: hv = max_k |B7_k| * w(7) / tval^7 estimates the error coefficient
 !   (tval = |tt| truncated to single precision - the historical noise floor of the
@@ -472,6 +487,23 @@ contains
                   hv = max(hv, abs(rad_bb(7, k)))
                end do
                hv = hv*rad_w(7)/tval**7
+               ! diverged-trial guard (the cap's blind spot): hv non-finite (NaN: hv /= hv;
+               ! Inf: above the bound) or beyond the documented divergence bound closes
+               ! the floor-pinned silent-accept hole - a diverged trial under a dt_min
+               ! floor would pin the probe back UP to the trial length and accept
+               ! garbage through the equality path with no naming (the retry cap only
+               ! sees FAILED comparisons: the NaN variant spins into it, the Inf and
+               ! huge-but-finite variants never do). The bound 1e30 sits >20 decades
+               ! above every measured legitimate hv (worst ~9e8, quartic seed 0.2
+               ! order 12) and >120 decades below overflow; the guard fires on every
+               ! trial of every sequence, so a divergence on a later (test-exempt)
+               ! sequence is named too, not silently propagated
+               if (hv /= hv .or. hv > 1.0d30) then
+                  call stop_prop('radau_step', 'diverged trial sequence: the error'// &
+                                 ' estimate hv is non-finite or beyond the divergence'// &
+                                 ' bound 1e30 (the dt seed or the dt_min floor exceeds'// &
+                                 ' what this force law supports)')
+               end if
             end if
          end do
 
