@@ -85,7 +85,11 @@ module elec_ws
       real(8), allocatable :: h_ij(:,:)   ! diabatic Hamiltonian matrix [eV] (symmetric of order n_surf;
                                           ! the member delivers the full matrix; symmetry is the member's own affair)
       real(8), allocatable :: dh_ij(:,:,:) ! matrix-element gradients [eV/Å] (ndof x n_surf^2;
-                                          ! compressed delivery for large state spaces is a grammar-versioning matter)
+                                          ! FULL-MATRIX delivery: the facade's ordered-pair fold reads
+                                          ! BOTH triangles - symmetry is not assumed on read (eig_sym
+                                          ! reads only h_ij's lower triangle, but dh_ij must arrive
+                                          ! complete); compressed delivery for large state spaces is
+                                          ! a grammar-versioning matter)
       ! -- adiab-mode container --
       real(8), allocatable :: v_surf(:)   ! per-surface energies [eV]
       real(8), allocatable :: g_surf(:,:) ! per-surface force kernels [eV/Å] (ndof x n_surf)

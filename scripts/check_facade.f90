@@ -273,7 +273,6 @@ program check_facade
    sa%p = 0.0d0
    call force_eval(sa, ea)
    cal = -sa%f(1)/(keV(1)*ueA(1))
-   nfail0 = nfail
    if (cal <= 0.0d0) then
       call fail('(e) measured conversion constant non-positive: '//trim(d2s(cal)))
    end if
@@ -314,7 +313,9 @@ program check_facade
    ! survived the call (one-step conveyance); the references recompute the
    ! container's own expressions from sa%q, so equality is exact. Stepwise guards:
    ! size()/element queries run only behind their allocation checks (a broken fill
-   ! must FAIL here, not crash)
+   ! must FAIL here, not crash). The PASS line is water-level gated: it prints only
+   ! when NO (e) assertion above failed (nfail == nfail0, the watermark taken below)
+   nfail0 = nfail
    p1 => ws_handle()
    call ws_get(w2)
    bitexact = (p1%repr == r_scalar .and. allocated(p1%g_add) .and. allocated(p1%i_want))
@@ -326,7 +327,7 @@ program check_facade
    else if (w2%repr /= r_scalar .or. .not. allocated(w2%g_add) .or. .not. allocated(w2%i_want) .or. &
        any(w2%g_add /= p1%g_add) .or. w2%v_add /= p1%v_add .or. any(w2%i_want /= 1)) then
       call fail('(e) snapshot read-back: ws_get does not reproduce the held constructs')
-   else
+   else if (nfail == nfail0) then
       print '(a)', '(e) fill chain through the handle: PASS (analytic force + e_tot at two'// &
          ' geometries; request consumed; the composed constructs sit in the holder after'// &
          ' the call - alias and snapshot agree)'

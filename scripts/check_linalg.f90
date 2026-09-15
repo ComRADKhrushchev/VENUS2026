@@ -8,6 +8,8 @@
 !   (c) constructed symmetric 10x10 - V^T V = I, A v = lambda v residuals < 1e-12,
 !       eigenvalues algebraically ascending
 !   (d) degenerate case (I3, triple eigenvalue) - orthonormality and A v = v still hold
+!   (e) n = 1 guard - a 1x1 matrix is its own eigen-decomposition: d(1) = a(1,1)
+!       BITWISE and the returned eigenvector is exactly 1.0 (the one-hot vector)
 !=====================================================================
 program check_linalg
    use linalg, only: eig_sym
@@ -118,6 +120,17 @@ program check_linalg
       nfail = nfail + 1
    else
       print '(a)', '(d) degenerate I3: PASS (orthonormal basis, lambda = 1 x3)'
+   end if
+
+   ! ---------- (e) the n = 1 guard ----------
+   a = 0.0d0
+   a(1,1) = -2.75d0
+   call eig_sym(a(1:1,1:1), d(1:1))
+   if (d(1) /= -2.75d0 .or. a(1,1) /= 1.0d0) then
+      print '(a,2f14.10)', 'FAIL (e): got d / eigenvector = ', d(1), a(1,1)
+      nfail = nfail + 1
+   else
+      print '(a)', '(e) n = 1 guard: PASS (d(1) = a(1,1) bitwise; the eigenvector = 1 exactly)'
    end if
 
    print '(a,i0)', '=== check_linalg: ', nfail, ' failure(s) ==='
