@@ -58,9 +58,9 @@ contains
                                            ! probability g_ij(dt) exists under adiabatic;
                                            ! E13 wording carried: the degenerate point is
                                            ! the identity along the whole channel)
-      ! Pseudocode:
       ! 1. Return (no-op; ignores ws and dt - the member reads nothing from the container:
-      !    single surface, no coupling, no hops)
+      !    single surface, no coupling, no hops; the real dispatch target of elec_prop -
+      !    the empty body IS the degenerate law)
    end subroutine ad_prop
 
    !------------------------------------------------------------------
@@ -75,7 +75,8 @@ contains
       type(state_t), intent(inout) :: sta  ! physical state (unchanged - occ already [1],
                                            ! nothing to sample; no momentum projection;
                                            ! n_hop untouched at 0)
-      ! Pseudocode:
-      ! 1. Return (no-op - single surface, nothing to sample)
+      ! 1. Return (no-op - single surface, nothing to sample; the real dispatch
+      !    target of mqc_statistic - occ stays [1] in the statistics holder,
+      !    n_hop stays 0, the state passes through untouched)
    end subroutine ad_match
 end module elec_adiabatic

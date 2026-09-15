@@ -152,7 +152,10 @@ module elec_facade
    ! implement) stays deferred to the first stateful members — the holder association is
    ! the settled half (class-A pes members, by contrast, carry ws in their signature —
    ! the two routes are the "signature or facade-internal channel" pair of the elec_ws.f90
-   ! note).
+   ! note). Current posture: the dispatch is real but the conveyance is vacuous — the
+   ! degenerate member reads nothing, so the entries call the members through the frozen
+   ! (sta[, dt]) interfaces directly and the fetch+wrapper land together with the first
+   ! stateful member.
    ! (see previous line)
 
    ! Method-package table (single-select by name at assembly; rows registered via reg_*.f90
@@ -294,8 +297,12 @@ contains
    ! Reference: this module's E16 header note; spec §4 (n_hop a pure observable)
    function n_hop_get() result(n)
       integer :: n                            ! the current hop count [count]
-      ! Pseudocode:
-      ! 1. n = the held n_hop
+      ! 1. Hand out the held counter (a plain integer, always defined: seeded 0
+      !    at method_bind, incremented only at hop detection inside the match
+      !    member - a pre-assembly read hands back the initialized 0, no
+      !    allocation to guard; the occ_get loud-stop covers the seeded-vector
+      !    channel, this scalar channel needs no twin)
+      n = n_hop
    end function n_hop_get
 
    !------------------------------------------------------------------
@@ -430,22 +437,40 @@ contains
       real(8), intent(in) :: dt            ! current step [10 fs] (the g_ij(dt) channel — E9
                                            ! re-anchored onto this entry by E14; the value is
                                            ! the propagator's actual step, not a config copy)
-      ! Pseudocode:
-      ! 1. Unassembled table (i_assembled = 0 — method_bind not yet run) -> loud-stop (an
-      !    evolution-phase entry called before container_init — assembly-order error, formal)
-      ! 2. Convey the held ws into the member through the facade-internal channel (fetch
-      !    the module instance; the internal wrapper signature carrying ws_t — the
-      !    member-facing interface takes only (sta, dt), E10 axiom A intact; wrapper shape
-      !    finalized in C2 with the member-signature freeze)
-      ! 3. Call the assembled row's prop member: electronic propagation given Q(t) (§4.1 —
-      !    amplitude ODE along the trajectory / mapping flow / analytic elimination / no-op;
-      !    the member reads ws interpreted per ws%repr — an unsupported repr loud-stops
-      !    inside the member, E10/E13 contract — and writes the declared ontic container;
-      !    dt semantics the member cannot live with loud-stop there too, E13 open point)
-      !    (see previous line)
-      ! 4. Sync tail (pure-form): if the row's sync pointer is attached, call sync(sta%s) —
-      !    bring the declared deliverable containers up to date (a→rho / rho→a as the
-      !    method declared; the facade never interprets the direction, spec §4)
+      ! 1. Assembly-order guard: an unassembled table (i_assembled = 0 — method_bind
+      !    not yet run, i.e. container_init not yet called) loud-stops (an
+      !    evolution-phase entry called before assembly — the same formal statute
+      !    as force_eval's unbound-slot stop)
+      if (i_assembled == 0) then
+         call stop_ele('elec_prop', 'no method row bound (method_bind not yet run - '// &
+                       'an evolution-phase entry called before assembly, formal)')
+      end if
+      ! 2. ws conveyance (facade-internal): VACUOUS in the current posture — the
+      !    frozen member interfaces take only (sta, dt) and the one registered
+      !    member (the degenerate package) reads nothing, so no wrapper call
+      !    happens; the holder already carries this step's constructs (filled by
+      !    force_eval — the endpoint-force linkage: prop_step returns only after
+      !    the endpoint force, so the held ws corresponds to sta%q). The internal
+      !    wrapper signature carrying ws_t lands together with the first stateful
+      !    members (E13/E14 open point carried) — until then the members that
+      !    would read ws simply do not exist
+      ! 3. Dispatch: call the assembled row's prop member — electronic propagation
+      !    given Q(t) (§4.1: amplitude ODE along the trajectory / mapping flow /
+      !    analytic elimination / no-op). The member reads ws interpreted per
+      !    ws%repr — an unsupported repr loud-stops INSIDE the member, E10/E13
+      !    contract — and writes its declared ontic container; dt semantics the
+      !    member cannot live with loud-stop there too (E13 open point; the
+      !    degenerate member ignores dt — the identity along the whole channel,
+      !    the fixed-dt staged value passes through unread)
+      call method_tbl(i_assembled)%prop(sta, dt)
+      ! 4. Sync tail (pure-form): if the row's sync pointer is attached, call
+      !    sync(sta%s) — bring the declared deliverable containers up to date
+      !    (a→rho / rho→a as the method declared; the facade never interprets the
+      !    direction, spec §4; the degenerate package registers no sync — the
+      !    null pointer is the legal 'no deliverable cache' form)
+      if (associated(method_tbl(i_assembled)%sync)) then
+         call method_tbl(i_assembled)%sync(sta%s)
+      end if
    end subroutine elec_prop
 
    !------------------------------------------------------------------
@@ -464,32 +489,48 @@ contains
                                            ! member's declaration, see step 3; the held occ
                                            ! (E16 statistics holder, this module) feeds the
                                            ! next force_eval's adiab-mode delivery request)
-      ! Pseudocode:
-      ! 1. Unassembled table (i_assembled = 0) -> loud-stop (same formal check as elec_prop)
-      ! 2. Convey the held ws into the member through the facade-internal channel (the
-      !    one-step ws read this entry exists for: d_ij survives the force evaluation —
-      !    under the old facade-local ws an independent matching entry had nothing to read)
-      ! 3. Call the assembled row's match member: read the electronic statistics
-      !    (populations / gaps / d_ij from ws + the ontic container), sample, and write the
-      !    classical side — the held occ (E16: the statistics holder through the
-      !    conveyance channel; a hop = one component change, n_hop incremented at
-      !    detection), sta%p (momentum projection p' = p - beta*d_ij), optionally sta%f
-      !    (post-hop force refresh: the member may call force_eval itself — intra-box,
-      !    legal) and optionally the ontic container (decay-of-mixing amplitude resets).
-      !    Sole consumption point of the random stream during the evolution phase (§4.1
-      !    ruling — hop_decide is the rng leaf, spec §5 level 2)
-      !    (see previous line)
-      ! 4. Sync tail (pure-form): if the row's sync pointer is attached, call sync(sta%s) —
-      !    same contract as elec_prop step 4 (both entries carry the tail: post-hop
-      !    container resets and post-propagation refreshes are indistinguishable to the
-      !    facade)
-      ! 5. STEP-END RESET — the legislated landing site of the one-step lifetime's closing
-      !    call: ws_reset() after the match member has consumed the statistics (the full
-      !    clear returns the holder to the defined empty state; see ws_reset). The site
-      !    sits at this entry's tail, INSIDE the box — the driver never calls ws_reset
-      !    itself, so its audited four-entry direct-call set stays untouched. The call
-      !    lands together with this entry's dispatch body above (this step is the
-      !    statute; the sync tail is its immediate predecessor in the choreography)
+      ! 1. Assembly-order guard: same formal check as elec_prop (an evolution-phase
+      !    entry called before assembly)
+      if (i_assembled == 0) then
+         call stop_ele('mqc_statistic', 'no method row bound (method_bind not yet run - '// &
+                       'an evolution-phase entry called before assembly, formal)')
+      end if
+      ! 2. ws conveyance (facade-internal): vacuous in the current posture — same
+      !    note as elec_prop step 2 (the one-step ws read this entry exists for:
+      !    d_ij survives the force evaluation, where a facade-force-local ws would
+      !    already have died; the wrapper carrying ws_t lands with the first
+      !    stateful members)
+      ! 3. Dispatch: call the assembled row's match member — the member owns the
+      !    whole statistics write-back. It reads the electronic statistics
+      !    (populations / gaps / d_ij from ws + the ontic container), samples
+      !    (sole consumption point of the random stream during the evolution
+      !    phase, §4.1 ruling — hop_decide is the rng leaf, spec §5 level 2) and
+      !    writes the classical side: the held occ (E16 statistics holder — a hop
+      !    = one component change of the occupation vector, n_hop incremented at
+      !    detection; RUN-LIFETIME channels, never touched by the step-end reset
+      !    below), sta%p (momentum projection), optionally sta%f (the post-hop
+      !    force-refresh hook: the member may call force_eval itself — intra-box,
+      !    legal) and optionally the ontic container (decay-of-mixing amplitude
+      !    resets). The degenerate member writes nothing: occ stays [1], n_hop
+      !    stays 0, no rng consumption (the §4.1 ruling holds trivially); the
+      !    conveyance vehicle for a stateful member's write-back is the same
+      !    wrapper deferred above
+      call method_tbl(i_assembled)%match(sta)
+      ! 4. Sync tail (pure-form): if the row's sync pointer is attached, call
+      !    sync(sta%s) — same contract as elec_prop step 4 (both entries carry
+      !    the tail: post-hop container resets and post-propagation refreshes
+      !    are indistinguishable to the facade)
+      if (associated(method_tbl(i_assembled)%sync)) then
+         call method_tbl(i_assembled)%sync(sta%s)
+      end if
+      ! 5. STEP-END RESET — the legislated landing site of the one-step lifetime's
+      !    closing call: ws_reset() after the match member has consumed the
+      !    statistics (the full clear returns the holder to the defined empty
+      !    state; see ws_reset). The site sits at this entry's tail, INSIDE the
+      !    box — the driver never calls ws_reset itself, so its audited
+      !    four-entry direct-call set stays untouched; force_eval's head
+      !    re-request makes the lifetime robust to skipped phases
+      call ws_reset()
    end subroutine mqc_statistic
 
    !------------------------------------------------------------------

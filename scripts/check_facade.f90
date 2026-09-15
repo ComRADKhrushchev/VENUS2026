@@ -1,20 +1,24 @@
 !=====================================================================
-! check_facade.f90 - facade-mechanism criteria program, batches 1-2:
+! check_facade.f90 - facade-mechanism criteria program, batches 1-3:
 !                    the frozen ws holder association (a)-(d) + the
-!                    force_eval fill chain (e)-(g) (criteria defined
-!                    FIRST in this header; this program executes them)
+!                    force_eval fill chain (e)-(g) + the electronic-phase
+!                    dispatch batch (h)-(l) (criteria defined FIRST in
+!                    this header; this program executes them)
 ! Compile (from src/; modules in use-order first, -Jbuild keeps the .mod
 ! files out of the source tree):
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 facade/sysdef_facade.f90 input.f90 &
 !            globals/config_roster.f90 globals/state.f90 facade/elec_ws.f90 &
-!            facade/elec_facade.f90 utils/linalg.f90 facade/force_facade.f90 &
+!            facade/elec_facade.f90 methods/elec_adiabatic.f90 &
+!            methods/reg_adiabatic.f90 utils/linalg.f90 facade/force_facade.f90 &
 !            ../scripts/check_facade.f90 -o build/check_facade.exe
 ! All artifacts are written under build/ - the source tree stays clean.
-! Posture: criteria (a)-(d) exercise the holder mechanism itself - a
-!   degenerate no-op method row registers + binds the name, which seeds
-!   the statistics holder and makes the occ_get channel live; the members
-!   are never dispatched by that batch. Criteria (e)-(g) additionally
+! Posture: criteria (a)-(d) exercise the holder mechanism itself - the
+!   REAL 'adiabatic' package registers through its reg module
+!   (reg_adiabatic_all, the same row the aggregated registry executes)
+!   and binds the name, which seeds the statistics holder and makes the
+!   occ_get channel live; the members are not dispatched by that batch.
+!   Criteria (e)-(g) additionally
 !   assemble a FORCE CHAIN check-side: a local analytic branch container
 !   is bound through container_bind_pes (the public assembly face), so
 !   every (e)/(g) assertion runs on real force_eval calls; the default
@@ -24,8 +28,14 @@
 !   H_ij + dh_ij + an additive scalar member), 3 = the one-surface
 !   diabatic twin of branch 1 (same V and gradient delivered as 1x1
 !   constructs, additive channel absent) - every branch is a local
-!   procedure of this check; none of them ever enters src/. No loud-stop
-!   criteria here, hence no child-process machinery.
+!   procedure of this check; none of them ever enters src/. Criteria
+!   (h)-(j) dispatch the REAL registered 'adiabatic' row through the two
+!   electronic-phase entries on that same bound force chain (real calls,
+!   not stub invocations). Loud-stop verification approach (same scheme
+!   as the sibling checks): criteria (k)/(l) run as CHILD PROCESSES - the
+!   check re-spawns itself with a mode argument (execute_command_line,
+!   stderr redirected to build/); the child drives the real stop path and
+!   must print a naming message on stderr and exit nonzero.
 ! Criteria:
 !   (a) handle identity: two ws_handle() calls yield pointers to the SAME
 !       target (pointer association comparison), and a field written
@@ -92,15 +102,47 @@
 !       twin vs the scalar channel at the same state - force and e_tot
 !       compared BITWISE (the attempt), falling back to rel 1e-15 with a
 !       printed note
+!   (h) electronic-phase dispatch reachable + no-op-safe: with the real
+!       'adiabatic' package bound and the holder filled by a real
+!       force_eval call (plus a superset dirty - the five arrays the
+!       scalar fill does not deliver, allocated through the alias), the
+!       pair elec_prop(sta, dt) / mqc_statistic(sta) REALLY DISPATCHES
+!       through the table without crashing and leaves the physical state
+!       bitwise unchanged (q/p/f/t, n_surf, the ontic containers a/rho
+!       staying unallocated); elec_prop additionally leaves the holder
+!       INTACT - content equality on g_add/v_add/i_want plus survival of
+!       the dirtied arrays (the step-end reset belongs to the
+!       mqc_statistic tail ALONE; an early reset fails here)
+!   (i) step-end reset at the mqc_statistic tail: after the dirty holder
+!       of (h) went through both dispatches, a snapshot reads back the
+!       DEFINED empty state - repr = r_empty, every one of the seven
+!       per-mode arrays gone (not merely the delivered subset), the
+!       scalar zeroed; a second fill + dispatch cycle clears again
+!   (j) statistics write-back channels: across the dispatch cycles
+!       occ_get hands back [1] CONSTANT (the degenerate occupation the
+!       match member leaves untouched) and n_hop_get 0 (the run-lifetime
+!       accumulator holding its degenerate value across steps - the
+!       step-end reset of (i) never touches the statistics holder, the
+!       two holders have different lifetimes by statute)
+!   (k) H-form match loud-stop (child): a check-side package demanding
+!       h_form 'diab' bound against a container declaring h_deliver
+!       'scalar' -> container_init loud-stops, stderr naming
+!       container_init and BOTH sides of the failed subset-of match
+!   (l) unbound-method posture (child): elec_prop / mqc_statistic called
+!       before any method_bind loud-stop, stderr naming the entry and
+!       method_bind (the skeleton's legislation: unbound = loud-stop,
+!       never a silent skip)
 !=====================================================================
 program check_facade
    use consts,        only: e_conv
    use state,         only: state_t, state_create, state_destroy
+   use config,        only: electronic
    use config_roster, only: roster
    use elec_ws,       only: ws_t, r_empty, r_scalar, r_diab
-   use elec_facade,   only: ws_handle, ws_get, ws_reset, occ_get, &
-                            method_reg, method_bind
-   use force_facade,  only: force_eval, container_bind_pes
+   use elec_facade,   only: ws_handle, ws_get, ws_reset, occ_get, n_hop_get, &
+                            method_reg, method_bind, elec_prop, mqc_statistic
+   use force_facade,  only: force_eval, container_bind_pes, container_init
+   use reg_adiabatic, only: reg_adiabatic_all
    implicit none
    type(ws_t) :: w, w2                     ! snapshot instances (ws_get dummies)
    type(ws_t), pointer :: p1, p2           ! handle aliases
@@ -139,11 +181,49 @@ program check_facade
    real(8), parameter :: v_uni = -0.35d0   ! additive energy [eV]
    real(8), parameter :: ug(6) = [ 0.26d0,-0.19d0, 0.23d0,-0.11d0, 0.27d0,-0.15d0 ] ! (g) geometry [A]
    real(8), parameter :: pg(6) = [ 0.20d0,-0.13d0, 0.17d0,-0.10d0, 0.15d0, 0.22d0 ] ! (g) momenta
+   ! ---------- dispatch-batch locals ((h)-(l)) ----------
+   character(len=32) :: mode               ! the child spawn's mode argument
+   type(state_t) :: st1                    ! the child-mode minimal state
+   real(8) :: qref(6), pref(6), fref(6)    ! the state-invariance references
+   real(8) :: tref                         ! (ditto - the time member)
+   real(8), parameter :: dtv = 0.05d0      ! the dt channel value [10 fs] fed to elec_prop
+                                           ! (the fixed staged step's stand-in; the degenerate
+                                           ! member ignores it - the criterion needs the channel
+                                           ! CARRIED, not consumed)
 
-   ! degenerate no-op method row (the sibling checks' posture): registers +
-   ! binds the name and seeds the statistics holder - occ_get is live for
-   ! criterion (d); the members are never dispatched by this batch
-   call method_reg('adiabatic', '', noop_prop, noop_match)
+   ! ---------- child dispatch: one loud-stop case per spawn (criteria (k)/(l)) ----------
+   ! the child drives the real stop path; if the chain ever RETURNS, the child
+   ! prints the bug witness and exits 0 - the parent's exitstat check fails
+   if (command_argument_count() > 0) then
+      call get_command_argument(1, mode)
+      if (trim(mode) == 'mismatch') then
+         ! (k): a check-side package demanding the diab H form, bound against a
+         ! container declaring only the scalar delivery - container_init's
+         ! subset-of match must loud-stop naming both sides
+         call method_reg('chk_diab', 'diab', noop_prop, noop_match)
+         electronic%method = 'chk_diab'
+         call container_bind_pes(check_pes, 'scalar')
+         call container_init()
+      else if (trim(mode) == 'unbound-prop') then
+         ! (l): elec_prop before any method_bind - no row bound, loud-stop
+         call state_create(st1, 1)
+         call elec_prop(st1, dtv)
+         call state_destroy(st1)
+      else if (trim(mode) == 'unbound-match') then
+         ! (l): mqc_statistic before any method_bind - same posture
+         call state_create(st1, 1)
+         call mqc_statistic(st1)
+         call state_destroy(st1)
+      end if
+      print '(a)', 'child: NO LOUD-STOP (the child chain returned - bug)'
+      stop 0
+   end if
+
+   ! the real 'adiabatic' package registers through its reg module (the same
+   ! call the aggregated registry executes) + binds the name, which seeds the
+   ! statistics holder - occ_get is live for criterion (d); batches (a)-(d)
+   ! never dispatch the members, batch (h)-(j) dispatches them for real
+   call reg_adiabatic_all()
    call method_bind('adiabatic')
 
    ! ---------- (a) handle identity + write-through observability ----------
@@ -454,6 +534,111 @@ program check_facade
          ' deviates beyond 1e-15 (force max dev '//trim(d2s(maxval(abs(sa%f - fs))))// &
          ', e_tot dev '//trim(d2s(abs(et - es)))//')')
    end if
+   ! ---------- (h)/(i)/(j): the electronic-phase dispatch batch ----------
+   ! cycle 1: the production fill (a real force_eval - the same chain the driver
+   ! runs) + a superset dirty of the five arrays the scalar fill does not deliver,
+   ! so the (i) full-clear assertion sees ALL seven arrays, not the delivered
+   ! subset; the state-invariance references are taken at the dirty point
+   fill_sel = 1
+   sa%q = qe_ctr + ueB
+   sa%p = pB
+   call force_eval(sa, ea)
+   p1 => ws_handle()
+   allocate (p1%h_ij(2, 2))
+   p1%h_ij = 7.0d0
+   allocate (p1%dh_ij(6, 2, 2))
+   p1%dh_ij = 7.0d0
+   allocate (p1%v_surf(2))
+   p1%v_surf = 7.0d0
+   allocate (p1%g_surf(6, 2))
+   p1%g_surf = 7.0d0
+   allocate (p1%d_ij(6, 2))
+   p1%d_ij = 7.0d0
+   qref = sa%q
+   pref = sa%p
+   fref = sa%f
+   tref = sa%t
+   nfail0 = nfail                          ! the (h) water level
+   call elec_prop(sa, dtv)                 ! REAL dispatch through the bound row
+   if (.not. all(sa%q == qref) .or. .not. all(sa%p == pref) .or. .not. all(sa%f == fref) .or. &
+       sa%t /= tref .or. sa%s%n_surf /= 1 .or. allocated(sa%s%a) .or. allocated(sa%s%rho)) then
+      call fail('(h) elec_prop changed the physical state under the adiabatic no-op law')
+   end if
+   if (p1%repr /= r_scalar .or. .not. allocated(p1%g_add) .or. .not. allocated(p1%i_want) .or. &
+       any(p1%i_want /= 1) .or. .not. all(p1%g_add == keV*(sa%q - qe_ctr)) .or. &
+       p1%v_add /= 0.5d0*dot_product(keV, (sa%q - qe_ctr)*(sa%q - qe_ctr)) .or. &
+       .not. allocated(p1%h_ij) .or. .not. all(p1%h_ij == 7.0d0) .or. &
+       .not. allocated(p1%dh_ij) .or. .not. allocated(p1%v_surf) .or. &
+       .not. allocated(p1%g_surf) .or. .not. allocated(p1%d_ij)) then
+      call fail('(h) elec_prop disturbed the held ws (early reset or consumption - the'// &
+                ' step-end reset belongs to the mqc_statistic tail alone)')
+   end if
+   call mqc_statistic(sa)                  ! REAL dispatch: the no-op match + the tail reset
+   if (.not. all(sa%q == qref) .or. .not. all(sa%p == pref) .or. .not. all(sa%f == fref) .or. &
+       sa%t /= tref .or. sa%s%n_surf /= 1 .or. allocated(sa%s%a) .or. allocated(sa%s%rho)) then
+      call fail('(h) mqc_statistic changed the physical state under the adiabatic no-op law')
+   else if (nfail == nfail0) then
+      print '(a)', '(h) dispatch reachable + no-op-safe: PASS (elec_prop + mqc_statistic'// &
+         ' through the real registered row: no crash, the state bitwise unchanged,'// &
+         ' the holder intact across elec_prop)'
+   end if
+   ! (i) cycle 1: the dirty holder went through both dispatches - the snapshot
+   ! must read back the defined empty state
+   nfail0 = nfail                          ! the (i) water level
+   call ws_get(w)
+   if (w%repr /= r_empty .or. w%v_add /= 0.0d0 .or. allocated(w%i_want) .or. &
+       allocated(w%g_add) .or. allocated(w%h_ij) .or. allocated(w%dh_ij) .or. &
+       allocated(w%v_surf) .or. allocated(w%g_surf) .or. allocated(w%d_ij)) then
+      call fail('(i) the mqc_statistic tail did not return the holder to the defined'// &
+                ' empty state (repr / scalar / a per-mode array survived)')
+   end if
+   ! cycle 2: a fresh fill + dispatch pair on a different geometry - the holder
+   ! dies again at the tail while the statistics channels (read after the cycle)
+   ! keep their run-lifetime values
+   fill_sel = 1
+   sa%q = qe_ctr + ug
+   sa%p = pg
+   call force_eval(sa, ea)
+   qref = sa%q
+   pref = sa%p
+   fref = sa%f
+   call elec_prop(sa, dtv)
+   call mqc_statistic(sa)
+   call ws_get(w)
+   if (w%repr /= r_empty .or. w%v_add /= 0.0d0 .or. allocated(w%i_want) .or. &
+       allocated(w%g_add)) then
+      call fail('(i) cycle 2: the tail reset did not fire on the refilled step')
+   end if
+   if (.not. all(sa%q == qref) .or. .not. all(sa%p == pref) .or. .not. all(sa%f == fref)) then
+      call fail('(h) cycle 2: the dispatch pair changed the physical state')
+   else if (nfail == nfail0) then
+      print '(a)', '(i) step-end reset at the mqc_statistic tail: PASS (the dirty holder'// &
+         ' reads back the defined empty state after the dispatch - all seven arrays'// &
+         ' gone, scalar zeroed; clears again on the refilled step)'
+   end if
+   ! (j): the statistics write-back channels after two dispatch cycles - occ [1]
+   ! (already read [1] pre-dispatch at criteria (d)/(e): constant across the
+   ! dispatch boundary) and n_hop 0 (the accumulator survived two step-end
+   ! resets untouched - the two holders have different lifetimes by statute)
+   nfail0 = nfail                          ! the (j) water level
+   call occ_get(occ_req)
+   if (size(occ_req) /= 1 .or. occ_req(1) /= 1 .or. n_hop_get() /= 0) then
+      call fail('(j) the statistics channels broke under dispatch (occ /= [1] or'// &
+                ' n_hop /= 0 after the dispatch cycles)')
+   else if (nfail == nfail0) then
+      print '(a)', '(j) statistics write-back channels: PASS (occ = [1] constant across'// &
+         ' the dispatch boundary, n_hop = 0 accumulated - untouched by the step-end'// &
+         ' resets of (i))'
+   end if
+
+   ! ---------- (k)/(l): the loud-stop children ----------
+   call expect_loudstop_at('container_init', 'mismatch', 'diab', 'scalar', &
+      '(k) H-form mismatch loud-stop')
+   call expect_loudstop_at('elec_prop', 'unbound-prop', 'method_bind', '', &
+      '(l) unbound elec_prop loud-stop')
+   call expect_loudstop_at('mqc_statistic', 'unbound-match', 'method_bind', '', &
+      '(l) unbound mqc_statistic loud-stop')
+
    call ws_reset()                         ! leave the holder in the empty state
    call state_destroy(sa)
 
@@ -510,8 +695,10 @@ contains
       end select
    end subroutine check_pes
 
-   ! degenerate no-op method members (the all-noop package this check registers
-   ! so the method-name lookup resolves and the statistics holder is seeded)
+   ! degenerate no-op method members for the (k) child only: the check-side
+   ! 'chk_diab' package row demands an H form its container does not deliver -
+   ! the members are never dispatched (the loud-stop fires at assembly), so
+   ! no-op bodies honestly stand for "members exist" in the registration
    subroutine noop_prop(sta, dt)
       type(state_t), intent(inout) :: sta
       real(8), intent(in) :: dt
@@ -550,6 +737,51 @@ contains
       call get_environment_variable('OS', osname)
       windows_host = (trim(osname) == 'Windows_NT')
    end function windows_host
+
+   ! spawn the child for one loud-stop case and assert the stop: nonzero exit,
+   ! stderr names the authority (the stopping entry) and carries the expected
+   ! key / extra needle (an empty needle is skipped) - the sibling checks' scheme
+   subroutine expect_loudstop_at(who, cmode, key, needle, label)
+      character(len=*), intent(in) :: who, cmode, key, needle, label
+      character(len=512) :: cmd, line
+      character(len=1024) :: buf
+      character(len=1) :: sep
+      integer :: stat, v, ios
+      buf = ''
+      ! the shell redirect needs native separators on Windows (forward slashes make
+      ! cmd misparse the redirect target)
+      if (windows_host()) then
+         sep = '\'
+      else
+         sep = '/'
+      end if
+      cmd = 'build'//sep//'check_facade.exe '//trim(cmode)//' 2>build'//sep//'facade_err.txt'
+      call execute_command_line(trim(cmd), wait=.true., exitstat=stat)
+      open (newunit=v, file='build/facade_err.txt', status='old', action='read', iostat=ios)
+      if (ios == 0) then
+         do
+            read (v, '(a)', iostat=ios) line
+            if (ios /= 0) exit
+            buf = trim(buf)//' '//trim(line)
+         end do
+         close (v)
+      end if
+      if (stat == 0) then
+         print '(a)', 'FAIL '//trim(label)//': expected a loud-stop, the child exited 0'
+         nfail = nfail + 1
+      else if (index(buf, trim(who)) == 0) then
+         print '(a)', 'FAIL '//trim(label)//': stderr does not name '//trim(who)
+         nfail = nfail + 1
+      else if (len_trim(key) > 0 .and. index(buf, trim(key)) == 0) then
+         print '(a)', 'FAIL '//trim(label)//': stderr missing the key "'//trim(key)//'"'
+         nfail = nfail + 1
+      else if (len_trim(needle) > 0 .and. index(buf, trim(needle)) == 0) then
+         print '(a)', 'FAIL '//trim(label)//': stderr missing "'//trim(needle)//'"'
+         nfail = nfail + 1
+      else
+         print '(a)', trim(label)//': PASS ('//trim(buf)//')'
+      end if
+   end subroutine expect_loudstop_at
 
    ! fail(msg) - record one criterion failure
    subroutine fail(msg)
