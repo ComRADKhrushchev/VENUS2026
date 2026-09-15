@@ -113,7 +113,7 @@ module recorder
    use consts,        only: e_conv
    implicit none
    private
-   public :: col_val_i, rec_reg_col, rec_select, rec_frame, rec_final
+   public :: col_val_i, rec_reg_col, rec_select, rec_frame, rec_final, rec_n_sel
 
    ! Column-extractor interface: extract one scalar observable from the physical state
    ! (the measurement class consuming evolution services - energy columns obtain the potential
@@ -543,4 +543,11 @@ contains
       type(state_t), intent(in) :: sta
       v = 0.0d0
    end function col_nhop
+
+   !------------------------------------------------------------------
+   ! rec_n_sel() - selected column count (read-only public probe; the
+   !               assembly-complete summary's 'colgroups=' witness)
+   pure integer function rec_n_sel()
+      rec_n_sel = n_sel
+   end function rec_n_sel
 end module recorder

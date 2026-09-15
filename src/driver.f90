@@ -1,225 +1,235 @@
 !=====================================================================
-! driver.f90 - L0 control kernel: program venus - three-phase orchestration (assembly -> evolution -> statistics;
-!               the integration loop runs the E14 four-phase step choreography, spec §8);
-!               holder of the physical state (state_t passed by argument - K1 plan D1)
-! Reference: venus2026/VENUS.f90:71-115 (array zero-init + read-in - prototype of the assembly phase),
-!       :157-167 (integrator parameter assembly - old site of the propagator slot), :182-232 (random-stream
-!       initialization RANDST :184/:231 - the rng_init site), :239-705 (TRAJECTORY_LOOP x
-!       INTEGRATION_LOOP two-loop structure - prototype of the evolution-phase skeleton), :316-349 (initial-value
-!       loading and the SELECT call :349 - the samp_run site), :402-413 (initial force / first-frame GWRITE /
-!       QSAVE-PSAVE staging - prototype of the trajectory-loop head), :419-465 (integration-loop INTEGRATOR
-!       three-branch dispatch :423-465 - unified by prop_step), :505-576 and :581-662 (the outcome blocks of the
-!       NFINAL/NTEST two exits), :669-699 (long-time exit), :243-301 (completion section:
-!       outcome summary and the five histogram calls :286-299 - prototype of the statistics phase);
-!       docs/superpowers/specs/2026-09-08-facade-e14-design.md §8 (driver orchestration - the
-!       four-phase integration-loop body, the wiring step deleted, the E7 phase-restriction
-!       restatement), §3 (assembly-phase entries: sysdef_load / container_bind_pes /
-!       container_init), §6 (the sysdef step - system-definition materialization), §4 (allocation
-!       timing - the state_create 1x1-seed reconcile note)
-! Excision list (do not carry over when referencing; K2 plan sourcing note - system branches / duplicated
-!   outcome blocks / dead blocks are all excised):
-!   - RKUTTA coefficient dead block :86-94 (RKUTTA is on the K1 §2 dead-block list - never entered)
-!   - checkpoint-restart branch :182-232 (NCHKP - left blank in control, introduced later if needed)
-!   - system branch :322-346 (NSURF==2.NGLO surface four-atom loading / FIXROTDATM alignment /
-!     THTA degree-radian fork - configuration paradigm moved into data as
-!     config%reactants%surface_model; details belong to sampler/roster members)
-!     (kept for context; see previous line)
-!   - duplicated outcome blocks :505-576 and :581-662 (FINAL/GFINAL/record_all of the two entrances are
-!     nearly line-identical - merged into a single per-trajectory pass in this skeleton's statistics phase)
-!   - bounce/minimum-height tracking :453-464 (BOUNCE/z_pos_min - system diagnostics, moved to recorder
-!     column registration)
-!   - mode-population tracking :363-395/:468-502 (MPLOT/ENMODE/EBOND - deferred to analysis, C8)
-!   - rotational-energy resampling average :511-542/:598-629 (NCROT ERAVA/ERAVB duplicated -
-!     fin_t left blank / statistics phase)
-!   - energy-conservation tracking and gate :451-452/:461-464/:559-565 (HTMAX-HTMIN - moved to recorder
-!     energy-column aggregation + an outcome-table row)
-!   - duplicated STOP/timing prints :243-301 (999/6 double channel, line-by-line repeats - merged into one statistics-section pass)
+! driver.f90 - L0 control kernel: program venus - three-phase orchestration
+!              (assembly -> evolution -> statistics); the integration loop
+!              runs the four-phase step choreography (E14 spec §8); holder of
+!              the physical state (state_t passed by argument)
+! Phase constitution legislated here (binding for the whole program):
+!   - three phases, E7 phase restriction: assembly = operational calls +
+!     initializing measurements; evolution = evolution + measurement calls
+!     inside the loops; statistics = post-processing calls. The assembly
+!     order below is binding legislation (input -> random stream -> system
+!     definition -> roster -> state -> registration -> member-parameter seam
+!     -> container -> recording selection -> hand-off): every consumer of a
+!     datum runs after that datum's producer.
+!   - E18 termination ownership: termination is the container's own judgment
+!     (container_bind_term at assembly); an unbound slot reads .false. - the
+!     legal safety-net-only run. MAX_STEPS is the driver loop condition -
+!     the one judgment never delegated to the container.
+!   - E19 classification ownership: the outcome name is the container's own
+!     judgment (container_bind_classify at assembly); the statistics phase
+!     calls container_classify only when container_classify_bound() says a
+!     judgment is bound - the legal no-classification run guards and skips.
+!   - E20 idle-chain posture: with no container dragged in, assembly
+!     proceeds unbound (container_init still binds the degenerate adiabatic
+!     method row); the loud-stop authority is force_eval's first call.
+!   - excision-list spirit (inherited from the rewrite sourcing): no system
+!     branches in the driver (the paradigm lives in data - surface_model);
+!     no duplicated per-exit outcome blocks (one per-trajectory statistics
+!     pass); no checkpoint-restart branch; no dead integrator-coefficient
+!     block; bounce/mode-population diagnostics belong to recorder columns;
+!     rotational-resampling averaging and the energy-conservation gate
+!     belong to statistics (the gate verdict to the container's
+!     classification).
+!   - zero hand-written registration: every method package, distribution
+!     member, container binding - and the integrator closed set - arrives
+!     through the BUILD-GENERATED registry_gen aggregate (scripts/prebuild.sh
+!     scans methods/ and systems/ for reg_*.f90; dragging a folder in is the
+!     whole installation act). The program skeleton once hand-wrote the
+!     three propagator registrations as a closed-family exception; that
+!     exception is superseded - the integrator registrations arrive through
+!     the aggregate too (methods/reg_prop.f90).
+!   - the assembly seam, three-party zero knowledge: the driver knows no
+!     member (it calls the registry aggregate), the input knows no member
+!     (member keys stage raw), the member never touches the driver (its reg
+!     file loads its own staged keys into its own init).
+! Contracts staged here:
+!   - size-equality guard: right after state creation the driver loud-stops unless
+!     size(sta%q) == 3*size(roster%mass) - the state and the mass table
+!     disagreeing is an assembly-choreography error (both sides named in the
+!     message). With state_create consuming size(roster%mass) itself the
+!     guard is a drift backstop, not triggerable through the public face
+!     today - kept for naming the invariant it protects.
+!   - dt-ordering contract: dt is finalized by read_input BEFORE the
+!     member-parameter seam runs, so a member whose init reconciles against
+!     dt (e.g. an equilibration step size) reads the final value. Naturally
+!     satisfied by the assembly order below; legislated here so a future
+!     reordering cannot silently break it.
+!   - N_SURF reconcile: the input default N_SURF=0 means 'no multi-surface
+!     declared' - the driver passes max(electronic%n_surf, 1) to
+!     state_create (0 folds to 1: the adiabatic degenerate point, one
+!     surface, the 1x1 ontic seed, E9/T1). The input key's own default
+!     stays untouched.
+! Units: none (orchestration; quantities carry their own units).
 !=====================================================================
 program venus
-   use control,        only: task, n_traj, title, i_seed, max_steps
-   use config,         only: observables, reactants, &
+   use control,        only: n_traj, i_seed, max_steps
+   use config,         only: observables, reactants, electronic, &
                              prop_cfg => propagator  ! alias as in propagator.f90 - the config
                              ! instance 'propagator' clashes with the module name; the dt_eff source
    use config_roster,  only: roster, roster_load
    use state,          only: state_t, state_create, state_destroy
    use rng,            only: rng_init
-   use propagator,     only: prop_reg, prop_step, &
-                             verlet_step, symple_step, radau_step
+   use propagator,     only: prop_step
    use force_facade,   only: container_init, force_eval, container_term
    use elec_facade,    only: elec_prop, mqc_statistic
    use sysdef_facade,  only: sysdef_load
-   use registry_gen,   only: registry_gen_all   ! the BUILD-GENERATED aggregate (K3:
-                                   ! scripts/prebuild.sh emits build/registry_gen.f90 from
-                                   ! every reg_*.f90 under methods/ and systems/ - E11 drag-in;
-                                   ! the K2 transitional reg_adiabatic_all wiring withdrawn)
-   use sampler,        only: samp_run
-   use recorder,       only: rec_select, rec_frame, rec_final
-   use final_state,    only: fin_t, fin_eval, container_classify
+   use registry_gen,   only: registry_gen_all, registry_gen_init   ! the BUILD-GENERATED
+                                   ! aggregate (scripts/prebuild.sh emits it from every
+                                   ! reg_*.f90 under methods/ and systems/ - drag-in; zero
+                                   ! hand-written registration lines in the driver)
+   use sampler,        only: samp_run, samp_n_dist
+   use recorder,       only: rec_select, rec_frame, rec_final, rec_n_sel
+   use final_state,    only: fin_t, fin_eval, container_classify, container_classify_bound
    use density,        only: dens_states, eig_out
    use hist,           only: hist_spec_t, hist_data_t, lat_t, plot_hist
    use input,          only: read_input
    implicit none
 
-   ! -- orchestration counters and flags (local variables - E7; the old global NTZ/NC/NX bookkeeping lands here) --
-   integer :: traj_i        ! trajectory index [count] (old NTZ; 1..n_traj)
-   integer :: step_i        ! step index [step] (old NC; E18: the counter of the MAX_STEPS safety
-                            ! net - the driver loop condition step_i < max_steps, control side)
+   ! -- orchestration counters and flags (locals - E7) --
+   integer :: traj_i        ! trajectory index [count] (1..n_traj)
+   integer :: step_i        ! step index [step] (E18: the counter of the MAX_STEPS safety
+                            ! net - the driver loop condition step_i < max_steps)
    logical :: term_flag     ! termination flag for this trajectory (written by the phase-4
-                            ! container_term call of the integration loop - E7 termination
-                            ! channel; E18: the container's own judgment, spec §8/E18)
+                            ! container_term call of the integration loop; E18: the
+                            ! container's own judgment)
    real(8) :: e0            ! total energy of the initial state [kcal/mol] (force_eval output -
-                            ! the reference for conservation drift, old E0)
-   real(8) :: dt_eff        ! effective step length [10 fs] (staged once from prop_cfg%dt - the fixed-step
-                            ! source: verlet/symple take it directly, radau seeds its adaptive sequence
-                            ! from it, so under radau sub-stepping the outer step length is the channel
-                            ! value; consumed by elec_prop(sta, dt_eff) - the MQC hop-probability channel
-                            ! g_ij(dt) needs the step's dt; sibling note: the propagator header's
-                            ! endpoint-force contract, the same dt source)
-   real(8) :: t_cpu(2)      ! timing pair [s] (old START_TIME/FINISH_TIME - printed in the statistics section)
-   integer :: u_out         ! recording unit number [-] (shared by frames and final-state rows; old 6/8/1000+NTZ
-                            ! family of unit assignments, finalized in C4)
-   character(len=32) :: outc_name  ! outcome name of this trajectory [-] (statistics phase - the
-                                   ! container's container_classify output, E19)
+                            ! the reference for conservation drift)
+   real(8) :: dt_eff        ! effective step length [10 fs] (staged once from prop_cfg%dt - the
+                            ! fixed-step source: verlet/symple take it directly, radau seeds its
+                            ! adaptive sequence from it, so under radau sub-stepping the outer
+                            ! step length is the channel value; consumed by elec_prop(sta, dt_eff)
+                            ! - the hop-probability channel g_ij(dt) needs the step's dt)
+   real(8) :: t_cpu(2)      ! timing pair [s] (printed in the statistics section)
+   integer :: u_out         ! recording unit number [-] (shared by frames and final-state rows;
+                            ! unit wiring finalized with the recording phase)
+   character(len=32) :: outc_name  ! outcome name of this trajectory [-] (statistics phase -
+                                   ! the container's classification output, E19)
    ! -- data structures handed between phases --
-   type(state_t) :: sta                      ! physical state (held by the driver - K1 D1;
-                                             ! written exclusively in the evolution phase, read-only in statistics)
-   type(state_t), allocatable :: sta_fin(:)  ! final-state snapshots per trajectory [count] (evolution -> statistics
-                                             ! hand-off; same source as the old QSAVE/PSAVE staging)
-   type(fin_t) :: fin                        ! final-state quantities (taken over per trajectory in statistics;
-                                              ! the argument type of the container-classification slot, E19)
-   integer, allocatable :: cnt_outc(:)       ! per-outcome counts [count] (name-keyed over the names
-                                             ! container_classify returns, E19; replaces the old
-                                             ! NONREACT/NREACT/NLONG counters; the counting shape -
-                                             ! name-keyed vs the container declaring its outcome-name
-                                             ! list - decided at C2 with the first real container)
-   type(hist_spec_t) :: spec_hist            ! histogram specification (assembled in statistics - C8)
-   type(hist_data_t) :: data_hist            ! trajectory row table (aggregated from recorder final-state rows - C8)
-   type(lat_t) :: lattice                    ! lattice constants (mapped from the roster unit cell - statistics phase)
+   type(state_t) :: sta                      ! physical state (held by the driver; written
+                                             ! exclusively in the evolution phase, read-only in
+                                             ! statistics)
+   type(state_t), allocatable :: sta_fin(:)  ! final-state snapshots per trajectory [count]
+                                             ! (evolution -> statistics hand-off)
+   type(fin_t) :: fin                        ! final-state quantities (taken over per
+                                             ! trajectory in statistics; the argument type of
+                                             ! the container-classification slot, E19)
+   integer, allocatable :: cnt_outc(:)       ! per-outcome counts [count] (name-keyed over the
+                                             ! names container_classify returns, E19; the
+                                             ! counting shape - name-keyed vs the container
+                                             ! declaring its outcome-name list - decided with
+                                             ! the first real container)
+   type(hist_spec_t) :: spec_hist            ! histogram specification (assembled in statistics)
+   type(hist_data_t) :: data_hist            ! trajectory row table (aggregated from recorder
+                                             ! final-state rows)
+   type(lat_t) :: lattice                    ! lattice constants (mapped from the roster unit
+                                             ! cell - statistics phase)
 
-   ! Pseudocode (three phases - E7; spec §2.5 phase restriction table: assembly = operational class +
-   !    initializing measurements, evolution = evolution class + measurement class, statistics = post-processing class):
-   !
-   ! ===== Phase 1: assembly =====
-   ! 1. read_input('input_qct.txt') - input framework (KEYWORD=VALUE -> control/config
-   !    slots / member parameters + the a_lat-class residual keys; grammar finalized in C4;
-   !    old VENUS.f90:115 read_venus_input site)
-   ! 2. rng_init(converted i_seed) - establish the random stream (old :184/:231 RANDST(ISEED);
-   !    the control%i_seed 8-word -> i_seed conversion is finalized in C4 - input step 5)
-   ! 3. sysdef_load(reactants%system_dir) - system-definition materialization (E14 spec §6: folder
-   !    discovery, parser dispatch, mass lookup, roster fill, paradigm derivation, sampler hand-off;
-   !    an assembly-phase data-material entry, spec §3 - no evolution-loop presence). Runs FIRST
-   !    ahead of roster_load by the config_roster ordering statute (sysdef fills the roster, so
-   !    roster_load shrinks to allocation/algebra; a roster_load ahead of the sysdef products is an
-   !    assembly-order error). S2 settled (C4.3): roster_load transfers the staged sysdef
-   !    products through the facade's staging accessors - sysdef never writes roster%* directly
-   ! 4. roster_load() - assemble and validate the roster (E14-shrunken to allocation / algebra /
-   !    validation: per-field fill from the sysdef products, fragment mass sums, equilibrium-geometry
-   !    placement, unit-cell derivation - the old input-keyword source is superseded, spec §9;
-   !    the roster-ification of the old :316-335 initial-value loading site)
-   ! 5. state_create(sta, size(roster%mass), electronic%n_surf) - allocate the physical state
-   !    (natoms from the roster; n_surf passes the config value - the ontic containers a/rho are
-   !    seeded at the degenerate 1x1 shape, a(1,1)=rho(1,1)=(1,0), default n_surf=1 the adiabatic
-   !    degenerate point; E9)
-   !    (T1 reconcile, spec §4: the 1x1 seed is the degenerate-legal DEFAULT occupation -
-   !    consistent with occ=[1]; "adiabatic/LZSH/MDEF allocate neither" governs the METHOD
-   !    members, which never allocate larger ontic containers - the member-init step does that
-   !    (spec §4 allocation timing), at container_init)
-   ! 6. registration (K3 final form - E11 landed): registry_gen_all() - the build-generated
-   !    aggregate (scripts/prebuild.sh scans methods/ and systems/ for reg_*.f90; the method
-   !    packages and the container's three single-slot bindings container_bind_pes /
-   !    bind_term / bind_classify all arrive through it - the driver carries ZERO
-   !    hand-written method/container registration lines; dragging a folder in is the whole
-   !    installation act). The one remaining hand-written registration is the CLOSED-family
-   !    set the drag-in surface does not cover:
-   !    prop_reg(1, verlet_step), prop_reg(2, symple_step),
-   !    prop_reg(3, radau_step) (the integrator closed three-member set - X4, unifying the
-   !    old :423-465 three branches; fixed program stock, not drag-in material);
-   !    dist_* registration arrives through the same aggregate (methods/reg_dist_*.f90 -
-   !    the sampler member table; one thin reg file per distribution member)
-   ! 7. container_init() - assembly + purely formal validation spanning BOTH facades (the
-   !    single assembly entry point of the whole container, E14/E17 naming - the entry names
-   !    the action; slot bound, H forms matched (h_form subset-of h_deliver, E17(5)), method
-   !    slot filled via method_bind, the n_surf>=2-vs-scalar-delivery and
-   !    observable-vs-container contradictions loud-stop; the POTPRE-type member-init
-   !    routines run container-side in its reg module - where larger ontic containers are
-   !    reallocated, spec §4 allocation timing)
-   ! 8. rec_select(observables%rec_level) first, then rec_select(observables%obs_list)
-   !    when the list key is non-empty - recording column-group selection (registration
-   !    precedes column selection); the two entries coexist with UNION semantics: the
-   !    level entry sets the preset column group and resets both section gates, the list
-   !    entry appends its named columns - the recorded set is the union of both entries
-   ! 9. (E18: pred_parse withdrawn - termination is the container's own judgment, bound by
-   !    its reg module's container_bind_term at step 6; E19: outcome_tbl parsing withdrawn
-   !    likewise - classification is the container's container_bind_classify; no
-   !    program-side grammar remains at all) remaining assembly: spec_hist / lattice
-   !    assembly (histogram specification and roster unit-cell mapping - C8)
-   ! 10. allocate(sta_fin(n_traj), data_hist columns -
-   !     assemble the inter-phase hand-off structures; the cnt_outc counting shape: name-keyed
-   !     over the names container_classify returns (the fixed-bucket alternative - the
-   !     container declaring its outcome-name list - decided at C2 with the first real
-   !     container); dt_eff = prop_cfg%dt (staged once - the
-   !     fixed-step source, see the local's note); timing start t_cpu(1)
-   !
-   ! ===== Phase 2: evolution (trajectory loop x integration loop) =====
-   ! [Phase restriction statement (E7 - spec §2.5, restated by E14 spec §8 with an explicit
-   !    call list)]: inside the integration loop (the inner loop below) the direct calls are
-   !    prop_step (propagator class), the facade phase entries elec_prop / mqc_statistic (facade
-   !    class; force_eval runs inside the propagator member per the endpoint-force contract, and
-   !    optionally inside mqc_statistic as an intra-box force refresh), rec_frame (recorder class),
-   !    and container_term (container judgment, E18) - the four-phase orchestration is explicit in the driver.
-   !    No sampler / analysis / input / roster calls inside the loop; the orchestration counters
-   !    traj_i/step_i are locals.
-   ! Trajectory loop: do traj_i = 1, n_traj (old TRAJECTORY_LOOP :239)
-   ! 1. samp_run(scheme, sta) - per-trajectory initial-state preparation (an operational-class call - spec §2.3
-   !    boundary 4: actual calls in the assembly phase include distribution members, and preparation members
-   !    count as assembly-like calls; located at the trajectory-loop head, outside the integration loop;
-   !    old :349 SELECT site. scheme is the INCIDENT-CHANNEL member name (the one orchestration member
-   !    not selected per-fragment - the driver passes 'incident'); the per-fragment schemes arrive inside
-   !    samp_run through config%reactants%dist_scheme)
-   ! 2. force_eval(sta, e0) - initial force and total energy of the initial state (old :402-403
-   !    DVDQ_1/ENERGY_1; E14 naming statute - the pure force entry names the action; no dt
-   !    argument)
-   ! 3. rec_frame(sta, u_out) - first frame (old :405 GWRITE site)
+   ! ===== Phase 1: assembly (real - the order below is binding legislation) =====
+   call read_input('input_qct.txt')                ! 1. input framework (KEYWORD=VALUE ->
+                                                   !    control/config slots; member keys stage
+                                                   !    raw for the seam at step 7)
+   call rng_init(i_seed(1))                        ! 2. random stream (the ISEED scalar statute:
+                                                   !    word 1 seeds the stream)
+   call sysdef_load(reactants%system_dir)          ! 3. system definition (folder scan -> parser
+                                                   !    dispatch -> mass table; a bad folder
+                                                   !    loud-stops inside sysdef_load - the
+                                                   !    driver adds no judgment of its own)
+   call roster_load()                              ! 4. roster (fragments / masses / equilibrium
+                                                   !    placement, from the sysdef products
+                                                   !    through the staging accessors)
+   call state_create(sta, size(roster%mass), max(electronic%n_surf, 1))
+                                                   ! 5. physical state (natoms from the roster;
+                                                   !    the max() is the N_SURF reconcile - the
+                                                   !    input default 0 folds to the adiabatic
+                                                   !    degenerate point, 1 surface, E9/T1 1x1
+                                                   !    seed)
+   if (size(sta%q) /= 3*size(roster%mass)) then    ! size-equality guard (drift backstop; both sides
+                                                   ! named)
+      write (0, '(a,i0,a,i0,a)') 'driver: size guard - the state holds ', size(sta%q), &
+         ' coordinates but the roster mass table holds ', 3*size(roster%mass), &
+         ' (assembly-choreography error, formal)'
+      write (0, '(a)') 'driver: loud-stop (the state and the roster disagree)'
+      stop 1
+   end if
+   call registry_gen_all()                         ! 6. registration aggregate (method packages,
+                                                   !    distribution members, container bindings,
+                                                   !    and the integrator closed set - no
+                                                   !    hand-written registration lines here)
+   call registry_gen_init()                        ! 7. the assembly seam: staged member keys ->
+                                                   !    each member's own init (an unselected
+                                                   !    member skips inside its own guard).
+                                                   !    dt-ordering: dt was finalized at step
+                                                   !    1, so a member reconciling against dt
+                                                   !    reads the final value - the assembly
+                                                   !    order is the contract
+   call container_init()                           ! 8. container assembly + formal validation
+                                                   !    (E20: legal with no container dragged in -
+                                                   !    the degenerate method row still binds;
+                                                   !    loud-stop authority = force_eval's first
+                                                   !    call)
+   call rec_select(observables%rec_level)          ! 9a. recording preset group (level entry)
+   if (len_trim(observables%obs_list) > 0) then    ! 9b. named-column list entry (union
+      call rec_select(trim(observables%obs_list))  !    semantics with the level entry - the
+   end if                                          !    recorded set is the union of both)
+   allocate (sta_fin(n_traj))                      ! 10. inter-phase hand-off structures
+   dt_eff = prop_cfg%dt                            !     staged once (the fixed-step source -
+                                                   !     see the local's note)
+   call cpu_time(t_cpu(1))                         !     timing start
+   write (*, '(a,i0,a,i0,a,i0,a,i0,a,i0,a,i0)') &
+      'assembly complete: trajectories=', n_traj, ' atoms=', size(roster%mass), &
+      ' fragments=', size(roster%frag), ' paradigm=', reactants%surface_model, &
+      ' members=', samp_n_dist(), ' init=ok colgroups=', rec_n_sel()
+
+   ! ===== Phase 2: evolution (trajectory loop x integration loop) - PSEUDOCODE =====
+   ! [Phase restriction (E7): inside the integration loop the direct calls are
+   !  prop_step (propagator class), the facade phase entries elec_prop / mqc_statistic
+   !  (facade class; force_eval runs inside the propagator member per the endpoint-force
+   !  contract, and optionally inside mqc_statistic as an intra-box force refresh),
+   !  rec_frame (recorder class), and container_term (container judgment, E18) - the
+   !  four-phase orchestration is explicit in the driver. No sampler / analysis / input /
+   !  roster calls inside the loop; the orchestration counters traj_i/step_i are locals.]
+   ! Trajectory loop: do traj_i = 1, n_traj
+   ! 1. samp_run('incident', sta) - per-trajectory initial-state preparation (an
+   !    operational-class call at the trajectory-loop head, outside the integration
+   !    loop; 'incident' is the one orchestration member not selected per-fragment -
+   !    the per-fragment schemes arrive inside samp_run through the dist_scheme data)
+   ! 2. force_eval(sta, e0) - initial force and total energy of the initial state (the
+   !    pure force entry; no dt argument)
+   ! 3. rec_frame(sta, u_out) - first frame
    ! 4. step_i = 0, term_flag = .false. (orchestration reset)
-   ! 5. Integration loop: do while (.not. term_flag .and. step_i < max_steps) (old
-   !    INTEGRATION_LOOP :419; E18: the MAX_STEPS safety net is the driver condition - the
-   !    only judgment never delegated to the container) - the spec §8
-   !    four-phase step body, verbatim (the spec's dt dummy arrives here as dt_eff - the local
-   !    staged from prop_cfg%dt; "occupation lag" per the landed T10 precedent - the spec's own
-   !    "i_surf lag" wording is its historical citation):
+   ! 5. Integration loop: do while (.not. term_flag .and. step_i < max_steps)
+   !    (E18: the MAX_STEPS safety net is the driver condition - the only judgment
+   !    never delegated to the container) - the four-phase step body (the step's dt
+   !    arrives here as dt_eff, the local staged from prop_cfg%dt):
    !    step_i = step_i + 1
-   !    call prop_step(sta)                  ! phase 1: nuclear propagation (multiple force_eval
-   !                                         ! calls inside; endpoint-force contract obliges the
-   !                                         ! final ws to match the returned sta%q)
+   !    call prop_step(sta)                  ! phase 1: nuclear propagation (multiple
+   !                                         ! force_eval calls inside; the endpoint-force
+   !                                         ! contract obliges the final ws to match the
+   !                                         ! returned sta%q)
    !    call elec_prop(sta, dt_eff)          ! phase 2: electronic propagation
    !    call mqc_statistic(sta)              ! phase 3: matching (hop / momentum rescaling /
    !                                         ! optional force refresh)
-   !    call rec_frame(sta, u_out)           ! frame output (post-mqc self-consistent state -
-   !                                         ! repairs the prior one-step occupation lag in frames)
-   !    term_flag = container_term(sta)               ! phase 4: termination (E18: the
-   !                                                  ! container's own judgment; unbound slot =
-   !                                                  ! .false., the safety-net-only run; end do)
-   ! 6. Loop tail (outside the integration loop, at the trajectory-loop end): sta_fin(traj_i) = sta - archive
-   !    the final-state snapshot (same source as old :411-413 QSAVE/PSAVE); rec_final(sta, u_out) -
-   !    the final-state row (measurement class; recorder final-state rows carry system-diagnostic columns - bounce/z_min etc.,
-   !    the landing spot of excision-list item 5)
-   !    (the old duplicated outcome blocks :505-576/:581-662 - FINAL/GFINAL/record_all/reaction counting
-   !    and the long-time exit :669-699 - all deferred to the statistics phase, see the excision list)
+   !    call rec_frame(sta, u_out)           ! frame output (post-matching self-consistent
+   !                                         ! state)
+   !    term_flag = container_term(sta)      ! phase 4: termination (E18: the container's
+   !                                         ! own judgment; unbound slot = .false., the
+   !                                         ! safety-net-only run); end do
+   ! 6. Loop tail (at the trajectory-loop end): sta_fin(traj_i) = sta - archive the
+   !    final-state snapshot; rec_final(sta, u_out) - the final-state row (recorder
+   !    final-state rows carry the system-diagnostic columns - bounce / z_min etc.)
    !
-   ! ===== Phase 3: statistics (post-processing class - outcome/analysis calls) =====
+   ! ===== Phase 3: statistics (post-processing class) - PSEUDOCODE =====
    ! 1. Per trajectory: do traj_i = 1, n_traj
-   ! 1a. fin_eval(sta_fin(traj_i), fin) - final-state quantities (the generalized part of old FINAL)
-   ! 1b. outc_name = container_classify(fin) (E19: the container's own judgment); count by
-   !     name into cnt_outc
-   !     (old :552-571/:645-657 reaction counting and :669-685 long-time counting - now data-driven)
-   ! 1c. data_hist aggregation (fin / recorder final-state rows -> e_rel/thta/x0/y0/z_min/
-   !     v_fin/n_bnc/site columns - the assembly site of old GFINAL.f:199-202 and record_all,
-   !     C8 wiring)
-   ! 2. analysis calls: plot_hist(spec_hist, data_hist, lattice) (the five histogram kinds
-   !    - old :286-299 five plot_* call sites; HISTO directory layout lives here); when needed,
-   !    dens_states/eig_out (density of states / eigenvalue output)
-   ! 3. Summary printout: outcome count table / valid-trajectory count / energy-conservation drift summary /
-   !    timing (old
-   !    :243-284 double channel merged into one pass; the conservation-gate verdict goes to the container's classification)
-   ! 4. state_destroy(sta), deallocate sta_fin/cnt_outc/data_hist - wrap up
+   ! 1a. fin_eval(sta_fin(traj_i), fin) - final-state quantities
+   ! 1b. if (container_classify_bound()) then outc_name = container_classify(fin);
+   !     count by name into cnt_outc (E19: the container's own judgment; the bound
+   !     guard is what makes the no-classification run legal)
+   ! 1c. data_hist aggregation (fin / recorder final-state rows -> the histogram
+   !     column table)
+   ! 2. analysis calls: plot_hist(spec_hist, data_hist, lattice) (the histogram kinds;
+   !    the HISTO directory layout lives there); when needed, dens_states / eig_out
+   !    (density of states / eigenvalue output)
+   ! 3. summary printout: outcome count table / valid-trajectory count /
+   !    energy-conservation drift summary / timing
+   ! 4. state_destroy(sta), deallocate sta_fin / cnt_outc / data_hist - wrap up
 end program venus

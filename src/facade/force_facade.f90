@@ -238,11 +238,12 @@ contains
    !       lone non-H container exception)
    subroutine container_bind_term(proc)
       procedure(term_i) :: proc              ! the container termination judgment
-      ! Pseudocode:
-      ! 1. Already bound (associated(container_term_proc)) -> loud-stop
-      !    (assembly-choreography error, formal)
-      ! 2. Bind the slot - executed once in the assembly phase by the container's reg
-      !    module
+      if (associated(container_term_proc)) then
+         call stop_ff('container_bind_term', 'the termination slot is already bound ('// &
+                      'container_bind_term ran twice - an assembly-choreography error, formal)')
+      end if
+      container_term_proc => proc            ! executed once in the assembly phase by the
+                                             ! container's reg module
    end subroutine container_bind_term
 
    !------------------------------------------------------------------
@@ -254,10 +255,12 @@ contains
    !       delegated)
    logical function container_term(sta)
       type(state_t), intent(in) :: sta       ! physical state (read-only snapshot)
-      ! Pseudocode:
-      ! 1. Unbound slot -> container_term = .false. (the safety-net-only run - legal;
-      !    MAX_STEPS in the driver condition remains the ever-present net)
-      ! 2. container_term = container_term_proc(sta)
+      ! unbound slot = the safety-net-only run (legal): .false. - the driver loop's
+      ! step_i < max_steps condition remains the ever-present net; a bound slot runs
+      ! the container's own judgment
+      container_term = .false.
+      if (.not. associated(container_term_proc)) return
+      container_term = container_term_proc(sta)
    end function container_term
 
    !------------------------------------------------------------------
@@ -273,13 +276,21 @@ contains
    !       reg module around its binding)
    subroutine container_init()
       character(len=32) :: hf                 ! the bound method row's Hamiltonian preset
-      ! 1. Slot check: an unbound class-A slot means container_bind_pes has not run (an
-      !    empty container folder / a missing reg module)
-      if (.not. associated(container_pes)) then
-         call stop_ff('container_init', 'the class-A slot is not bound (container_bind_pes '// &
-                      'must run first - an empty container / a missing reg module)')
-      end if
-      ! 2. Container-contract formal check: a multi-surface system needs a multi-surface
+      ! 1. Method-slot assembly (E14) - runs in BOTH postures: the idle chain (no
+      !    container dragged in, E20) still binds the degenerate no-op method row, so
+      !    the body phases have something to run against. A pure name lookup - the
+      !    empty-table / not-found / already-bound loud-stops live in method_bind
+      !    itself (the table lives in elec_facade; the init choreography stays here
+      !    as the single assembly entry point)
+      call method_bind(electronic%method)
+      ! 2. Idle-chain posture (E20): an unbound class-A slot means no container was
+      !    dragged in (an empty container folder / a missing reg module) - the
+      !    assembly proceeds, neither binding nor crashing; the loud-stop authority
+      !    for the missing slot is force_eval's FIRST CALL (an evolution-phase entry
+      !    called before any binding names the slot there). The checks below read the
+      !    container's own declarations and run only when one is bound
+      if (.not. associated(container_pes)) return
+      ! 3. Container-contract formal check: a multi-surface system needs a multi-surface
       !    delivery mode (E13 kept: derivable from the container contract alone)
       if (electronic%n_surf >= 2) then
          if (.not. names_mode(h_deliver, 'diab') .and. .not. names_mode(h_deliver, 'adiab')) then
@@ -287,10 +298,6 @@ contains
                          'declared delivery set names no multi-surface mode: "'//trim(h_deliver)//'"')
          end if
       end if
-      ! 3. Method-slot assembly (E14): a pure name lookup - the empty-table / not-found /
-      !    already-bound loud-stops live in method_bind itself (the table lives in
-      !    elec_facade; the init choreography stays here as the single assembly entry point)
-      call method_bind(electronic%method)
       ! 4. H-form match (E17(5)): the method row's demand must be a subset of the
       !    container's supply; an empty h_form (the degenerate method) always passes
       hf = method_h_form()

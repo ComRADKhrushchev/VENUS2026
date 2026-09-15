@@ -52,7 +52,7 @@ module sampler
    use config_roster, only: roster
    implicit none
    private
-   public :: samp_reg, samp_run, samp_code
+   public :: samp_reg, samp_run, samp_code, samp_n_dist
 
    ! Distribution member interface: members sample (q0,p0,s0) from their own
    ! distribution and write the components they own into the physical state
@@ -102,6 +102,13 @@ contains
          end if
       end do
    end function samp_code
+
+   !------------------------------------------------------------------
+   ! samp_n_dist() - registered member count (read-only public probe; the
+   !                 assembly-complete summary's 'members=' witness)
+   pure integer function samp_n_dist()
+      samp_n_dist = n_dist
+   end function samp_n_dist
 
    !------------------------------------------------------------------
    ! samp_reg(name, proc) - register a distribution member into the member table

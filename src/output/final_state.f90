@@ -58,8 +58,11 @@ module final_state
    implicit none
    private
    public :: fin_t, fin_eval
-   public :: container_bind_classify, container_classify  ! E19: the outcome-classification
+   public :: container_bind_classify, container_classify, container_classify_bound
+                                                          ! E19: the outcome-classification
                                                           ! slot + its statistics-phase entry
+                                                          ! + the bound query (the driver-side
+                                                          ! skip guard)
 
    ! Final-state quantity receiver type (fin_eval output; fields = the old global final-state
    ! quantities turned into members)
@@ -176,11 +179,15 @@ contains
    ! Reference: this file's E19 header note; E17(4)/E18 (problem knowledge, same family)
    subroutine container_bind_classify(proc)
       procedure(classify_i) :: proc       ! the container classification judgment
-      ! Pseudocode:
-      ! 1. Already bound (associated(container_classify_proc)) -> loud-stop
-      !    (assembly-choreography error, formal)
-      ! 2. Bind the slot - executed once in the assembly phase by the container's reg
-      !    module
+      if (associated(container_classify_proc)) then
+         write (0, '(a)') 'container_bind_classify: the classification slot is already '// &
+                        'bound (container_bind_classify ran twice - an assembly-'// &
+                        'choreography error, formal)'
+         write (0, '(a)') 'container_bind_classify: loud-stop (the container is unusable)'
+         stop 1
+      end if
+      container_classify_proc => proc      ! executed once in the assembly phase by the
+                                           ! container's reg module
    end subroutine container_bind_classify
 
    !------------------------------------------------------------------
@@ -192,9 +199,25 @@ contains
    function container_classify(fin) result(name)
       type(fin_t), intent(in) :: fin      ! final-state quantities (read-only)
       character(len=32) :: name           ! the outcome name [-]
-      ! Pseudocode:
-      ! 1. Unbound slot -> loud-stop (a classification call without a bound judgment is
-      !    an assembly error; the legal no-classification run simply never calls this)
-      ! 2. name = container_classify_proc(fin)
+      ! unbound slot + a call = loud-stop (a classification call without a bound
+      ! judgment is an assembly error; the legal no-classification run guards with
+      ! container_classify_bound() and simply never calls this entry)
+      if (.not. associated(container_classify_proc)) then
+         write (0, '(a)') 'container_classify: the classification slot is not bound '// &
+                        '(container_bind_classify never ran - the legal no-classification '// &
+                        'run guards with container_classify_bound and never calls here)'
+         write (0, '(a)') 'container_classify: loud-stop (the container is unusable)'
+         stop 1
+      end if
+      name = container_classify_proc(fin)
    end function container_classify
+
+   !------------------------------------------------------------------
+   ! container_classify_bound() - E19 bound query (public, read-only): has a
+   !                 classification judgment been bound? The driver-side skip
+   !                 guard for the legal no-classification run - the statistics
+   !                 phase calls container_classify only when this is .true.
+   pure logical function container_classify_bound()
+      container_classify_bound = associated(container_classify_proc)
+   end function container_classify_bound
 end module final_state
