@@ -22,12 +22,18 @@
 !   g_ij(dt) belongs to the electronic phases, not to the force evaluation).
 !   (see previous line)
 !
-! -- ws holding (E10 axioms B/C amended by E14; spec §3) --
-!   The ws instance is this module's module-private variable (saved, not a dummy): filled
-!   by force_eval (through ws_get — the fill site), consumed by elec_prop / mqc_statistic,
-!   reset to r_empty at step end (ws_reset). One-integration-step lifetime (extended from
-!   E10's one evaluation), still invisible outside the box — ws never appears in any public
-!   signature. The E14 motivation is exactly this read: the matching layer needs d_ij for
+! -- ws holding (E10 axioms B/C amended by E14; spec §3; frozen as the pointer-handle
+!    form) --
+!   The ws instance is this module's module-private variable (target + save, not a
+!   dummy): filled by force_eval (through the pointer function ws_handle — the fill
+!   site writes the holder itself), consumed by elec_prop / mqc_statistic, reset to
+!   the defined empty state at step end (ws_reset — a full clear whose site is the
+!   mqc_statistic tail). One-integration-step lifetime (extended from E10's one
+!   evaluation), still invisible outside the box — ws never appears in the four-entry
+!   public signature set. ws_handle is public only because Fortran privacy ends at
+!   the module boundary: its sanctioned consumers are the two facades of the box
+!   themselves — the "never leaves the box" axiom holds at the public-signature
+!   level. The E14 motivation is exactly this read: the matching layer needs d_ij for
 !   the momentum projection after a facade-force-local ws would already have died.
 !   (see previous line)
 !
@@ -93,6 +99,9 @@ module elec_facade
    public :: method_h_form                       ! E17: the bound row's H-form declaration (the
                                                   ! assembly-time match source for container_init)
    public :: ws_get, ws_reset                    ! ws-holder accessor pair (spec §3 ws holding)
+   public :: ws_handle                           ! the frozen holder association: the pointer
+                                                  ! alias onto the held ws (box-internal consumer
+                                                  ! statute - see its header below)
    public :: occ_get, n_hop_get                  ! E16 statistics-holder read-only getters
    public :: elec_prop_i, mqc_match_i, sync_proc_i  ! member contract interfaces (E14 T5: made
    ! explicit for method-package authors - the members/ files use them as contract
@@ -137,12 +146,13 @@ module elec_facade
    ! ws conveyance to members (E10 axiom A intact under E14): the member-facing interfaces
    ! above take only (sta[, dt]) — ws is never a public-signature argument. Members read
    ! the held ws through the FACADE-INTERNAL channel: elec_prop / mqc_statistic fetch the
-   ! module instance (the holder declaration below) and convey it into the member through
-   ! an internal wrapper signature carrying ws_t; the wrapper layer (the exact internal
-   ! signature the method members implement) is finalized at the member-signature freeze.
-   ! The skeleton legislates the channel's existence and privacy,
-   ! not its shape (class-A pes members, by contrast, carry ws in their signature — the two
-   ! routes are the "signature or facade-internal channel" pair of the elec_ws.f90 note).
+   ! module instance (the holder declaration below — fetched through ws_handle, the frozen
+   ! pointer alias) and convey it into the member through an internal wrapper signature
+   ! carrying ws_t; the wrapper layer (the exact internal signature the method members
+   ! implement) stays deferred to the first stateful members — the holder association is
+   ! the settled half (class-A pes members, by contrast, carry ws in their signature —
+   ! the two routes are the "signature or facade-internal channel" pair of the elec_ws.f90
+   ! note).
    ! (see previous line)
 
    ! Method-package table (single-select by name at assembly; rows registered via reg_*.f90
@@ -168,10 +178,14 @@ module elec_facade
                                           ! single assembly entry point stays in force_facade,
                                           ! spec §3 assembly-phase entries)
 
-   ! The ws instance — E10 axiom C / E14: module-private holder (saved, not a dummy),
-   ! one-integration-step lifetime, invisible outside the box (never a dummy of any public
-   ! signature; the accessor pair below is the only sanctioned handle)
-   type(ws_t) :: ws
+   ! The ws instance — E10 axiom C / E14: module-private holder (target + save, not a
+   ! dummy), one-integration-step lifetime, invisible outside the box (never a dummy of
+   ! the four-entry public signatures). The frozen holder association: an ordinary module
+   ! variable cannot be aliased out through a dummy (copy semantics would detach the fill
+   ! site's composition from the held instance), so the holder carries TARGET and the
+   ! pointer function ws_handle below hands out the one sanctioned alias through which
+   ! the fill site writes the holder itself; ws_get / ws_reset ride on the same holder
+   type(ws_t), target, save :: ws
 
    ! The statistics holder — E16: run-lifetime module-private (the ws sibling; see the
    ! header note). occ written by mqc_statistic's member (through the conveyance channel),
@@ -188,46 +202,70 @@ module elec_facade
 
 contains
    !------------------------------------------------------------------
-   ! ws_get(w) - hand the held ws instance to force_facade (the fill site of the one-step
-   !             lifetime); members never call this — they receive ws through the
+   ! ws_handle() - the frozen holder association: the pointer alias onto the held ws
+   !               instance (the fill site composes the step's representation constructs
+   !               INTO THE HOLDER through it, and the electronic phases read the same
+   !               instance inside the box)
+   ! Reference: the ws-holding header note (the pointer-handle freeze); spec §3 "ws
+   !       holding and the endpoint-force contract" (force_facade fills it: use
+   !       elec_facade to obtain the instance); elec_ws.f90 lifecycle contract
+   function ws_handle() result(h)
+      type(ws_t), pointer :: h            ! the alias onto the module-private holder
+                                           ! (never disassociated — static storage)
+      ! 1. Point at the holder: the one sanctioned alias (an ordinary dummy cannot alias
+      !    a module-private variable — copy semantics would detach the fill from the
+      !    held instance, the exact motivation of the pointer-handle form). Consumer
+      !    statute: the two facades of the box only (force_facade's fill site; this
+      !    module's conveyance into the electronic phases) — public only because
+      !    Fortran privacy ends at the module boundary; the driver / propagator /
+      !    output never call it, ws never leaves the box at the signature level
+      h => ws
+   end function ws_handle
+
+   !------------------------------------------------------------------
+   ! ws_get(w) - copy-out convenience on the held ws instance: the dummy receives a
+   !             snapshot of the holder. Consumers that must WRITE the holder itself
+   !             use ws_handle (the alias); this form keeps the snapshot consumers
+   !             unchanged. Members never call either — they receive ws through the
    !             facade-internal conveyance channel (see the note above)
-   ! Reference: spec §3 "ws holding and the endpoint-force contract" (force_facade fills it:
-   !       use elec_facade to obtain the instance); elec_ws.f90 axiom C comment (holder)
+   ! Reference: spec §3 "ws holding and the endpoint-force contract"; elec_ws.f90
+   !       axiom C comment (holder + the frozen pointer-handle association)
    subroutine ws_get(w)
-      type(ws_t), intent(inout) :: w  ! the fill handle on the held instance (force_eval writes
-                                      ! the step's composition through it — the request field
-                                      ! i_want from the held occ (E16: same module, direct
-                                      ! read — no getter round-trip), then the per-mode fields
-                                      ! per the elec_ws.f90 container contract — and leaves it
-                                      ! in place for the electronic phases)
-      ! 1. Hand the held instance out through the dummy (the only sanctioned handle on the
-      !    holder — force_eval calls this at its head, composes into the container, and
-      !    returns; the instance stays module-private, the caller never owns it)
-      ! 2. Degenerate association form (registered deferral): the dummy receives a
-      !    snapshot COPY of the held instance — an alias onto the holder is not
-      !    expressible through an intent(inout) dummy, and the exact mechanism is fixed
-      !    at the member-signature freeze (the same window as the member-side conveyance
-      !    wrapper). The contract is complete for the scalar branch realized now:
-      !    force_eval composes into the handed instance and consumes the composed values
-      !    within the same call, so nothing yet depends on the composition surviving in
-      !    the holder — the one-step conveyance to the electronic phases lands together
-      !    with those entries' own realization
+      type(ws_t), intent(inout) :: w  ! the snapshot: an intrinsic-assignment copy of
+                                      ! the held instance (deep — allocatable
+                                      ! components are allocated afresh on the left
+                                      ! side); writing w never touches the holder
+      ! 1. Copy the holder out through the dummy (the pre-freeze fill posture composed
+      !    into this dying local and consumed it within the same call — that behavior
+      !    is preserved exactly; composing into the snapshot does NOT reach the holder:
+      !    the one-step conveyance to the electronic phases rides the ws_handle alias)
       w = ws
    end subroutine ws_get
 
    !------------------------------------------------------------------
-   ! ws_reset() - reset the held ws to the empty state (repr = r_empty; each step end + the
-   !              force_eval head re-request — axiom C one-step lifetime, E14 form)
-   ! Reference: elec_ws.f90 (r_empty tag; axiom C comment: filled at force evaluation,
-   !       consumed by elec_prop / mqc_statistic, reset to r_empty at step end); spec §3
+   ! ws_reset() - reset the held ws to the DEFINED empty state (full clear: repr =
+   !              r_empty, every per-mode array deallocated, the scalar zeroed — the
+   !              representation constructs DIE at step end, not merely become
+   !              unreadable); each step end (the mqc_statistic tail site) + the
+   !              force_eval head re-request — axiom C one-step lifetime, E14 form
+   ! Reference: elec_ws.f90 (r_empty tag; the lifecycle contract — one-step survival,
+   !       step-end reset, the endpoint-force linkage); spec §3
    subroutine ws_reset()
-      ! 1. ws%repr = r_empty (the stale per-mode arrays become unreadable — repr gates every
-      !    consumer read; the next force_eval re-requests from scratch). Invoked at each
-      !    step end (after mqc_statistic has consumed the statistics) and re-issued as the
-      !    force_eval head reset (every evaluation begins from the empty container — the
-      !    two sites together make the one-step lifetime robust to skipped phases).
-      !    Allocation/reuse of the per-mode arrays rides the holder-association freeze
-      !    (elec_ws.f90 tail note — the repr reset is the statute)
+      ! 1. Full clear (the settled final form of the allocate-vs-reuse question: each
+      !    fill allocates afresh, no cross-step reuse — the arrays are few and small,
+      !    the literal death of the constructs is the statute; repr = r_empty
+      !    additionally gates every consumer read against stale tags). Invoked at each
+      !    step end (after mqc_statistic has consumed the statistics) and re-issued as
+      !    the force_eval head reset (every evaluation begins from the empty container —
+      !    the two sites together make the one-step lifetime robust to skipped phases)
+      if (allocated(ws%i_want)) deallocate (ws%i_want)
+      if (allocated(ws%g_add))  deallocate (ws%g_add)
+      if (allocated(ws%h_ij))   deallocate (ws%h_ij)
+      if (allocated(ws%dh_ij))  deallocate (ws%dh_ij)
+      if (allocated(ws%v_surf)) deallocate (ws%v_surf)
+      if (allocated(ws%g_surf)) deallocate (ws%g_surf)
+      if (allocated(ws%d_ij))   deallocate (ws%d_ij)
+      ws%v_add = 0.0d0
       ws%repr = r_empty
    end subroutine ws_reset
 
@@ -445,6 +483,13 @@ contains
       !    same contract as elec_prop step 4 (both entries carry the tail: post-hop
       !    container resets and post-propagation refreshes are indistinguishable to the
       !    facade)
+      ! 5. STEP-END RESET — the legislated landing site of the one-step lifetime's closing
+      !    call: ws_reset() after the match member has consumed the statistics (the full
+      !    clear returns the holder to the defined empty state; see ws_reset). The site
+      !    sits at this entry's tail, INSIDE the box — the driver never calls ws_reset
+      !    itself, so its audited four-entry direct-call set stays untouched. The call
+      !    lands together with this entry's dispatch body above (this step is the
+      !    statute; the sync tail is its immediate predecessor in the choreography)
    end subroutine mqc_statistic
 
    !------------------------------------------------------------------

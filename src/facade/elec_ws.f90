@@ -21,10 +21,28 @@
 !     thing-in-itself status (they are "for us" quantities that change with the representation choice):
 !     they do not enter state_t, do not leave the box, and live for ONE INTEGRATION STEP (E14: extended
 !     from one evaluation) — filled at force evaluation, consumed by elec_prop / mqc_statistic,
-!     reset to r_empty at step end. Holder: a module-private instance of elec_facade (still
-!     invisible outside the box; declared in the box, dies in the box).
+!     reset to r_empty at step end. Holder: a target/save module-private variable of elec_facade,
+!     aliased only through its pointer function ws_handle (still invisible outside the box;
+!     declared in the box, dies in the box).
 !     (see previous line)
 !     (see previous line)
+! Lifecycle contract of the held ws (final form; enacted by elec_facade):
+!   one-step survival - the holder lives from the force_eval fill to the electronic
+!     phases of the SAME integration step: the fill site composes the step's
+!     representation constructs into the holder through the pointer alias (ws_handle),
+!     and elec_prop / mqc_statistic read the same instance inside the box;
+!   step-end reset - ws_reset (its site: the mqc_statistic tail, inside the box; plus
+!     the force_eval head re-request, which makes the lifetime robust to skipped
+!     phases) returns the holder to the DEFINED empty state: repr = r_empty, every
+!     per-mode array deallocated, the scalar zeroed - the constructs DIE at step end,
+!     not merely become unreadable; each fill allocates afresh (no cross-step reuse);
+!   endpoint-force linkage - the propagator's endpoint-force contract (propagator
+!     header: prop_step returns only after the endpoint force has been evaluated)
+!     makes the held ws correspond to the RETURNED sta%q: between the fill and the
+!     step-end reset, every reader of the holder reads the construct of the geometry
+!     the caller actually holds (under MQC the velocity-Verlet right-end force cannot
+!     be folded into the next step's left end - the amplitude propagation needs the
+!     endpoint H, which is why the ws must outlive the force call itself).
 ! This module is the dummy-type contract visible to members (a Fortran constraint: signature dummy types
 ! must be visible to the member modules) - dependency direction: force_facade -> elec_facade -> elec_ws;
 ! the member modules (pes_*/elec_*/dist_*) use this module for type visibility only (L3->L2 downward
@@ -76,7 +94,7 @@ module elec_ws
    end type ws_t
 contains
    ! This module is a pure type/constant contract with no routines (type lifecycle management belongs
-   ! to elec_facade, E14: holder of the module-private instance + repr=r_empty reset at step end;
-   ! allocate/reuse containers per mode - finalized in C2 together with the facade concretization)
+   ! to elec_facade, E14: the target/save holder + the pointer alias ws_handle + the full-clear reset
+   ! at step end, the mqc_statistic tail site; each fill allocates afresh - no cross-step reuse)
    ! (see previous line)
 end module elec_ws
