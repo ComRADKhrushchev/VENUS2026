@@ -114,6 +114,11 @@ module recorder
    implicit none
    private
    public :: col_val_i, rec_reg_col, rec_select, rec_frame, rec_final, rec_n_sel
+   public :: rec_fin_val                                            ! the final-row value getter
+                                                                    ! (statistics-phase read: the
+                                                                    ! driver's conservation-drift
+                                                                    ! datum - one named column of
+                                                                    ! the LAST written final row)
 
    ! Column-extractor interface: extract one scalar observable from the physical state
    ! (the measurement class consuming evolution services - energy columns obtain the potential
@@ -146,6 +151,13 @@ module recorder
    logical :: fw_done = .false.              ! framework preregistration flag (lazy, first use)
    integer :: traj_i = 1                     ! trajectory counter [-] (frame header / final row)
    integer :: step_i = 0                     ! per-trajectory frame counter [-]
+   real(8) :: fin_val(max_col) = 0.0d0       ! the LAST written final row's column values
+                                             ! (the statistics-phase read-back stash; overwritten
+                                             ! by every rec_final, consumed by rec_fin_val
+                                             ! before the next rec_final)
+   integer :: fin_n = 0                      ! the stashed row's column count [column]
+   logical :: fin_done = .false.             ! a final row has been written (the getter's
+                                             ! assembly-order guard)
 
    ! N3.1 section-gate levels (data companions of the lvl_min field; rec_sel_lvl derives
    ! both gates from these constants - no branch table)
@@ -338,19 +350,25 @@ contains
    ! - the per-trajectory record consumed by the statistics phase)
    ! Reference: HIST.f90:8-24 (record_all: final-state row columns + first-line header), :18
    !       (header column-name order)
-   ! Implemented (C4 first version - the GENERIC row): '# final: traj t <column names>'
-   ! written once (traj_i = 1), then one row per trajectory = traj_i, sta%t, the selected
-   ! column values at the final state; afterwards traj_i advances and step_i resets (the
-   ! frame/final counters of the closure host). The member columns of the old record_all
-   ! (e_rel/thta/z_min/v_fin/n_bnc/x0/y0/site via final_state fin_t + the plot_hist site
-   ! tool, lattice parameterized) are C8 wiring - the old VENUS.f90:572 CLOSE site belongs
-   ! to the driver in any case
+   ! Implemented (the GENERIC row): '# final: traj t <column names>' written once
+   ! (traj_i = 1), then one row per trajectory = traj_i, sta%t, the selected column
+   ! values at the final state; afterwards traj_i advances and step_i resets (the
+   ! frame/final counters of the closure host). The column values are computed ONCE
+   ! into the fin_val stash - both the written row and the rec_fin_val read-back
+   ! consume that single evaluation (no extractor runs twice on one snapshot).
+   ! The member columns of the old record_all (e_rel/thta/z_min/v_fin/n_bnc/x0/y0/site
+   ! via final_state fin_t + the plot_hist site tool, lattice parameterized) land with
+   ! their own wiring - any per-trajectory file's close-out belongs to the driver in
+   ! any case
    subroutine rec_final(sta, unit)
       type(state_t), intent(in) :: sta   ! physical state (final-state snapshot - read-only)
       integer, intent(in) :: unit        ! output unit number [-]
       integer :: j
       call fw_reg()
       call check_ready(sta, 'rec_final')
+      do j = 1, n_sel
+         fin_val(j) = col_tbl(sel_idx(j))%val(sta)
+      end do
       if (traj_i == 1) then
          write (unit, '(a)', advance='no') '# final: traj t'
          do j = 1, n_sel
@@ -360,13 +378,42 @@ contains
       end if
       write (unit, '(i0,1x,es24.16)', advance='no') traj_i, sta%t
       do j = 1, n_sel
-         write (unit, '(1x,es24.16)', advance='no') col_tbl(sel_idx(j))%val(sta)
+         write (unit, '(1x,es24.16)', advance='no') fin_val(j)
       end do
       write (unit, '(a)') ''
       flush (unit)
+      fin_n = n_sel
+      fin_done = .true.
       traj_i = traj_i + 1
       step_i = 0
    end subroutine rec_final
+
+   !------------------------------------------------------------------
+   ! rec_fin_val(name) - read ONE named column's value back out of the LAST written
+   !                 final-state row (the statistics phase's per-trajectory read-back:
+   !                 the driver's conservation-drift datum - the row's e_tot is a
+   !                 force_eval reading at the final geometry). Call between a
+   !                 rec_final and the next rec_final - the stash holds exactly the
+   !                 last row
+   function rec_fin_val(name) result(v)
+      character(len=*), intent(in) :: name  ! column name (must be among the SELECTED
+                                            ! columns - the row carries those only)
+      real(8) :: v                          ! the stashed value [the column's unit]
+      integer :: j, row
+      if (.not. fin_done) then
+         call stop_rec('rec_fin_val', 'no final-state row written yet (rec_final must'// &
+                       ' run first - a statistics read before any recording)')
+      end if
+      row = 0
+      do j = 1, n_sel
+         if (to_upper(trim(col_tbl(sel_idx(j))%name)) == to_upper(trim(name))) row = j
+      end do
+      if (row == 0) then
+         call stop_rec('rec_fin_val', 'column "'//trim(name)//'" is not among the selected'// &
+                       ' columns (the final row carries the selection only)')
+      end if
+      v = fin_val(row)
+   end function rec_fin_val
 
    !------------------------------------------------------------------
    ! private helpers

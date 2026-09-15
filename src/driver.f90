@@ -59,6 +59,11 @@
 !     state_create (0 folds to 1: the adiabatic degenerate point, one
 !     surface, the 1x1 ontic seed, E9/T1). The input key's own default
 !     stays untouched.
+!   - output file registration: the recording unit writes 'trajectories.txt' in the
+!     run directory (cwd-relative, the semantic file name chosen for this program;
+!     every trajectory's frames, gated flattened sections and final-state rows
+!     land there; the statistics summary lines go to stdout). The name is
+!     registered here - criteria and tooling grep this contract.
 ! Units: none (orchestration; quantities carry their own units).
 !=====================================================================
 program venus
@@ -78,7 +83,7 @@ program venus
                                    ! reg_*.f90 under methods/ and systems/ - drag-in; zero
                                    ! hand-written registration lines in the driver)
    use sampler,        only: samp_run, samp_n_dist
-   use recorder,       only: rec_select, rec_frame, rec_final, rec_n_sel
+   use recorder,       only: rec_select, rec_frame, rec_final, rec_n_sel, rec_fin_val
    use final_state,    only: fin_t, fin_eval, container_classify, container_classify_bound
    use density,        only: dens_states, eig_out
    use hist,           only: hist_spec_t, hist_data_t, lat_t, plot_hist
@@ -101,9 +106,24 @@ program venus
                             ! - the hop-probability channel g_ij(dt) needs the step's dt)
    real(8) :: t_cpu(2)      ! timing pair [s] (printed in the statistics section)
    integer :: u_out         ! recording unit number [-] (shared by frames and final-state rows;
-                            ! unit wiring finalized with the recording phase)
+                            ! opened on the registered output file 'trajectories.txt' at the
+                            ! assembly tail, closed at the statistics wrap-up)
    character(len=32) :: outc_name  ! outcome name of this trajectory [-] (statistics phase -
                                    ! the container's classification output, E19)
+   integer, parameter :: max_outc = 32   ! outcome-name table capacity [name]
+   character(len=32) :: outc_names(max_outc) ! outcome-name table [-] (name-keyed counting:
+                                             ! first-seen insertion order, counts parallel in
+                                             ! cnt_outc - the shape fixed with the first real
+                                             ! container)
+   integer :: n_outc        ! distinct outcome names counted so far [name]
+   integer :: n_valid       ! valid-trajectory count [count] (a final row archived)
+   integer :: k             ! scratch index [-]
+   integer :: row_outc      ! outcome-table row scratch [-]
+   real(8), allocatable :: e0_traj(:)     ! per-trajectory reference energy [kcal/mol] (the
+                                          ! head force_eval output - the drift reference)
+   real(8), allocatable :: e_fin_traj(:)  ! per-trajectory final e_tot [kcal/mol] (the
+                                          ! recorder final-state row - see the statistics note)
+   real(8) :: drift_max     ! max |e_fin - e0| over trajectories [kcal/mol]
    ! -- data structures handed between phases --
    type(state_t) :: sta                      ! physical state (held by the driver; written
                                              ! exclusively in the evolution phase, read-only in
@@ -171,65 +191,123 @@ program venus
    if (len_trim(observables%obs_list) > 0) then    ! 9b. named-column list entry (union
       call rec_select(trim(observables%obs_list))  !    semantics with the level entry - the
    end if                                          !    recorded set is the union of both)
-   allocate (sta_fin(n_traj))                      ! 10. inter-phase hand-off structures
+   allocate (sta_fin(n_traj), e0_traj(n_traj), e_fin_traj(n_traj))
+                                                   ! 10. inter-phase hand-off structures (the
+                                                   !     snapshots + the drift reference/final
+                                                   !     pairs the statistics pass consumes)
    dt_eff = prop_cfg%dt                            !     staged once (the fixed-step source -
                                                    !     see the local's note)
    call cpu_time(t_cpu(1))                         !     timing start
+   open (newunit=u_out, file='trajectories.txt', status='replace', action='write')
+                                                   !     the recording unit goes live on the
+                                                   !     registered output file (cwd-relative,
+                                                   !     the semantic name stated in the module
+                                                   !     header; frames, flattened sections and
+                                                   !     final-state rows all land here)
    write (*, '(a,i0,a,i0,a,i0,a,i0,a,i0,a,i0)') &
       'assembly complete: trajectories=', n_traj, ' atoms=', size(roster%mass), &
       ' fragments=', size(roster%frag), ' paradigm=', reactants%surface_model, &
-      ' members=', samp_n_dist(), ' init=ok colgroups=', rec_n_sel()
+      ' members=', samp_n_dist(), ' init=ok columns=', rec_n_sel()
 
-   ! ===== Phase 2: evolution (trajectory loop x integration loop) - PSEUDOCODE =====
-   ! [Phase restriction (E7): inside the integration loop the direct calls are
-   !  prop_step (propagator class), the facade phase entries elec_prop / mqc_statistic
-   !  (facade class; force_eval runs inside the propagator member per the endpoint-force
-   !  contract, and optionally inside mqc_statistic as an intra-box force refresh),
-   !  rec_frame (recorder class), and container_term (container judgment, E18) - the
-   !  four-phase orchestration is explicit in the driver. No sampler / analysis / input /
-   !  roster calls inside the loop; the orchestration counters traj_i/step_i are locals.]
-   ! Trajectory loop: do traj_i = 1, n_traj
-   ! 1. samp_run('incident', sta) - per-trajectory initial-state preparation (an
-   !    operational-class call at the trajectory-loop head, outside the integration
-   !    loop; 'incident' is the one orchestration member not selected per-fragment -
-   !    the per-fragment schemes arrive inside samp_run through the dist_scheme data)
-   ! 2. force_eval(sta, e0) - initial force and total energy of the initial state (the
-   !    pure force entry; no dt argument)
-   ! 3. rec_frame(sta, u_out) - first frame
-   ! 4. step_i = 0, term_flag = .false. (orchestration reset)
-   ! 5. Integration loop: do while (.not. term_flag .and. step_i < max_steps)
-   !    (E18: the MAX_STEPS safety net is the driver condition - the only judgment
-   !    never delegated to the container) - the four-phase step body (the step's dt
-   !    arrives here as dt_eff, the local staged from prop_cfg%dt):
-   !    step_i = step_i + 1
-   !    call prop_step(sta)                  ! phase 1: nuclear propagation (multiple
-   !                                         ! force_eval calls inside; the endpoint-force
-   !                                         ! contract obliges the final ws to match the
-   !                                         ! returned sta%q)
-   !    call elec_prop(sta, dt_eff)          ! phase 2: electronic propagation
-   !    call mqc_statistic(sta)              ! phase 3: matching (hop / momentum rescaling /
-   !                                         ! optional force refresh)
-   !    call rec_frame(sta, u_out)           ! frame output (post-matching self-consistent
-   !                                         ! state)
-   !    term_flag = container_term(sta)      ! phase 4: termination (E18: the container's
-   !                                         ! own judgment; unbound slot = .false., the
-   !                                         ! safety-net-only run); end do
-   ! 6. Loop tail (at the trajectory-loop end): sta_fin(traj_i) = sta - archive the
-   !    final-state snapshot; rec_final(sta, u_out) - the final-state row (recorder
-   !    final-state rows carry the system-diagnostic columns - bounce / z_min etc.)
-   !
-   ! ===== Phase 3: statistics (post-processing class) - PSEUDOCODE =====
-   ! 1. Per trajectory: do traj_i = 1, n_traj
-   ! 1a. fin_eval(sta_fin(traj_i), fin) - final-state quantities
-   ! 1b. if (container_classify_bound()) then outc_name = container_classify(fin);
-   !     count by name into cnt_outc (E19: the container's own judgment; the bound
-   !     guard is what makes the no-classification run legal)
-   ! 1c. data_hist aggregation (fin / recorder final-state rows -> the histogram
-   !     column table)
-   ! 2. analysis calls: plot_hist(spec_hist, data_hist, lattice) (the histogram kinds;
-   !    the HISTO directory layout lives there); when needed, dens_states / eig_out
-   !    (density of states / eigenvalue output)
-   ! 3. summary printout: outcome count table / valid-trajectory count /
-   !    energy-conservation drift summary / timing
-   ! 4. state_destroy(sta), deallocate sta_fin / cnt_outc / data_hist - wrap up
+   ! ===== Phase 2: evolution (trajectory loop x integration loop) =====
+   ! Phase restriction (E7): inside the integration loop the direct entries are
+   ! exactly the four-phase choreography - prop_step, elec_prop, mqc_statistic,
+   ! rec_frame, container_term (the body below); force_eval runs inside the
+   ! propagator member per the endpoint-force contract, and the sampler is a
+   ! trajectory-loop-head operational entry, never an integration-loop entry.
+   n_valid = 0
+   do traj_i = 1, n_traj
+      sta%t = 0.0d0                     ! fresh-trajectory reset: the time origin and the
+                                        ! fresh-trajectory staging key (a propagated state's
+                                        ! boot tests read t == 0; one reset before the sampler
+                                        ! suffices - the thermalize member saves and restores
+                                        ! t around its own equilibration)
+      call samp_run('incident', sta)    ! per-trajectory initial-state preparation (the
+                                        ! per-fragment schemes arrive inside samp_run through
+                                        ! the dist_scheme data; 'incident' is the one
+                                        ! orchestration member not selected per-fragment)
+      call force_eval(sta, e0)          ! initial force + the reference energy of the
+                                        ! initial state (the pure force entry; no dt
+                                        ! argument)
+      e0_traj(traj_i) = e0
+      call rec_frame(sta, u_out)        ! first frame (the state the reference energy
+                                        ! names)
+      step_i = 0
+      term_flag = .false.
+      do while (.not. term_flag .and. step_i < max_steps)
+         step_i = step_i + 1
+         call prop_step(sta)
+         call elec_prop(sta, dt_eff)
+         call mqc_statistic(sta)
+         call rec_frame(sta, u_out)
+         term_flag = container_term(sta)
+      end do
+      sta_fin(traj_i) = sta             ! loop tail: the final-state snapshot hand-off
+      n_valid = n_valid + 1
+      call rec_final(sta, u_out)        ! the final-state row (the recorder advances its
+                                        ! own trajectory counter here)
+      e_fin_traj(traj_i) = rec_fin_val('e_tot')
+                                        ! the drift datum: the recorder's final-state row
+                                        ! (a force_eval reading at the final geometry);
+                                        ! read here because the row stash lives only until
+                                        ! the next rec_final - the data-source choice is
+                                        ! stated at the drift summary below
+   end do
+
+   ! ===== Phase 3: statistics (post-processing class) - first version =====
+   call cpu_time(t_cpu(2))
+   allocate (cnt_outc(max_outc))
+   cnt_outc = 0
+   n_outc = 0
+   do traj_i = 1, n_traj
+      call fin_eval(sta_fin(traj_i), fin)
+      if (container_classify_bound()) then   ! the bound guard: the no-classification run
+                                             ! is legal and simply never calls the slot
+         outc_name = container_classify(fin)
+         row_outc = 0
+         do k = 1, n_outc
+            if (trim(outc_names(k)) == trim(outc_name)) row_outc = k
+         end do
+         if (row_outc == 0) then
+            if (n_outc >= max_outc) then
+               write (0, '(a,i0,a)') 'driver: outcome-name table full (', max_outc, &
+                  ' distinct names - the statistics capacity is exhausted)'
+               write (0, '(a)') 'driver: loud-stop (the statistics cannot proceed)'
+               stop 1
+            end if
+            n_outc = n_outc + 1
+            outc_names(n_outc) = outc_name
+            row_outc = n_outc
+         end if
+         cnt_outc(row_outc) = cnt_outc(row_outc) + 1
+      end if
+   end do
+   drift_max = 0.0d0                          ! data source: the recorder final-state rows
+   do traj_i = 1, n_traj                      ! (e_fin_traj) against the head reference
+      drift_max = max(drift_max, abs(e_fin_traj(traj_i) - e0_traj(traj_i)))
+   end do
+   write (*, '(a,i0,a,i0)') 'statistics: trajectories=', n_traj, ' valid=', n_valid
+   if (n_outc == 0) then
+      write (*, '(a)') 'outcome counts: none (no classification bound - skipped)'
+   else
+      write (*, '(a)', advance='no') 'outcome counts:'
+      do k = 1, n_outc
+         write (*, '(a,i0)', advance='no') ' '//trim(outc_names(k))//'=', cnt_outc(k)
+      end do
+      write (*, '(a)') ''
+   end if
+   write (*, '(a,i0,a,es12.4,a)') 'conservation drift: trajectories=', n_traj, &
+      ' max|e_fin-e0|=', drift_max, ' kcal/mol'
+   write (*, '(a,f8.2,a)') 'timing: cpu=', t_cpu(2) - t_cpu(1), ' s'
+   ! Analysis call sites, prepared but not wired (the histogram machinery is a
+   ! later landing; the locals above keep the signatures honest):
+   ! call plot_hist(spec_hist, data_hist, lattice)
+   ! call dens_states(spec_hist)
+   ! call eig_out(spec_hist)
+   close (u_out)
+   call state_destroy(sta)
+   do traj_i = 1, n_traj
+      call state_destroy(sta_fin(traj_i))
+   end do
+   deallocate (sta_fin, e0_traj, e_fin_traj, cnt_outc)
 end program venus

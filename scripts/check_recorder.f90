@@ -62,9 +62,16 @@
 !   (n) state-larger-than-roster loud-stop (child, fix round 1): a 3-atom state against
 !       a 2-atom roster hits the named size-mismatch stop - the equality guard fires
 !       BEFORE col_tkin's roster%mass walk could read out of bounds
+!   (o) final-row read-back (the statistics-phase value channel): rec_fin_val(name)
+!       hands back the LAST written final row's named column value - the analytic
+!       e_tot fold to machine precision, the case-insensitive name lookup, and the
+!       e_tot = t_kin identity on the zero container; two children cover the named
+!       loud-stops (a name outside the selection; a read before any rec_final)
 !=====================================================================
 program check_recorder
-   use recorder,     only: col_val_i, rec_reg_col, rec_select, rec_frame, rec_final
+   use recorder,     only: col_val_i, rec_reg_col, rec_select, rec_frame, rec_final, &
+                           rec_fin_val
+   use consts,       only: e_conv
    use state,        only: state_t, state_create, state_destroy
    use config_roster, only: roster
    use elec_ws,      only: ws_t, r_scalar
@@ -84,6 +91,7 @@ program check_recorder
    ! here - no sysdef chain needed for the recording mechanism)
    real(8), parameter :: q2(6) = [ 0.5d0,-1.0d0, 2.0d0, 0.25d0, 1.25d0,-0.75d0 ]
    real(8), parameter :: p2(6) = [ 1.0d0, 2.0d0, 3.0d0,-0.5d0, 0.5d0, 4.0d0 ]
+   real(8) :: tk_ana                  ! the analytic kinetic fold [kcal/mol] (criterion o)
    tol = 1.0d-13
 
    ! ---------- child dispatch: one bad case per spawn, must loud-stop ----------
@@ -113,6 +121,20 @@ program check_recorder
          call rec_select(0)
          call state_create(sta, 3)
          call rec_frame(sta, 11)
+      case ('c-nofin')                    ! statistics read before ANY rec_final ran
+         print *, rec_fin_val('t_kin')    ! no row stashed yet - must loud-stop
+      case ('c-badfin')                   ! a name outside the selection (the row
+         allocate (roster%mass(2), roster%symb(2)) ! carries the selection only)
+         roster%mass = [ 1.5d0, 3.0d0 ]
+         roster%symb = [ character(4) :: 'H', 'He' ]
+         call method_reg('adiabatic', '', noop_prop, noop_match)
+         call container_bind_pes(zero_pes)
+         call container_init()            ! the energy columns ride force_eval
+         call rec_select(0)
+         call state_create(sta, 2)
+         open (newunit=u, file='build/rec_finchild.txt', status='replace', action='write')
+         call rec_final(sta, u)           ! a good row first (the stash goes live)
+         print *, rec_fin_val('zzz')      ! unselected name - must loud-stop
       case default
          print '(a)', 'child: unknown mode '//trim(mode)
          stop 2
@@ -269,6 +291,39 @@ program check_recorder
    if (nfail == nfail0) print '(a)', &
       '(f) header channel: PASS (step 1..7, t exact per frame, traj/step advance past rec_final)'
 
+   ! ---------- (o) final-row read-back (the statistics-phase value channel) ----------
+   ! the module stash still holds trajectory 2's final row (the LAST rec_final) -
+   ! exactly what the driver's statistics phase reads back through rec_fin_val;
+   ! names/vals above hold that same row as parsed back from the FILE, so the
+   ! stash is checked against both the analytic fold and the written digits
+   nfail0 = nfail
+   tk_ana = (dot_product(p2(1:3), p2(1:3))/(2.0d0*roster%mass(1)) + &
+             dot_product(p2(4:6), p2(4:6))/(2.0d0*roster%mass(2)))/e_conv
+   if (abs(rec_fin_val('e_tot') - tk_ana) > 1.0d-10) then
+      call fail('(o) rec_fin_val(e_tot) off the analytic fold: '//d2s(rec_fin_val('e_tot'))// &
+                ' vs '//d2s(tk_ana)//' kcal/mol')
+   end if
+   if (abs(rec_fin_val('T_KIN') - tk_ana) > 1.0d-10) then
+      call fail('(o) case-insensitive lookup failed: rec_fin_val(T_KIN) = '// &
+                d2s(rec_fin_val('T_KIN'))//' vs t_kin analytic '//d2s(tk_ana))
+   end if
+   if (abs(rec_fin_val('v_pot')) > 1.0d-10) then
+      call fail('(o) v_pot must vanish on the zero container: '//d2s(rec_fin_val('v_pot')))
+   end if
+   i = 0
+   do lp = 1, nv
+      if (trim(names(lp)) == 'e_tot') i = lp
+   end do
+   if (i == 0) then
+      call fail('(o) e_tot missing from the parsed final-row names')
+   else if (abs(rec_fin_val('e_tot') - vals(i)) > 1.0d-9) then
+      call fail('(o) the stash disagrees with the written row: '//d2s(rec_fin_val('e_tot'))// &
+                ' vs file '//d2s(vals(i)))
+   end if
+   if (nfail == nfail0) print '(a)', &
+      '(o) final-row read-back: PASS (e_tot = t_kin = analytic fold to 1e-10, case-insensitive'// &
+      ' lookup, stash = written row)'
+
    ! ---------- (h)+ loud-stop criteria (child processes) ----------
    call expect_loudstop('c-dup',     'duplicate',            'rec_reg_col', &
                         '(h) duplicate-name registration loud-stop')
@@ -284,6 +339,10 @@ program check_recorder
                         '(m) frame-before-selection loud-stop')
    call expect_loudstop('c-big',     'size mismatch',        'rec_frame', &
                         '(n) state-larger-than-roster loud-stop (fix round 1)')
+   call expect_loudstop('c-nofin',   'no final-state row',   'rec_fin_val', &
+                        '(o1) read-before-any-rec_final loud-stop')
+   call expect_loudstop('c-badfin',  'zzz',                  'rec_fin_val', &
+                        '(o2) name-outside-the-selection loud-stop')
 
    call state_destroy(sta)
    print '(a,i0,a)', '=== check_recorder: ', nfail, ' failure(s) ==='
