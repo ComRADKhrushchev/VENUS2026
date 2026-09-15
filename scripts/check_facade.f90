@@ -1,15 +1,32 @@
 !=====================================================================
-! check_facade.f90 - facade-mechanism criteria program, batches 1-4:
+! check_facade.f90 - facade-mechanism criteria program, batches 1-5:
 !                    the frozen ws holder association (a)-(d) + the
 !                    force_eval fill chain (e)-(g) + the electronic-phase
 !                    dispatch batch (h)-(l) + the reference-container
-!                    batch (m)-(p) (criteria defined FIRST in this
+!                    batch (m)-(p) + the acceptance batch (q)/(r)/(s):
+!                    gradient self-consistency sweep, the LEPS degenerate
+!                    equivalence, and the old-vs-new bit-level force
+!                    comparison (criteria defined FIRST in this
 !                    header; this program executes them)
 ! Compile (from src/; run make FIRST - the aggregated registry module is
 ! a build product; modules in use-order first, -Jbuild keeps the .mod
-! files out of the source tree):
+! files out of the source tree). STEP 1 builds the archived legacy PES
+! chain read-only (criterion (s) links its two evaluation entries into
+! this same executable - one compiler, one link, one double arithmetic;
+! the objects and .mod files land under build/old_xcheck/, the archived
+! tree itself is never written):
+!   gfortran -c -Jbuild/old_xcheck -o build/old_xcheck/venus_params.o ../venus2026/venus_params.f90
+!   gfortran -c -Ibuild/old_xcheck -Jbuild/old_xcheck -o build/old_xcheck/venus_data.o ../venus2026/venus_data.f90
+!   gfortran -c -Jbuild/old_xcheck -o build/old_xcheck/input_parser.o ../venus2026/input_parser.f90
+!   gfortran -c -Jbuild/old_xcheck -o build/old_xcheck/emt_nn_pes.o ../venus2026/src_TEST/emt_nn_pes.f90
+!   gfortran -c -Ibuild/old_xcheck -Jbuild/old_xcheck -o build/old_xcheck/rst_pes.o ../venus2026/src_TEST/rst_pes.f90
+!   gfortran -c -Ibuild/old_xcheck -Jbuild/old_xcheck -o build/old_xcheck/rst_slab_bvk.o ../venus2026/src_TEST/rst_slab_bvk.f90
+!   gfortran -c -Ibuild/old_xcheck -Jbuild/old_xcheck -o build/old_xcheck/test_potentials.o ../venus2026/src_TEST/test_potentials.f90
+!   gfortran -c -Ibuild/old_xcheck -Jbuild/old_xcheck -o build/old_xcheck/interface_TEST.o ../venus2026/src_TEST/interface_TEST.f90
+! STEP 2 compiles the check (same flags as every sibling check - the
+! legacy objects join the link as the final inputs):
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
-!            utils/specio.f90 facade/sysdef_facade.f90 input.f90 &
+!            utils/specio.f90 facade/sysdef_facade.f90 input.f90 utils/rng.f90 &
 !            globals/config_roster.f90 globals/state.f90 facade/elec_ws.f90 &
 !            facade/elec_facade.f90 methods/elec_adiabatic.f90 &
 !            methods/reg_adiabatic.f90 utils/linalg.f90 facade/force_facade.f90 &
@@ -30,7 +47,11 @@
 !            ../systems/reference/reference_box.f90 &
 !            ../systems/reference/reg_reference.f90 &
 !            build/gfortran/registry_gen.f90 ../scripts/check_facade.f90 &
-!            -o build/check_facade.exe
+!            -Ibuild/old_xcheck build/old_xcheck/venus_params.o &
+!            build/old_xcheck/venus_data.o build/old_xcheck/input_parser.o &
+!            build/old_xcheck/emt_nn_pes.o build/old_xcheck/rst_pes.o &
+!            build/old_xcheck/rst_slab_bvk.o build/old_xcheck/test_potentials.o &
+!            build/old_xcheck/interface_TEST.o -o build/check_facade.exe
 ! All artifacts are written under build/ - the source tree stays clean.
 ! Posture: criteria (a)-(d) exercise the holder mechanism itself - the
 !   REAL 'adiabatic' package registers through its reg module
@@ -60,7 +81,13 @@
 !   (e)-(j) (one container per process - the bind face loud-stops on a
 !   second bind), so every different container gets a fresh process; the
 !   (o) children run with cwd = build/ because the container parameter
-!   file is run-directory material.
+!   file is run-directory material. The acceptance batch rides the same
+!   respawn scheme: its (q)/(s) children each bind ONE potential per
+!   fresh process (the single class-A slot), and its (s) children
+!   additionally drive the legacy engine's PES entries in the SAME
+!   process - the bit-level comparison is in-process by design (one
+!   executable, one floating-point arithmetic; a cross-executable
+!   comparison via printed tables could not carry the last bits).
 ! Criteria:
 !   (a) handle identity: two ws_handle() calls yield pointers to the SAME
 !       target (pointer association comparison), and a field written
@@ -197,6 +224,62 @@
 !       computed through BOTH delivered triangles = the scalar leps_vg
 !       gradient (1e-12): the n_surf = 1 diab-vs-scalar degenerate
 !       equivalence, made executable at the module face
+!   (q) gradient self-consistency, the full sweep (children, one
+!       potential per process): EACH of the three reference potentials
+!       x three constructed geometries (an asymmetric point, a
+!       symmetric-degenerate point - the isosceles pair distances equal
+!       BITWISE / the stationary pair at re / the near-origin well point
+!       - and a stretched-or-wide point): the module analytic gradient
+!       vs the CENTRAL DIFFERENCE of the module energy (h = 1e-6,
+!       tolerance 1e-8 relative with floor 1 eV/A, component-wise - the
+!       (n) criterion family extended to harm and to multi-geometry),
+!       then through a real force_eval the facade fold reproducing the
+!       module gradient via the measured conversion (1e-12) at EVERY
+!       geometry, and the e_tot = T + V decomposition with momenta at
+!       the first geometry (1e-12). The harm child rides the CONTAINER
+!       REGISTRY PATH (the registry_gen drag-in with the default
+!       constant well K = 0.04 eV/A^2); the morse / leps children ride
+!       the transparent direct-bind adapters (the (n) posture)
+!   (r) the LEPS degenerate equivalence at n_surf = 1 (facade face, the
+!       fill branches of the bound check container - the (g) pattern
+!       with the real module potential): the scalar channel (g_add /
+!       v_add from leps_vg) vs (i) the one-surface diab twin (the SAME
+!       leps_vg values delivered as 1x1 h_ij / dh_ij constructs - the
+!       degenerate n_surf = 1 delivery) and (ii) the full 2x2 diabatic
+!       delivery (leps_diab H and dh faces, the occupied-row fold
+!       through the facade's eig_sym) - force and e_tot compared
+!       BITWISE (the attempt), falling back to rel 1e-15 with a printed
+!       note; anything beyond 1e-15 is a FAIL with the measured
+!       deviation (the disposition plan: locate the difference source -
+!       arithmetic order / constant precision / formula micro-difference
+!       - never a silent relaxation). The 2x2 leg's anticipated
+!       difference source is the eigensolver's own arithmetic order
+!       (the eigenvector fold re-associates the chain rule); the 1x1
+!       leg rides the n == 1 guard of eig_sym and should hold bitwise
+!   (s) the old-vs-new bit-level force comparison (children, one
+!       potential per process, the legacy PES chain linked read-only):
+!       the SAME Q fed element-wise into the legacy engine's two
+!       evaluation entries - POT0 (returns Vpot = v_ev x 23.0605
+!       [kcal/mol]) and DPESHON (accumulates PDOT = PDOT - g x 23.0605
+!       x 0.04184 [a.u.], the accumulator zeroed before each call) -
+!       and into force_eval (same potential, same parameters: the
+!       module defaults 4.746 eV / 1.401 A / 1.028 1/A / 0.164 for
+!       morse and leps on both sides; for harm the legacy well constant
+!       staged through ITS OWN keyword channel at 0.04 eV/A^2 against
+!       the container's default well), at p = 0 (T = 0 exactly, so
+!       e_tot carries the potential channel alone): assert
+!       max|dF| = max|dE| = 0 BITWISE - same double arithmetic, the
+!       character-identical analytic forms, the same left-to-right
+!       conversion composition (g x 23.0605 x 0.04184). A nonzero
+!       difference FAILS and is then located per the disposition plan
+!       (a port error is fixed in the port; a benign arithmetic-order
+!       difference is recorded with its value and cause and falls back
+!       to 1e-15 with the archive note). The legacy side is driven
+!       through its own call convention - the keyword file staged by
+!       the parent, load_input, POTPRE, then per-geometry POT0 /
+!       DPESHON on the live coordinate array; the geometry set is the
+!       (q) sweep (asymmetric / symmetric-degenerate / stretched-wide
+!       per potential)
 !=====================================================================
 program check_facade
    use consts,        only: e_conv
@@ -210,7 +293,7 @@ program check_facade
    use reg_adiabatic, only: reg_adiabatic_all
    use linalg,        only: eig_sym
    use registry_gen,  only: registry_gen_all, registry_gen_init
-   use reference_pot, only: morse_vg, leps_vg, leps_diab
+   use reference_pot, only: harm_vg, morse_vg, leps_vg, leps_diab
    use reference_box, only: reference_load, reference_k, reference_term_on, &
                             reference_class_on
    implicit none
@@ -261,6 +344,27 @@ program check_facade
                                            ! member ignores it - the criterion needs the channel
                                            ! CARRIED, not consumed)
 
+   ! ---------- acceptance-batch sweep tables ((q)/(r)/(s)) ----------
+   ! harm geometries [A]: asymmetric A / asymmetric B / near-stationary
+   real(8), parameter :: qh_list(6, 3) = reshape([ 0.30d0,-0.21d0, 0.18d0,-0.12d0, 0.24d0,-0.09d0, &
+                                                   -0.16d0, 0.26d0,-0.09d0, 0.31d0,-0.20d0, 0.14d0, &
+                                                    0.03d0,-0.02d0, 0.025d0,-0.015d0, 0.02d0,-0.01d0 ], [6, 3])
+   ! morse geometries [A]: asymmetric / stretched / stationary at re (the pair on z)
+   real(8), parameter :: qm_list(6, 3) = reshape([ 0.0d0, 0.0d0, 0.0d0, 1.32d0, 0.21d0,-0.17d0, &
+                                                   0.0d0, 0.0d0, 0.0d0, 2.31d0,-0.18d0, 0.25d0, &
+                                                   0.0d0, 0.0d0, 0.0d0, 0.0d0, 0.0d0, 1.401d0 ], [6, 3])
+   ! leps geometries [A]: asymmetric / isosceles (r13 = r23 by the SAME expression - the two
+   ! branch distances equal bitwise) / wide near-dissociated (the two sheets closest)
+   real(8), parameter :: ql_list(9, 3) = reshape([ 0.10d0,-0.20d0, 0.15d0, 1.25d0, 0.30d0,-0.10d0, &
+                                                   0.05d0, 1.90d0, 0.40d0, &
+                                                   0.0d0, 0.0d0, 0.0d0, 1.10d0, 0.0d0, 0.0d0, &
+                                                   0.55d0, 0.80d0, 0.0d0, &
+                                                   0.0d0, 0.0d0, 0.0d0, 4.10d0, 0.30d0,-0.20d0, &
+                                                  -1.60d0, 3.90d0, 0.50d0 ], [9, 3])
+   real(8), parameter :: pm2(6) = [ 0.5d0,-0.3d0, 0.4d0,-0.2d0, 0.6d0,-0.1d0 ]  ! 2-atom momenta
+   real(8), parameter :: pm3(9) = [ 0.3d0,-0.2d0, 0.1d0, 0.4d0,-0.3d0, 0.2d0, &
+                                   -0.1d0, 0.5d0,-0.4d0 ]                        ! 3-atom momenta
+
    ! ---------- child dispatch: one loud-stop case per spawn (criteria (k)/(l)) ----------
    ! the child drives the real stop path; if the chain ever RETURNS, the child
    ! prints the bug witness and exits 0 - the parent's exitstat check fails
@@ -297,6 +401,13 @@ program check_facade
          ! (o): the parameter-file child (cwd = build/ - the file the parent
          ! staged there); good posture prints the marker, bad files loud-stop
          call child_obox()
+      else if (mode(1:2) == 'q-') then
+         ! (q): the gradient-sweep child (one potential per process)
+         call child_q(pot_kind(mode(3:)))
+      else if (mode(1:2) == 's-') then
+         ! (s): the old-vs-new bit-comparison child (one potential per process;
+         ! the legacy PES entries driven in the same process)
+         call child_s(pot_kind(mode(3:)))
       end if
       print '(a)', 'child: NO LOUD-STOP (the child chain returned - bug)'
       stop 0
@@ -728,6 +839,11 @@ program check_facade
    call crit_o()      ! (o) box parameter file parsing (children, cwd = build/)
    call crit_p()      ! (p) leps diab full-matrix delivery + symmetry (module face)
 
+   ! ---------- (q)/(r)/(s): the acceptance batch ----------
+   call crit_r()      ! (r) the LEPS degenerate equivalence (facade face, fill branches)
+   call crit_q()      ! (q) gradient self-consistency sweep (children)
+   call crit_s()      ! (s) old-vs-new bit-level force comparison (children)
+
    call ws_reset()                         ! leave the holder in the empty state
    call state_destroy(sa)
 
@@ -750,7 +866,8 @@ contains
       real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (unused - pure PES branches)
       type(ws_t), intent(inout) :: ws  ! the holder (received through the facade's alias)
       real(8) :: u(6)
-      u = q - qe_ctr
+      if (fill_sel <= 3) u = q - qe_ctr      ! the 6-dof branches' offset (the LEPS
+                                             ! branches 4/5/6 ride the module face)
       seen_nwant = 0                    ! the request handshake log: what the container
       seen_want1 = 0                    ! observed in the pre-written request field
       if (allocated(ws%i_want)) then
@@ -781,6 +898,24 @@ contains
          ws%dh_ij(:, 1, 1) = keV*u                         ! same expression as case (1)
          ws%h_ij(1, 1) = 0.5d0*dot_product(keV, u*u)       ! same expression as case (1)
          ws%repr = r_diab                                  ! (v_add stays at its zeroed default)
+      case (4)                          ! LEPS scalar channel (the module face)
+         allocate (ws%g_add(size(q)))
+         call leps_vg(size(q)/3, q, ws%v_add, ws%g_add)
+         ws%repr = r_scalar
+      case (5)                          ! one-surface diab twin of case (4): the SAME
+                                         ! module values delivered as 1x1 constructs (the
+                                         ! degenerate n_surf = 1 diab form - bitwise-clean
+                                         ! twin: identical values, identity fold)
+         allocate (ws%h_ij(1, 1), ws%dh_ij(size(q), 1, 1))
+         call leps_vg(size(q)/3, q, ws%h_ij(1, 1), ws%dh_ij(:, 1, 1))
+         ws%repr = r_diab                                  ! (v_add stays at its zeroed default)
+      case (6)                          ! full 2x2 diabatic delivery (the module face):
+                                         ! the occupied-row fold runs through the facade's
+                                         ! eig_sym - its arithmetic order is the anticipated
+                                         ! deviation source of the (r) 2x2 leg
+         allocate (ws%h_ij(2, 2), ws%dh_ij(size(q), 2, 2))
+         call leps_diab(size(q)/3, q, ws%h_ij, ws%dh_ij)
+         ws%repr = r_diab
       end select
    end subroutine check_pes
 
@@ -1001,6 +1136,126 @@ contains
    end subroutine crit_p
 
    !------------------------------------------------------------------
+   ! (q)/(r)/(s): the acceptance batch (criteria above)
+   !------------------------------------------------------------------
+
+   ! crit_r() - (r): the LEPS degenerate equivalence at n_surf = 1, facade face -
+   !                the bound check container's fill branches 4/5/6 (the (g)
+   !                pattern with the real module potential): the scalar channel
+   !                vs the 1x1 diab twin and the full 2x2 diabatic delivery, at
+   !                the three sweep geometries, with momenta (both legs ride the
+   !                same t_kin - the comparison isolates the potential channel)
+   subroutine crit_r()
+      type(state_t) :: sb9                   ! the 3-atom comparison state
+      real(8) :: fsc(9)                      ! the scalar-channel force reference
+      real(8) :: esc, etw, e22               ! scalar / twin / 2x2 total energies
+      real(8) :: d1, e1, d2, e2              ! accumulated max rel deviations (1x1 / 2x2)
+      logical :: bit1, bit2                  ! the bitwise attempt accumulators
+      integer :: jg, i9
+      deallocate (roster%mass)               ! the LEPS state needs a 3-atom roster (the
+      allocate (roster%mass(3))              ! masses enter t_kin only - identical on both
+      roster%mass = 1.0d0                    ! legs, so the comparison is mass-blind)
+      call state_create(sb9, 3)
+      bit1 = .true.
+      bit2 = .true.
+      d1 = 0.0d0
+      e1 = 0.0d0
+      d2 = 0.0d0
+      e2 = 0.0d0
+      do jg = 1, 3
+         fill_sel = 4                        ! the scalar LEPS channel (leps_vg)
+         sb9%q = ql_list(:, jg)
+         sb9%p = pm3
+         call force_eval(sb9, esc)
+         fsc = sb9%f
+         fill_sel = 5                        ! the 1x1 diab twin: the SAME leps_vg
+         sb9%q = ql_list(:, jg)              ! values as h_ij/dh_ij constructs
+         sb9%p = pm3
+         call force_eval(sb9, etw)
+         bit1 = bit1 .and. all(sb9%f == fsc) .and. etw == esc
+         do i9 = 1, 9
+            d1 = max(d1, abs(sb9%f(i9) - fsc(i9))/max(abs(fsc(i9)), 1.0d0))
+         end do
+         e1 = max(e1, abs(etw - esc)/max(abs(esc), 1.0d0))
+         fill_sel = 6                        ! the full 2x2 diabatic delivery
+         sb9%q = ql_list(:, jg)              ! (leps_diab, folded through eig_sym)
+         sb9%p = pm3
+         call force_eval(sb9, e22)
+         bit2 = bit2 .and. all(sb9%f == fsc) .and. e22 == esc
+         do i9 = 1, 9
+            d2 = max(d2, abs(sb9%f(i9) - fsc(i9))/max(abs(fsc(i9)), 1.0d0))
+         end do
+         e2 = max(e2, abs(e22 - esc)/max(abs(esc), 1.0d0))
+      end do
+      ! verdicts per leg: the bitwise attempt first; a deviation within 1e-15
+      ! passes at the fallback WITH the measured value and the named source
+      ! (the disposition plan - never a silent relaxation); beyond that a FAIL
+      if (bit1) then
+         print '(a)', '(r) degenerate equivalence, 1x1 leg: PASS BITWISE (the SAME'// &
+            ' leps_vg values delivered as 1x1 h_ij/dh_ij constructs = the scalar'// &
+            ' channel: force and e_tot identical bit for bit, all three geometries)'
+      else if (d1 <= 1.0d-15 .and. e1 <= 1.0d-15) then
+         print '(a)', '(r) degenerate equivalence, 1x1 leg: PASS at the 1e-15 fallback'// &
+            ' (bitwise attempt failed - arithmetic-order deviation, max rel dev force '// &
+            trim(d2s(d1))//', e_tot '//trim(d2s(e1))//')'
+      else
+         call fail('(r) degenerate equivalence, 1x1 leg: deviates beyond 1e-15 (max rel'// &
+            ' dev force '//trim(d2s(d1))//', e_tot '//trim(d2s(e1))//') - locate the'// &
+            ' difference source per the disposition plan')
+      end if
+      if (bit2) then
+         print '(a)', '(r) degenerate equivalence, 2x2 leg: PASS BITWISE (the full'// &
+            ' leps_diab delivery folded through eig_sym = the scalar channel: force'// &
+            ' and e_tot identical bit for bit, all three geometries)'
+      else if (d2 <= 1.0d-15 .and. e2 <= 1.0d-15) then
+         print '(a)', '(r) degenerate equivalence, 2x2 leg: PASS at the 1e-15 fallback'// &
+            ' (bitwise attempt failed - the eigensolver arithmetic order re-associates'// &
+            ' the chain-rule fold, the anticipated source; max rel dev force '// &
+            trim(d2s(d2))//', e_tot '//trim(d2s(e2))//')'
+      else
+         call fail('(r) degenerate equivalence, 2x2 leg: deviates beyond 1e-15 (max rel'// &
+            ' dev force '//trim(d2s(d2))//', e_tot '//trim(d2s(e2))//') - locate the'// &
+            ' difference source per the disposition plan')
+      end if
+      call state_destroy(sb9)
+   end subroutine crit_r
+
+   ! crit_q() - (q): the gradient self-consistency sweep, one potential per
+   !                child process (the harm child rides the container registry
+   !                path with the default-constant well; the morse / leps
+   !                children ride the transparent direct-bind adapters)
+   subroutine crit_q()
+      call expect_ok_child('q-harm', 'q-harm: OK', &
+         '(q) harm gradient sweep, container path (analytic vs central difference)')
+      call expect_ok_child('q-morse', 'q-morse: OK', &
+         '(q) morse gradient sweep, direct bind (analytic vs central difference)')
+      call expect_ok_child('q-leps', 'q-leps: OK', &
+         '(q) leps gradient sweep, direct bind (analytic vs central difference)')
+   end subroutine crit_q
+
+   ! crit_s() - (s): the old-vs-new bit-level force comparison, one potential
+   !                per child process; the parent stages the legacy keyword
+   !                files first (the legacy engine's own PES-selection channel;
+   !                the harm well constant rides that channel at 0.04 eV/A^2)
+   subroutine crit_s()
+      character(len=80) :: lharm(3), lmorse(1), lleps(1)
+      lharm = [ character(len=80) :: 'TEST_PES = HARMONIC', &
+                                      'HARM_K = 0.04, 0.04, 0.04', &
+                                      'HARM_X0 = 0.0, 0.0, 0.0' ]
+      lmorse = [ character(len=80) :: 'TEST_PES = MORSE' ]
+      lleps = [ character(len=80) :: 'TEST_PES = LEPS' ]
+      call write_pars('build/old_in_harm.txt', lharm)
+      call write_pars('build/old_in_morse.txt', lmorse)
+      call write_pars('build/old_in_leps.txt', lleps)
+      call expect_ok_child('s-harm', 's-harm: OK', &
+         '(s) old-vs-new bit-level, harm (same Q through both engines)')
+      call expect_ok_child('s-morse', 's-morse: OK', &
+         '(s) old-vs-new bit-level, morse (same Q through both engines)')
+      call expect_ok_child('s-leps', 's-leps: OK', &
+         '(s) old-vs-new bit-level, leps (same Q through both engines)')
+   end subroutine crit_s
+
+   !------------------------------------------------------------------
    ! the batch-4 children (self-respawn modes; each terminates itself)
    !------------------------------------------------------------------
 
@@ -1175,6 +1430,265 @@ contains
          merge('T', 'F', reference_class_on())
       stop 0
    end subroutine child_obox
+
+   !------------------------------------------------------------------
+   ! the acceptance-batch children (self-respawn modes; each terminates
+   ! itself) + their shared new-side assembly helper
+   !------------------------------------------------------------------
+
+   ! bind_new_side(kind) - assemble the new-side force chain for one (q)/(s)
+   !                       child: harm rides the container registry path (the
+   !                       driver's own registration + assembly seam, default
+   !                       well constant); morse / leps ride the transparent
+   !                       direct-bind adapters (the (n) posture)
+   subroutine bind_new_side(kind)
+      integer, intent(in) :: kind            ! 1 = harm, 2 = morse, 3 = leps
+      if (kind == 1) then
+         call registry_gen_all()
+         call registry_gen_init()
+      else
+         if (kind == 2) then
+            call container_bind_pes(morse_wrap)
+         else
+            call container_bind_pes(leps_wrap)
+         end if
+         call reg_adiabatic_all()
+      end if
+      call container_init()
+   end subroutine bind_new_side
+
+   ! child_q(kind) - the (q) child: one reference potential swept over its
+   !                 three constructed geometries - the module analytic
+   !                 gradient vs the CENTRAL DIFFERENCE of the module energy
+   !                 at EVERY geometry (h = 1e-6, tol 1e-8 rel with floor
+   !                 1 eV/A), the facade fold through the measured conversion
+   !                 (1e-12), and the e_tot decomposition with momenta at the
+   !                 first geometry; one evidence line per geometry
+   subroutine child_q(kind)
+      integer, intent(in) :: kind            ! 1 = harm, 2 = morse, 3 = leps
+      real(8), parameter :: hcd = 1.0d-6     ! the central-difference step [A]
+      character(len=8) :: name
+      type(state_t) :: sb
+      real(8) :: qa(9), qh(9), ql(9), ga(9), gh(9), gl(9), gcdv(9)
+      real(8) :: va, vh, vl, cal, ea, eb, tk, dcmax, dfmax
+      integer :: nm, nd, i, j
+      select case (kind)
+      case (1)
+         name = 'q-harm'
+      case (2)
+         name = 'q-morse'
+      case (3)
+         name = 'q-leps'
+      case default
+         print '(a)', 'FAIL child: unknown potential kind '//trim(i2s(kind))
+         stop 1
+      end select
+      call bind_new_side(kind)
+      if (kind == 3) then
+         nm = 3
+      else
+         nm = 2
+      end if
+      nd = 3*nm
+      allocate (roster%mass(nm))
+      roster%mass = 1.0d0
+      call state_create(sb, nm)
+      cal = 0.0d0
+      do j = 1, 3
+         qa = 0.0d0
+         ga = 0.0d0
+         if (kind == 1) then
+            qa(1:6) = qh_list(:, j)
+            call harm_vg(nm, qa, va, ga)
+         else if (kind == 2) then
+            qa(1:6) = qm_list(:, j)
+            call morse_vg(nm, qa, va, ga)
+         else
+            qa(1:9) = ql_list(:, j)
+            call leps_vg(nm, qa, va, ga)
+         end if
+         ! the facade fold at this geometry; the first geometry's call also
+         ! measures the composed conversion (one calibration, reused after)
+         sb%q(1:nd) = qa(1:nd)
+         sb%p = 0.0d0
+         call force_eval(sb, ea)
+         if (j == 1) then
+            cal = -dot_product(sb%f(1:nd), ga(1:nd))/dot_product(ga(1:nd), ga(1:nd))
+            if (cal <= 0.0d0) then
+               print '(a)', 'FAIL '//trim(name)//' child: measured conversion'// &
+                  ' constant non-positive'
+               stop 1
+            end if
+         end if
+         dfmax = 0.0d0
+         do i = 1, nd
+            dfmax = max(dfmax, abs(sb%f(i) + ga(i)*cal)/max(abs(ga(i)*cal), 1.0d0))
+            if (abs(sb%f(i) + ga(i)*cal) > 1.0d-12*max(abs(ga(i)*cal), 1.0d0)) then
+               print '(a)', 'FAIL '//trim(name)//' child: facade-fold force mismatch,'// &
+                  ' geometry '//trim(i2s(j))//', dof '//trim(i2s(i))
+               stop 1
+            end if
+         end do
+         ! the analytic gradient vs the central difference of the module energy
+         dcmax = 0.0d0
+         do i = 1, nd
+            qh = 0.0d0
+            ql = 0.0d0
+            qh(1:nd) = qa(1:nd)
+            ql(1:nd) = qa(1:nd)
+            qh(i) = qa(i) + hcd
+            ql(i) = qa(i) - hcd
+            if (kind == 1) then
+               call harm_vg(nm, qh, vh, gh)
+               call harm_vg(nm, ql, vl, gl)
+            else if (kind == 2) then
+               call morse_vg(nm, qh, vh, gh)
+               call morse_vg(nm, ql, vl, gl)
+            else
+               call leps_vg(nm, qh, vh, gh)
+               call leps_vg(nm, ql, vl, gl)
+            end if
+            gcdv(i) = (vh - vl)/(2.0d0*hcd)
+            dcmax = max(dcmax, abs(ga(i) - gcdv(i))/max(abs(ga(i)), 1.0d0))
+            if (abs(ga(i) - gcdv(i)) > 1.0d-8*max(abs(ga(i)), 1.0d0)) then
+               print '(a)', 'FAIL '//trim(name)//' child: analytic gradient vs central'// &
+                  ' difference, geometry '//trim(i2s(j))//', dof '//trim(i2s(i))//' ('// &
+                  trim(d2s(ga(i)))//' vs '//trim(d2s(gcdv(i)))//')'
+               stop 1
+            end if
+         end do
+         print '(a,i0,a,es10.3,a,es10.3)', trim(name)//' geom ', j, &
+            ': CD max rel dev ', dcmax, ', fold max rel dev ', dfmax
+         ! the e_tot decomposition with momenta, first geometry only
+         if (j == 1) then
+            if (nd == 6) then
+               sb%p(1:6) = pm2
+            else
+               sb%p(1:9) = pm3
+            end if
+            call force_eval(sb, eb)
+            tk = 0.0d0
+            do i = 1, nm
+               tk = tk + dot_product(sb%p(3*i - 2:3*i), sb%p(3*i - 2:3*i))/(2.0d0*roster%mass(i))
+            end do
+            tk = tk/e_conv
+            if (abs(eb - (tk + va*cal/e_conv)) > 1.0d-12*max(abs(eb), 1.0d0)) then
+               print '(a)', 'FAIL '//trim(name)//' child: e_tot decomposition mismatch: '// &
+                  trim(d2s(eb))
+               stop 1
+            end if
+         end if
+      end do
+      print '(a)', trim(name)//': OK'
+      stop 0
+   end subroutine child_q
+
+   ! child_s(kind) - the (s) child: the SAME Q element-wise into the legacy
+   !                 engine's two evaluation entries (driven in THIS process -
+   !                 one executable, one double arithmetic; the bit level needs
+   !                 it) and into force_eval (same potential, same parameters),
+   !                 at p = 0 (T = 0 exactly, e_tot carries V alone): assert
+   !                 max|dF| = max|dE| = 0 bitwise, the 1e-15 fallback with the
+   !                 printed value and cause for a benign arithmetic-order
+   !                 difference, a FAIL beyond that (the disposition plan)
+   subroutine child_s(kind)
+      use input_parser, only: load_input
+      use venus_data, only: natoms, Q, PDOT, NSURF, NGLO
+      integer, intent(in) :: kind            ! 1 = harm, 2 = morse, 3 = leps
+      character(len=8) :: name
+      character(len=24) :: oldfile
+      type(state_t) :: sb
+      real(8) :: qarr(1)                     ! the legacy dummy (it evaluates on Q)
+      real(8) :: vpot, en, df, de
+      integer :: nm, nd, j
+      logical :: bitw
+      select case (kind)
+      case (1)
+         name = 's-harm'
+         oldfile = 'build/old_in_harm.txt'
+      case (2)
+         name = 's-morse'
+         oldfile = 'build/old_in_morse.txt'
+      case (3)
+         name = 's-leps'
+         oldfile = 'build/old_in_leps.txt'
+      case default
+         print '(a)', 'FAIL child: unknown potential kind '//trim(i2s(kind))
+         stop 1
+      end select
+      ! the legacy side first, through its own call convention: the keyword
+      ! file the parent staged, load_input, POTPRE (the PES selection), then
+      ! the live-array posture the entries evaluate on
+      call load_input(trim(oldfile))
+      call potpre()
+      NSURF = 0
+      NGLO = 0
+      if (kind == 3) then
+         nm = 3
+      else
+         nm = 2
+      end if
+      nd = 3*nm
+      natoms = nm
+      allocate (Q(nd), PDOT(nd))
+      ! the new side: the same assembly posture as the (q) child
+      call bind_new_side(kind)
+      allocate (roster%mass(nm))
+      roster%mass = 1.0d0
+      call state_create(sb, nm)
+      do j = 1, 3
+         if (kind == 1) then
+            sb%q(1:6) = qh_list(:, j)
+         else if (kind == 2) then
+            sb%q(1:6) = qm_list(:, j)
+         else
+            sb%q(1:9) = ql_list(:, j)
+         end if
+         sb%p = 0.0d0                        ! T = 0 exactly: e_tot carries V alone
+         call force_eval(sb, en)
+         Q(1:nd) = sb%q(1:nd)                ! the same Q, element-wise
+         call POT0(nd, vpot, qarr)           ! Vpot = v_ev x 23.0605 [kcal/mol]
+         PDOT = 0.0d0                        ! the accumulator zeroed: PDOT = -g x 23.0605 x C1
+         call DPESHON(nd, qarr)
+         bitw = all(sb%f(1:nd) == PDOT(1:nd)) .and. en == vpot
+         df = maxval(abs(sb%f(1:nd) - PDOT(1:nd)))
+         de = abs(en - vpot)
+         print '(a,i0,a,l2,a,es12.4,a,es12.4)', trim(name)//' geom ', j, ': bitwise = ', bitw, &
+            ', max|dF| = ', df, ', max|dE| = ', de
+         if (.not. bitw) then
+            if (all(abs(sb%f(1:nd) - PDOT(1:nd)) <= 1.0d-15*max(1.0d0, abs(PDOT(1:nd)))) .and. &
+                de <= 1.0d-15*max(1.0d0, abs(vpot))) then
+               print '(a)', trim(name)//' note: geometry '//trim(i2s(j))//' - bitwise'// &
+                  ' attempt failed, deviation within 1e-15 (arithmetic-order difference,'// &
+                  ' value above, cause recorded - the disposition plan applied)'
+            else
+               print '(a)', 'FAIL '//trim(name)//' child: geometry '//trim(i2s(j))// &
+                  ' deviates beyond 1e-15 (max|dF| = '//trim(d2s(df))//', max|dE| = '// &
+                  trim(d2s(de))//') - locate the difference source (port error vs'// &
+                  ' arithmetic order) per the disposition plan'
+               stop 1
+            end if
+         end if
+      end do
+      print '(a)', trim(name)//': OK'
+      stop 0
+   end subroutine child_s
+
+   ! pot_kind(name) - the (q)/(s) child's potential selector from the mode tail
+   function pot_kind(name)
+      character(len=*), intent(in) :: name
+      integer :: pot_kind
+      select case (trim(name))
+      case ('harm')
+         pot_kind = 1
+      case ('morse')
+         pot_kind = 2
+      case ('leps')
+         pot_kind = 3
+      case default
+         pot_kind = 0
+      end select
+   end function pot_kind
 
    ! the transparent (n) adapters: the module potentials (v, g signature)
    ! delivered through the class-A container face (q, mass, ws) - the module
