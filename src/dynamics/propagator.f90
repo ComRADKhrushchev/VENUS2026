@@ -43,10 +43,14 @@
 !   continuous-propagation assumption, matching the driver's trajectory loop (one propagator
 !   instance advances one trajectory; the staging is rebuilt on every boot). FIRST-STEP BOOT,
 !   registered semantics: with no usable history - nothing staged yet, a size change of the
-!   state, or a fresh trajectory (sta%t = 0) - the step runs the full velocity-Verlet sequence
-!   and stages its left-end force as the next step's history; from the second step on, genuine
-!   Beeman differencing. A velocity-Verlet step (order=1) CLEARS the staging: mode switches
-!   never inherit a history they did not build.
+!   state, a fresh trajectory (sta%t = 0), or a STEP-SIZE change (the equal-spacing AM
+!   quadrature must not consume an f_prev staged at another spacing - thermalize's dt
+!   swap) - the step runs the full velocity-Verlet sequence and stages its left-end
+!   force as the next step's history; from the second step on, genuine Beeman
+!   differencing. A velocity-Verlet step (order=1) CLEARS the staging: mode switches
+!   never inherit a history they did not build. The rule is symmetric across the family:
+!   the verlet/symple entries clear the radau staging (rad_forget) as the radau entry
+!   clears the Beeman staging - no member resumes a carry another member desynchronized.
 !
 !   CORRECTOR FORM (registered design decision): the velocity corrector is the two-step
 !   Adams-Moulton quadrature p += dt(5F(t+dt) + 8F(t) - F(t-dt))/12; positions ride the
@@ -131,6 +135,13 @@
 !   (mirroring the Beeman rule): no staging yet, a size change of the state, or a
 !   fresh trajectory (sta%t = 0) - the staging starts at zero, the length seeds from
 !   dt (clamped), the first sequence iterates SIX times (later sequences two).
+!   ENTRY RE-FOLD (the p-seam guard): the working velocity rad_v is re-folded from
+!   sta%p at every entry, after the boot check - an external write to sta%p between
+!   sequences (a facade phase's momentum projection, thermalize's Maxwell seed) must
+!   survive the close-out write-back (sta%p = rad_v*m would otherwise restore the
+!   stale workspace velocity); with no external write the round-trip is an ulp-level
+!   identity. A verlet/symple step between radau calls drops the whole carry
+!   (rad_forget, the mirrored hygiene rule of the Beeman note).
 !   RESTART TEST (first sequence only): after the trial, the adaptive length is
 !   computed from the error estimate; if it does not exceed the trial (tp/tt <= 1)
 !   the sequence is DISCARDED and retried at 0.8*tp - the trial's converged B is
@@ -223,6 +234,9 @@ module propagator
    real(8), allocatable :: f_prev(:)          ! F(t-dt) of the upcoming Beeman step [internal
                                               ! force units] (sta%f units)
    logical :: f_prev_ok = .false.             ! history usable [flag]
+   real(8) :: dt_staged = 0.0d0               ! step size the staged f_prev is spaced at [10 fs]
+                                              ! (a dt change re-boots: the AM corrector assumes
+                                              ! equal spacing)
 
    ! symple composition cache (see the header note): the coefficient table a(0:2N) +
    ! the stage count N + the order key the table was loaded for (reload on change)
@@ -310,6 +324,9 @@ contains
       e = 0.0d0                             ! force_eval fills it; the integrator does not consume it
       dt = prop_cfg%dt
 
+      call rad_forget()                     ! hygiene: this member builds no radau carry (the
+                                           ! radau-entry rule for the Beeman history, mirrored)
+
       select case (prop_cfg%order)
       case (1)                              ! velocity Verlet
          call beeman_forget()               ! mode-switch hygiene: VV steps carry no history
@@ -326,6 +343,7 @@ contains
             allocate (f_prev(size(sta%f)))
             f_prev = sta%f
             f_prev_ok = .true.
+            dt_staged = dt                  ! the history is spaced at THIS step's dt
             call vv_advance(sta, dt)
             sta%t = sta%t + dt
          else
@@ -372,6 +390,7 @@ contains
 
       call beeman_forget()                  ! hygiene: this member builds no force history
                                            ! (the header-note rule, applied symmetrically)
+      call rad_forget()                     ! and no radau carry (the same rule, mirrored)
       if (sym_order_cached /= prop_cfg%order) call symple_load(prop_cfg%order)
 
       do i = 0, sym_n - 1                   ! alternating loop: kick a(2i), drift a(2i+1)
@@ -431,6 +450,10 @@ contains
       if (.not. rad_const_ok) call radau_load()
       if (radau_boot_needed(sta)) call radau_boot(sta)
       nq = size(sta%q)
+      do k = 1, nq                          ! re-fold the working velocity from sta%p (the
+         rad_v(k) = sta%p(k)/roster%mass((k + 2)/3)   ! p-seam guard of the header note): an
+      end do                                ! external write between sequences must survive the
+                                            ! close-out write-back; otherwise an ulp identity
       ni = 6                                ! first sequence iterates six times,
       if (rad_seq_ok) ni = 2                ! later sequences twice (the B-carry)
 
@@ -657,6 +680,7 @@ contains
    subroutine beeman_forget()
       if (allocated(f_prev)) deallocate (f_prev)
       f_prev_ok = .false.
+      dt_staged = 0.0d0                     ! the flag, the array, and its spacing move together
    end subroutine beeman_forget
 
    ! beeman_boot_needed(sta) - the registered boot condition: no usable history
@@ -670,7 +694,10 @@ contains
       type(state_t), intent(in) :: sta
       beeman_boot_needed = .true.
       if (f_prev_ok) then
-         beeman_boot_needed = (size(f_prev) /= size(sta%q) .or. sta%t == 0.0d0)
+         ! the dt key: the staged history is spaced at dt_staged - the equal-spacing AM
+         ! quadrature would silently degrade on a dt swap (thermalize's dt_eq run)
+         beeman_boot_needed = (size(f_prev) /= size(sta%q) .or. sta%t == 0.0d0 &
+                               .or. prop_cfg%dt /= dt_staged)
       end if
    end function beeman_boot_needed
 
@@ -829,6 +856,17 @@ contains
          if (size(rad_bb, 2) == size(sta%q) .and. sta%t /= 0.0d0) radau_boot_needed = .false.
       end if
    end function radau_boot_needed
+
+   ! rad_forget() - clear the radau cross-sequence staging (member-switch hygiene): the
+   ! entries of the other two members drop the B-carry - the radau entry's beeman_forget
+   ! rule, mirrored (a switch 3 -> 1/2 -> 3 at t /= 0 must boot afresh, not resume a
+   ! stale carry). Deallocating rad_bb drives radau_boot_needed back to true; the carry
+   ! counters reset with it (beeman_forget's flag-and-value pattern)
+   subroutine rad_forget()
+      if (allocated(rad_bb)) deallocate (rad_bb, rad_ee, rad_bd, rad_f1, rad_v)
+      rad_seq_ok = .false.
+      rad_ns = 0
+   end subroutine rad_forget
 
    ! rad_clamp(tp, dir) - apply the dt_min/dt_max MAGNITUDE bounds to one sequence
    ! length (either sign; <=0 bound = unclamped). Applied to every adaptive assignment,

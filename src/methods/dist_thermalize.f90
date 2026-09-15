@@ -21,10 +21,11 @@
 !   the bounded run through the propagator - an internal
 !   evolution-service call is legal, boundary 4); assembling the run
 !   around it (which other members participate, trajectory accounting)
-!   is driver business. Under the current no-op force chain the run is
-!   a zero-force trajectory: the owned momenta keep their seeded and
-!   drift-corrected values - the lawful posture of the mechanism-level
-!   noted here; the real dynamics are posterior.
+!   is driver business. Since the Ruling H minimal path the force chain
+!   is real: the run propagates the owned components under the assembled
+!   force law - the zero-force trajectories of the criteria are a
+!   property of the check-side container binding (free flight), not of
+!   the chain; the trajectory numbers are posterior to the force chain.
 ! Contract:
 !   thermalize_init(p) - validate the member parameters (target
 !     temperature, step count, step size), bind the served fragment
@@ -227,8 +228,9 @@ contains
       ! (3) the bounded equilibration run at the member step size, through
       !     the evolution service (boundary 4): the global step and the
       !     trajectory time are swapped for the run and RESTORED after it
-      !     (under the no-op force chain this is a zero-force trajectory -
-      !     the lawful mechanism-level posture, see the header)
+      !     (the force chain is real since the Ruling H minimal path - the
+      !     criteria's zero-force trajectories come from their check-side
+      !     container binding, see the header)
       t_saved = sta%t
       dt_saved = prop_cfg%dt
       prop_cfg%dt = dt_eq_c
