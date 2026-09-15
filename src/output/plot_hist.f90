@@ -287,7 +287,9 @@ contains
    ! cell_fold(q, lattice, r) - fold one drop point into the reference cell:
    !              fractional lattice coordinates truncated to the enclosing
    !              cell, returning the Cartesian offset of q within it
-   !              (relative to the cell origin at q_ref)
+   !              (relative to the cell origin at q_ref; the folded remainder
+   !              lies in [0,1] - an exactly integer non-positive coordinate
+   !              folds to the upper boundary 1.0 under the -1 adjustment)
    subroutine cell_fold(q, lattice, r)
       real(8), intent(in) :: q(2)                ! the drop point [A]
       type(lat_t), intent(in) :: lattice         ! lattice constants
