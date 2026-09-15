@@ -16,6 +16,7 @@
 !            methods/dist_normalmode.f90 methods/dist_barrier_excitation.f90 &
 !            methods/dist_thermostat.f90 methods/dist_glo_target.f90 &
 !            methods/dist_thermalize.f90 methods/elec_adiabatic.f90 &
+!            methods/seam_cast.f90 &
 !            methods/reg_adiabatic.f90 methods/reg_prop.f90 &
 !            methods/reg_dist_boltzmann.f90 methods/reg_dist_ebk.f90 &
 !            methods/reg_dist_incident.f90 methods/reg_dist_j.f90 &
@@ -65,6 +66,25 @@
 !       1.0e-4 of ~70 kcal/mol ~ 7e-3 kcal/mol; the criterion fixes
 !       5.0e-2 kcal/mol (~7x that bound). The measured max prints in the PASS
 !       line
+!   (r) RADAU END-TO-END (the coverage gap this criterion closes: the
+!       adaptive member's guards and cross-sequence carry had unit-level
+!       coverage only, never through the real four-phase loop): the (a)
+!       case material with INTEGRATOR=RADAU, ORDER=8 (ss = 1e-8) ->
+!       exit 0, the two summary blocks, 2 trajectories x 41 frames
+!       (safety-net-only, the (c) posture), and every frame's e_tot
+!       within the radau tolerance of its trajectory's first frame -
+!       the boot rule fires per trajectory (the fresh-state reset), the
+!       B-carry crosses sequences, and the close-out state guard runs
+!       on every trial, all on the real force chain. Tolerance
+!       derivation (the (b) precedent's shape): RA15 controls the
+!       per-sequence error at ss; the unit-level long-run anchor (Morse
+!       well, order 8, hundreds of sequences) measures max|E-E0| ~ 1e-9
+!       kcal/mol with its window fixed at 1e-7; this run is 40
+!       sequences per trajectory on the smoother harmonic chain, so the
+!       criterion fixes 1.0e-6 kcal/mol - 10x the unit window, ~4
+!       decades tighter than the fixed-step tolerance 5e-2 (adaptive
+!       control, not step-size luck). The measured max prints in the
+!       PASS line
 !   (c) FRAME STRUCTURE: frame headers carry traj/step/t with traj strictly
 !       1..N, step strictly 1..M+1 in file order, t strictly increasing within
 !       each trajectory; the column line's order is t_kin, v_pot, e_tot (the
@@ -101,7 +121,10 @@
 !       container_term occurrence (the phase-4 entry is a function assignment,
 !       not a call statement), and require the collected multiset to equal
 !       exactly {prop_step, elec_prop, mqc_statistic, rec_frame,
-!       container_term} - nothing else inside the integration loop
+!       container_term} - nothing else inside the integration loop.
+!       LIMIT: the scan stops at the FIRST 'end do' - a nested do inside
+!       the integration loop would truncate the collected set (the
+!       current loop body is unnested; the limit is declared here)
 !   (h) assembly-order error loud-stop (child): a bad SYSTEM_DIR (the folder
 !       does not exist) -> nonzero exit, stderr names sysdef_load - the
 !       existing input/sysdef channel penetrates; the driver adds NO judgment
@@ -189,6 +212,7 @@ program check_driver
    ! ---------- criteria ----------
    call crit_a()      ! (a) end-to-end through + the two summary blocks
    call crit_b()      ! (b) end-to-end energy conservation
+   call crit_r()      ! (r) radau end to end (completion + adaptive conservation)
    call crit_c()      ! (c) frame structure (safety-net-only run)
    call crit_g()      ! (g) the sampling chain really ran
    call crit_d()      ! (d) MAX_STEPS safety net
@@ -298,6 +322,59 @@ contains
            ' trajectories; max deviation from the first frame '//d2s(maxval(dev_max(1:cur)))// &
            ' kcal/mol (tolerance '//d2s(tol)//', the stated VV bound ~7e-3)'
    end subroutine crit_b
+
+   !------------------------------------------------------------------
+   ! crit_r() - (r): the radau end-to-end run - completion + conservation
+   !             inside the stated adaptive tolerance (derivation: header (r))
+   subroutine crit_r()
+      character(len=2048) :: obuf, ebuf
+      character(len=256) :: want
+      integer :: stat, ntraj, nfr, last_s
+      real(8) :: last_t
+      real(8), parameter :: tol = 1.0d-6   ! kcal/mol - the stated RA15 bound (header (r))
+      integer, parameter :: max_traj = 8
+      real(8) :: e_first(max_traj), dev_max(max_traj)
+      integer :: ntr(max_traj), cur
+      call run_driver('drv_case_r', obuf, ebuf, stat)
+      if (stat /= 0) then
+         call fail('(r): the radau driver child exited nonzero - stderr: '//trim(ebuf))
+         return
+      end if
+      want = 'assembly complete: trajectories=2 atoms=4 fragments=2 paradigm=0'// &
+             ' members=11 init=ok columns=3'
+      if (index(obuf, trim(want)) == 0) then
+         call fail('(r): stdout missing the assembly line "'//trim(want)//'" - got "'// &
+                  trim(obuf)//'"')
+         return
+      end if
+      if (index(obuf, 'statistics: trajectories=2 valid=2') == 0 .or. &
+          index(obuf, 'conservation drift: trajectories=2') == 0) then
+         call fail('(r): stdout missing the statistics block - got "'//trim(obuf)//'"')
+         return
+      end if
+      call traj_summary('build/drv_case_r/trajectories.txt', ntraj, nfr, last_s, last_t)
+      if (ntraj /= 2 .or. nfr /= 41) then
+         call fail('(r): expected 2 trajectories x 41 frames (MAX_STEPS+1, the'// &
+                  ' safety-net-only posture), got '//i2s(ntraj)//' x last-count '//i2s(nfr))
+         return
+      end if
+      call scan_columns('build/drv_case_r/trajectories.txt', max_traj, ntr, e_first, &
+                        dev_max, cur)
+      if (cur < 2 .or. any(ntr(1:cur) == 0)) then
+         call fail('(r): no frames parsed from the radau trajectories.txt')
+         return
+      end if
+      if (any(dev_max(1:cur) > tol)) then
+         call fail('(r): radau energy drift exceeds the stated tolerance '//d2s(tol)// &
+                  ' kcal/mol - per-trajectory max: '//trim(dev_str(dev_max, cur)))
+         return
+      end if
+      print '(a)', '(r): PASS - the adaptive member ran the real four-phase loop'// &
+           ' end to end (boot per trajectory, B-carry across sequences, state guard'// &
+           ' on every trial); max e_tot deviation '//d2s(maxval(dev_max(1:cur)))// &
+           ' kcal/mol (tolerance '//d2s(tol)//', the stated RA15 bound; the'// &
+           ' fixed-step tolerance 5e-2 for contrast)'
+   end subroutine crit_r
 
    !------------------------------------------------------------------
    ! crit_c() - (c): frame header monotonicity, column order, frames =
@@ -767,6 +844,7 @@ contains
       character(len=80) :: xyza(4), xyzb(4), xyz1(4)
       character(len=80) :: la(14), lb(6), ld(9), ldp(9), lec(10)
       character(len=80) :: lm(9), lt(13), lpars(3)
+      character(len=80) :: lr(15)
       logical :: have_g, have_i
       character(len=64) :: srcexe, srcw
       integer :: j
@@ -809,6 +887,15 @@ contains
       lm = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 1.0', 'B_MAX = 2.0', &
              'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = ROTATION', 'N_TRAJ = 1', &
              'MAX_STEPS = 5', 'ISEED = 20260915' ]
+      ! (r): the radau end-to-end case - the (a) material under the adaptive
+      ! member (ORDER=8 -> ss = 1e-8, the unit-level anchor's accuracy;
+      ! MAX_STEPS=40 keeps the safety-net-only posture, 2 trajectories keep
+      ! the run light at ~44 force calls per boot sequence)
+      lr = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 1.0', 'B_MAX = 2.0', &
+             'R_SEP = 8.0', 'DT = 0.05', 'INTEGRATOR = RADAU', 'ORDER = 8', &
+             'DIST_SCHEME = THERMALIZE,ROTATION', 'T_EQ = 300.0', 'N_EQ = 25', &
+             'DT_EQ = 0.05', 'J_ROT = 3', 'N_TRAJ = 2', 'MAX_STEPS = 40', &
+             'ISEED = 20260915' ]
       ! (e)/(f): the term+classify bound case - a high collision energy so the
       ! amplitude climb crosses Q_TERM mid-run; MAX_STEPS=400 is the safety net
       lt = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 200.0', 'B_MAX = 2.0', &
@@ -824,16 +911,20 @@ contains
       call wipe_dir('build/drv_case_b')
       call wipe_dir('build/drv_case_d')
       call wipe_dir('build/drv_case_m')
+      call wipe_dir('build/drv_case_r')
       call wipe_dir('build/drv_case_t')
       call make_dir('build/drv_case_a/system')
       call make_dir('build/drv_case_b')
       call make_dir('build/drv_case_d/system')
       call make_dir('build/drv_case_m/system')
+      call make_dir('build/drv_case_r/system')
       call make_dir('build/drv_case_t/system')
       call write_sample('build/drv_case_a/system/pair_a.xyz', xyza)
       call write_sample('build/drv_case_a/system/pair_b.xyz', xyzb)
       call write_sample('build/drv_case_d/system/h2.xyz', xyz1)
       call write_sample('build/drv_case_m/system/h2.xyz', xyz1)
+      call write_sample('build/drv_case_r/system/pair_a.xyz', xyza)
+      call write_sample('build/drv_case_r/system/pair_b.xyz', xyzb)
       call write_sample('build/drv_case_t/system/pair_a.xyz', xyza)
       call write_sample('build/drv_case_t/system/pair_b.xyz', xyzb)
       ! the container parameter file is RUN material (cwd of the driver child),
@@ -846,6 +937,7 @@ contains
       call write_sample('build/drv_case_d/input_qct.txt', ld)
       call write_sample('build/drv_case_d/input_dpos.txt', ldp)
       call write_sample('build/drv_case_m/input_qct.txt', lm)
+      call write_sample('build/drv_case_r/input_qct.txt', lr)
       call write_sample('build/drv_case_t/input_qct.txt', lt)
       ! the driver exe: probe BOTH compiler trees, name the failure when neither
       ! exists (a silent copy failure is not diagnosable)

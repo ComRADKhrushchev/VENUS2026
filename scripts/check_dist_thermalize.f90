@@ -11,7 +11,8 @@
 !            utils/rng.f90 facade/elec_ws.f90 facade/elec_facade.f90 &
 !            facade/force_facade.f90 dynamics/propagator.f90 &
 !            methods/reg_prop.f90 facade/sampler.f90 &
-!            methods/dist_thermalize.f90 methods/reg_dist_thermalize.f90 &
+!            methods/dist_thermalize.f90 methods/seam_cast.f90 &
+!            methods/reg_dist_thermalize.f90 &
 !            ../scripts/check_dist_thermalize.f90 -o build/check_dist_thermalize.exe
 ! All artifacts are written under build/ - the source tree stays clean.
 ! Synthetic-parameter statute: the member is driven by directly constructed

@@ -27,7 +27,8 @@
 module reg_dist_glo_target
    use sampler,         only: samp_reg, samp_code
    use config,          only: reactants
-   use input,           only: staging_n_rows, staging_key, staging_val
+   use input,           only: staging_n_rows, staging_key, staging_val, staging_line
+   use seam_cast,       only: seam_real
    use dist_glo_target, only: glo_target_sample, glo_target_params_t, glo_target_init
    implicit none
    private
@@ -52,9 +53,9 @@ contains
       do i = 1, staging_n_rows()
          sval = staging_val(i)
          select case (trim(staging_key(i)))
-         case ('T_GLO');     read (sval, *) p%t_glo
-         case ('GAMMA_GLO'); read (sval, *) p%gamma_glo
-         case ('W_GHOST');   read (sval, *) p%w_ghost
+         case ('T_GLO');     call seam_real(staging_key(i), sval, staging_line(i), p%t_glo)
+         case ('GAMMA_GLO'); call seam_real(staging_key(i), sval, staging_line(i), p%gamma_glo)
+         case ('W_GHOST');   call seam_real(staging_key(i), sval, staging_line(i), p%w_ghost)
          end select
       end do
       call glo_target_init(p)

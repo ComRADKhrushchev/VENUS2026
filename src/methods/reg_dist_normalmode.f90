@@ -31,7 +31,8 @@
 module reg_dist_normalmode
    use sampler,         only: samp_reg, samp_code
    use config,          only: reactants
-   use input,           only: staging_n_rows, staging_key, staging_val
+   use input,           only: staging_n_rows, staging_key, staging_val, staging_line
+   use seam_cast,       only: seam_real
    use dist_normalmode, only: normalmode_sample, normalmode_params_t, normalmode_init
    implicit none
    private
@@ -56,7 +57,7 @@ contains
       do i = 1, staging_n_rows()
          sval = staging_val(i)
          select case (trim(staging_key(i)))
-         case ('E_VIB'); read (sval, *) p%e_vib
+         case ('E_VIB'); call seam_real(staging_key(i), sval, staging_line(i), p%e_vib)
          end select
       end do
       call normalmode_init(p)

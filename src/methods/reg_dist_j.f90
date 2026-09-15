@@ -26,7 +26,8 @@
 module reg_dist_j
    use sampler, only: samp_reg, samp_code
    use config,  only: reactants
-   use input,   only: staging_n_rows, staging_key, staging_val
+   use input,   only: staging_n_rows, staging_key, staging_val, staging_line
+   use seam_cast, only: seam_real
    use dist_j,  only: j_sample, j_params_t, j_init
    implicit none
    private
@@ -51,7 +52,7 @@ contains
       do i = 1, staging_n_rows()
          sval = staging_val(i)
          select case (trim(staging_key(i)))
-         case ('T_ROT'); read (sval, *) p%t_rot
+         case ('T_ROT'); call seam_real(staging_key(i), sval, staging_line(i), p%t_rot)
          end select
       end do
       call j_init(p)

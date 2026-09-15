@@ -8,7 +8,7 @@
 !            utils/specio.f90 facade/sysdef_facade.f90 input.f90 &
 !            globals/config_roster.f90 globals/state.f90 &
 !            utils/rng.f90 facade/sampler.f90 methods/dist_glo_target.f90 &
-!            methods/reg_dist_glo_target.f90 &
+!            methods/seam_cast.f90 methods/reg_dist_glo_target.f90 &
 !            ../scripts/check_dist_glo_target.f90 -o build/check_dist_glo_target.exe
 ! All artifacts are written under build/ - the source tree stays clean.
 ! Synthetic-parameter statute: the member is driven by directly constructed

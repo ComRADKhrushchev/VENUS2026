@@ -27,7 +27,8 @@
 module reg_dist_rotation
    use sampler,       only: samp_reg, samp_code
    use config,        only: reactants
-   use input,         only: staging_n_rows, staging_key, staging_val
+   use input,         only: staging_n_rows, staging_key, staging_val, staging_line
+   use seam_cast,     only: seam_int
    use dist_rotation, only: rotation_sample, rotation_params_t, rotation_init
    implicit none
    private
@@ -52,7 +53,7 @@ contains
       do i = 1, staging_n_rows()
          sval = staging_val(i)
          select case (trim(staging_key(i)))
-         case ('J_ROT'); read (sval, *) p%j_rot
+         case ('J_ROT'); call seam_int(staging_key(i), sval, staging_line(i), p%j_rot)
          end select
       end do
       call rotation_init(p)

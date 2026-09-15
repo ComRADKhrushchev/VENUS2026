@@ -28,7 +28,8 @@
 module reg_dist_thermalize
    use sampler,         only: samp_reg, samp_code
    use config,          only: reactants
-   use input,           only: staging_n_rows, staging_key, staging_val
+   use input,           only: staging_n_rows, staging_key, staging_val, staging_line
+   use seam_cast,       only: seam_real, seam_int
    use dist_thermalize, only: thermalize_sample, thermalize_params_t, thermalize_init
    implicit none
    private
@@ -53,9 +54,9 @@ contains
       do i = 1, staging_n_rows()
          sval = staging_val(i)
          select case (trim(staging_key(i)))
-         case ('T_EQ');  read (sval, *) p%t_eq
-         case ('N_EQ');  read (sval, *) p%n_eq
-         case ('DT_EQ'); read (sval, *) p%dt_eq
+         case ('T_EQ');  call seam_real(staging_key(i), sval, staging_line(i), p%t_eq)
+         case ('N_EQ');  call seam_int(staging_key(i), sval, staging_line(i), p%n_eq)
+         case ('DT_EQ'); call seam_real(staging_key(i), sval, staging_line(i), p%dt_eq)
          end select
       end do
       call thermalize_init(p)

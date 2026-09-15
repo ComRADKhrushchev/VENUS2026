@@ -28,7 +28,8 @@
 module reg_dist_thermostat
    use sampler,        only: samp_reg, samp_code
    use config,         only: reactants
-   use input,          only: staging_n_rows, staging_key, staging_val
+   use input,          only: staging_n_rows, staging_key, staging_val, staging_line
+   use seam_cast,      only: seam_real
    use dist_thermostat, only: thermostat_sample, thermostat_params_t, thermostat_init
    implicit none
    private
@@ -53,8 +54,8 @@ contains
       do i = 1, staging_n_rows()
          sval = staging_val(i)
          select case (trim(staging_key(i)))
-         case ('T_BATH');  read (sval, *) p%t_bath
-         case ('NU_COLL'); read (sval, *) p%nu_coll
+         case ('T_BATH');  call seam_real(staging_key(i), sval, staging_line(i), p%t_bath)
+         case ('NU_COLL'); call seam_real(staging_key(i), sval, staging_line(i), p%nu_coll)
          end select
       end do
       call thermostat_init(p)

@@ -30,7 +30,8 @@ module reg_dist_incident
    use sampler,        only: samp_reg
    use config,         only: reactants
    use config_roster,  only: roster
-   use input,          only: staging_n_rows, staging_key, staging_val
+   use input,          only: staging_n_rows, staging_key, staging_val, staging_line
+   use seam_cast,      only: seam_real, seam_int
    use dist_incident,  only: inc_sample, inc_params_t, inc_init
    implicit none
    private
@@ -57,15 +58,15 @@ contains
       do i = 1, staging_n_rows()
          sval = staging_val(i)
          select case (trim(staging_key(i)))
-         case ('N_E_REL');   read (sval, *) p%n_e_rel
-         case ('T_TRANS');   read (sval, *) p%t_trans
-         case ('V_WIDTH');   read (sval, *) p%v_width
-         case ('N_THTA');    read (sval, *) p%n_thta
-         case ('THTA_MAX');  read (sval, *) p%thta_max
-         case ('N_CHI');     read (sval, *) p%n_chi
-         case ('CHI');       read (sval, *) p%chi
-         case ('N_B');       read (sval, *) p%n_b
-         case ('N_AIM');     read (sval, *) p%n_aim
+         case ('N_E_REL');   call seam_int(staging_key(i), sval, staging_line(i), p%n_e_rel)
+         case ('T_TRANS');   call seam_real(staging_key(i), sval, staging_line(i), p%t_trans)
+         case ('V_WIDTH');   call seam_real(staging_key(i), sval, staging_line(i), p%v_width)
+         case ('N_THTA');    call seam_int(staging_key(i), sval, staging_line(i), p%n_thta)
+         case ('THTA_MAX');  call seam_real(staging_key(i), sval, staging_line(i), p%thta_max)
+         case ('N_CHI');     call seam_int(staging_key(i), sval, staging_line(i), p%n_chi)
+         case ('CHI');       call seam_real(staging_key(i), sval, staging_line(i), p%chi)
+         case ('N_B');       call seam_int(staging_key(i), sval, staging_line(i), p%n_b)
+         case ('N_AIM');     call seam_int(staging_key(i), sval, staging_line(i), p%n_aim)
          end select
       end do
       call inc_init(p)

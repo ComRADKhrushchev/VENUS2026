@@ -119,6 +119,7 @@ program venus
    integer :: n_valid       ! valid-trajectory count [count] (a final row archived)
    integer :: k             ! scratch index [-]
    integer :: row_outc      ! outcome-table row scratch [-]
+   integer :: ios           ! open-status scratch [-] (the recording-unit go-live check below)
    real(8), allocatable :: e0_traj(:)     ! per-trajectory reference energy [kcal/mol] (the
                                           ! head force_eval output - the drift reference)
    real(8), allocatable :: e_fin_traj(:)  ! per-trajectory final e_tot [kcal/mol] (the
@@ -198,12 +199,21 @@ program venus
    dt_eff = prop_cfg%dt                            !     staged once (the fixed-step source -
                                                    !     see the local's note)
    call cpu_time(t_cpu(1))                         !     timing start
-   open (newunit=u_out, file='trajectories.txt', status='replace', action='write')
+   open (newunit=u_out, file='trajectories.txt', status='replace', action='write', iostat=ios)
                                                    !     the recording unit goes live on the
                                                    !     registered output file (cwd-relative,
                                                    !     the semantic name stated in the module
                                                    !     header; frames, flattened sections and
-                                                   !     final-state rows all land here)
+                                                   !     final-state rows all land here); the
+                                                   !     iostat channel keeps an unwritable run
+                                                   !     directory a NAMED loud-stop, never a
+                                                   !     bare runtime open error
+   if (ios /= 0) then
+      write (0, '(a,i0,a)') 'driver: the registered output file trajectories.txt cannot be'// &
+         ' opened for writing in the run directory (iostat ', ios, ')'
+      write (0, '(a)') 'driver: loud-stop (the recording unit cannot go live - no run)'
+      stop 1
+   end if
    write (*, '(a,i0,a,i0,a,i0,a,i0,a,i0,a,i0)') &
       'assembly complete: trajectories=', n_traj, ' atoms=', size(roster%mass), &
       ' fragments=', size(roster%frag), ' paradigm=', reactants%surface_model, &
@@ -243,7 +253,11 @@ program venus
          term_flag = container_term(sta)
       end do
       sta_fin(traj_i) = sta             ! loop tail: the final-state snapshot hand-off
-      n_valid = n_valid + 1
+      n_valid = n_valid + 1             ! placeholder semantics: no validity judgment
+                                        ! exists yet (the statistics-phase gate is a
+                                        ! later landing) - every archived trajectory
+                                        ! counts, so valid unconditionally equals
+                                        ! n_traj until that gate arrives
       call rec_final(sta, u_out)        ! the final-state row (the recorder advances its
                                         ! own trajectory counter here)
       e_fin_traj(traj_i) = rec_fin_val('e_tot')

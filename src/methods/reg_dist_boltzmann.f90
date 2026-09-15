@@ -30,7 +30,8 @@
 module reg_dist_boltzmann
    use sampler,        only: samp_reg, samp_code
    use config,         only: reactants
-   use input,          only: staging_n_rows, staging_key, staging_val
+   use input,          only: staging_n_rows, staging_key, staging_val, staging_line
+   use seam_cast,      only: seam_real
    use dist_boltzmann, only: boltz_sample, boltz_params_t, boltz_init
    implicit none
    private
@@ -55,8 +56,8 @@ contains
       do i = 1, staging_n_rows()
          sval = staging_val(i)
          select case (trim(staging_key(i)))
-         case ('T_VIB_A'); read (sval, *) p%t_vib_a
-         case ('T_VIB_B'); read (sval, *) p%t_vib_b
+         case ('T_VIB_A'); call seam_real(staging_key(i), sval, staging_line(i), p%t_vib_a)
+         case ('T_VIB_B'); call seam_real(staging_key(i), sval, staging_line(i), p%t_vib_b)
          end select
       end do
       call boltz_init(p)

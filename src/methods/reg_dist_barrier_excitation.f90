@@ -32,7 +32,8 @@
 module reg_dist_barrier_excitation
    use sampler,                only: samp_reg, samp_code
    use config,                 only: reactants
-   use input,                  only: staging_n_rows, staging_key, staging_val
+   use input,                  only: staging_n_rows, staging_key, staging_val, staging_line
+   use seam_cast,              only: seam_real, seam_int
    use dist_barrier_excitation, only: barrier_excitation_sample, &
                                       barrier_excitation_params_t, barrier_excitation_init
    implicit none
@@ -58,10 +59,10 @@ contains
       do i = 1, staging_n_rows()
          sval = staging_val(i)
          select case (trim(staging_key(i)))
-         case ('E_STAB');  read (sval, *) p%e_stab
-         case ('N_E_BAR'); read (sval, *) p%n_e_bar
-         case ('E_BAR');   read (sval, *) p%e_bar
-         case ('T_BAR');   read (sval, *) p%t_bar
+         case ('E_STAB');  call seam_real(staging_key(i), sval, staging_line(i), p%e_stab)
+         case ('N_E_BAR'); call seam_int(staging_key(i), sval, staging_line(i), p%n_e_bar)
+         case ('E_BAR');   call seam_real(staging_key(i), sval, staging_line(i), p%e_bar)
+         case ('T_BAR');   call seam_real(staging_key(i), sval, staging_line(i), p%t_bar)
          end select
       end do
       call barrier_excitation_init(p)
