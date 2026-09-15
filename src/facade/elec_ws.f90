@@ -77,7 +77,10 @@ module elec_ws
                                   ! class-A signature and is conveyed through this field)
       ! -- scalar-mode container --
       real(8), allocatable :: g_add(:)  ! force kernel -dV/dq [eV/Å] (an equivalent force kernel for stochastic laws)
-      real(8)              :: v_add     ! energy contribution [eV]
+      real(8)              :: v_add = 0.0d0  ! energy contribution [eV] (default-initialized:
+                                             ! a diab container that delivers only the
+                                             ! construct channel leaves it at zero by
+                                             ! construction, not by luck)
       ! -- diab-mode container --
       real(8), allocatable :: h_ij(:,:)   ! diabatic Hamiltonian matrix [eV] (symmetric of order n_surf;
                                           ! the member delivers the full matrix; symmetry is the member's own affair)

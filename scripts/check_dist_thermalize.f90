@@ -9,7 +9,7 @@
 !            utils/specio.f90 facade/sysdef_facade.f90 input.f90 &
 !            globals/config_roster.f90 globals/state.f90 &
 !            utils/rng.f90 facade/elec_ws.f90 facade/elec_facade.f90 &
-!            facade/force_facade.f90 dynamics/propagator.f90 &
+!            utils/linalg.f90 facade/force_facade.f90 dynamics/propagator.f90 &
 !            methods/reg_prop.f90 facade/sampler.f90 &
 !            methods/dist_thermalize.f90 methods/seam_cast.f90 &
 !            methods/reg_dist_thermalize.f90 &

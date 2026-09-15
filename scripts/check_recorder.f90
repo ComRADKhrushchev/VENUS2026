@@ -6,7 +6,7 @@
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 facade/sysdef_facade.f90 input.f90 globals/state.f90 &
 !            facade/elec_ws.f90 facade/elec_facade.f90 globals/config_roster.f90 &
-!            facade/force_facade.f90 &
+!            utils/linalg.f90 facade/force_facade.f90 &
 !            output/recorder.f90 ../scripts/check_recorder.f90 -o build/check_recorder.exe
 ! Sample output files are written under build/ and read back line-by-line - the
 ! source tree stays clean.

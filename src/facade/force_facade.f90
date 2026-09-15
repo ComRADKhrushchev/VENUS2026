@@ -136,7 +136,8 @@ module force_facade
    use config,        only: electronic
    use config_roster, only: roster
    use elec_ws,       only: ws_t, r_scalar, r_diab, r_adiab, r_empty
-   use elec_facade,   only: ws_get, ws_reset, method_bind, occ_get, method_h_form
+   use elec_facade,   only: ws_handle, ws_reset, method_bind, occ_get, method_h_form
+   use linalg,        only: eig_sym
    implicit none
    private
    public :: force_eval, container_bind_pes, container_init
@@ -329,19 +330,24 @@ contains
       type(state_t), intent(inout) :: sta  ! physical state (q/p/s read in; f written out - the composed force)
       real(8), intent(out) :: e_tot        ! total energy H = T(P)+V [kcal/mol] (N1 convention;
                                            ! multi-surface mode V = current surface / law-member convention, see 4')
-      ! Workspace (E10 axioms B/C as amended by E14): NOT a local variable of this routine anymore -
-      ! the elec_facade-held instance, obtained through ws_get (the fill site), composed into here,
-      ! and left in place for elec_prop / mqc_statistic (one-integration-step lifetime; still
-      ! invisible outside the box - never an argument of any public signature, zero footprint in
-      ! the force_eval signature). The degenerate hand-out realized today is a snapshot copy -
-      ! the exact holder-association mechanism belongs to the interface-phase member-signature
-      ! freeze; the scalar branch below consumes the composed values immediately, so the
-      ! contract is complete for the single-surface scope realized now
-      type(ws_t) :: w                      ! the workspace snapshot (see the note above)
+      ! Workspace (E10 axioms B/C as amended by E14; holder association frozen as the
+      ! pointer-handle form): the elec_facade-held instance, aliased through the pointer
+      ! function ws_handle - the ONE sanctioned alias (an ordinary dummy would detach
+      ! the fill from the holder by copy semantics). The fill site composes the step's
+      ! representation constructs INTO THE HOLDER: the request field is pre-written
+      ! through the alias, the container call receives the holder through the signature
+      ! dummy, and the constructs stay in place for elec_prop / mqc_statistic of the
+      ! same integration step (one-step lifetime; still invisible outside the box -
+      ! never an argument of any public signature, zero footprint in the force_eval
+      ! signature)
+      type(ws_t), pointer :: w             ! the holder alias (ws_handle)
       integer, allocatable :: occ_req(:)   ! the delivery request - the held occupation set
-      integer :: k
+      integer :: k, r, i, j, n
       real(8) :: g(size(sta%q))            ! folded force kernel [eV/A]
       real(8) :: v_sum, v_pot, t_kin       ! energy channels [eV / kcal/mol]
+      real(8), allocatable :: hh(:,:), hev(:)  ! the diagonalization pair: the H copy
+                                              ! (destroyed by eig_sym - it returns the
+                                              ! eigenvectors BY COLUMN) + the eigenvalues
       ! 1. Zero the force-kernel accumulators; ws_reset() (the head reset - every
       !    evaluation begins from the empty container; with elec_facade's step-end reset
       !    the two sites together make the one-step lifetime robust to skipped phases);
@@ -357,21 +363,101 @@ contains
                       'yet run - an evolution-phase entry called before assembly)')
       end if
       ! 3. ONE call into the container (E17: the member sum - main PES + additive
-      !    stochastic laws - executes INSIDE it): the request field i_want(:) = occ_get()
-      !    (the delivery request, E16: generalized from the scalar i_surf; length 1 = the
-      !    single-active-surface degenerate form; the occupation set stays out of the
-      !    class-A signature and is conveyed through the request field, E10)
+      !    stochastic laws - executes INSIDE it), THROUGH THE HOLDER ALIAS: the request
+      !    field i_want(:) = occ_get() (the delivery request, E16: generalized from the
+      !    scalar i_surf; length 1 = the single-active-surface degenerate form; the
+      !    occupation set stays out of the class-A signature and is conveyed through
+      !    the request field, E10) is pre-written into the holder, and the container
+      !    receives the holder itself, filling it per its own declared mode
       call occ_get(occ_req)
-      call ws_get(w)                     ! the fill-site hand-out (snapshot form - the
-                                         ! deferral note at w's declaration above)
-      if (allocated(w%i_want)) deallocate (w%i_want)
+      w => ws_handle()
       allocate (w%i_want(size(occ_req)))
       w%i_want = occ_req
       call container_pes(sta%q, roster%mass, w)   ! the container fills ws per its own mode
-      ! 4. Fold the scalar channel: g(:) = ws%g_add, v_sum = ws%v_add (the container
-      !    already summed - the facade folds ONCE; no member loop remains here)
-      g = w%g_add
-      v_sum = w%v_add
+      ! 4. Fold the delivered channel, branching on the container's SELF-DECLARED fill
+      !    mode ws%repr (representation is data, E10; the assembly-time h_form match of
+      !    container_init moved the mode mismatch earlier - the runtime tag remains the
+      !    authority): every not-delivered or not-yet-consumed mode is a NAMED loud-stop,
+      !    never an undefined read
+      select case (w%repr)
+      case (r_scalar)
+         ! scalar channel: g(:) = ws%g_add, v_sum = ws%v_add (the container already
+         ! summed - the facade folds ONCE; no member loop remains here)
+         if (.not. allocated(w%g_add)) then
+            call stop_ff('force_eval', 'scalar-mode delivery carries no g_add kernel '// &
+                         '(repr = r_scalar but the array was not delivered - a container-contract violation)')
+         end if
+         if (size(w%g_add) /= size(sta%q)) then
+            call stop_ff('force_eval', 'scalar-mode g_add is not of ndof length '// &
+                         '(a container-contract violation, formal shape check)')
+         end if
+         g = w%g_add
+         v_sum = w%v_add
+      case (r_diab)
+         ! 4'. Multi-surface diabatic branch: diagonalize the delivered H_ij on the
+         !     spot (the adiabatic view: eigenvalues = per-surface V, eigenvectors =
+         !     the representation transform U) and fold the OCCUPATION ROWS of dh_ij:
+         !     d(lambda_k)/dq = sum over ordered pairs (i,j) of U(i,k) U(j,k)
+         !     (dH/dq)_ij - the occupied eigenvalue's gradient (a symmetric dh_ij
+         !     delivery counts every off-diagonal twice, the correct 2 U_i U_j d_ij;
+         !     eigenvector sign ambiguity cancels in the U U products). The
+         !     diagonalization is system-independent generic physics and lawfully
+         !     stays in the facade; the dh_ij.U product for the hop probability is
+         !     fetched by the electronic phases themselves (the facade does not
+         !     pre-build it). v_pot convention: the current-occupation surfaces (the
+         !     population-weighted variant is the class-B member's own convention,
+         !     fixed by the consumer). The additive scalar kernel folds ON TOP of
+         !     the construct-channel kernel (electronic-state-independent members
+         !     feed the nuclear-force channel only) and its energy in as usual
+         if (.not. allocated(w%h_ij) .or. .not. allocated(w%dh_ij)) then
+            call stop_ff('force_eval', 'diab-mode delivery carries no h_ij/dh_ij '// &
+                         'constructs (repr = r_diab but the arrays were not delivered - a container-contract violation)')
+         end if
+         n = size(w%h_ij, 1)
+         if (size(w%h_ij, 2) /= n .or. size(w%dh_ij, 1) /= size(sta%q) .or. &
+             size(w%dh_ij, 2) /= n .or. size(w%dh_ij, 3) /= n) then
+            call stop_ff('force_eval', 'diab-mode construct shapes disagree (h_ij not '// &
+                         'square or dh_ij not ndof x n_surf^2 - formal shape checks)')
+         end if
+         do r = 1, size(occ_req)
+            if (occ_req(r) < 1 .or. occ_req(r) > n) then
+               call stop_ff('force_eval', 'the held occupation set names a surface '// &
+                            'outside the delivered H (formal index check)')
+            end if
+         end do
+         allocate (hh(n, n), hev(n))
+         hh = w%h_ij          ! a COPY: eig_sym destroys its matrix argument, and the
+                              ! delivered constructs must SURVIVE in the holder for
+                              ! the electronic phases of this step
+         call eig_sym(hh, hev)      ! hev = per-surface V ascending; hh = eigenvectors by column
+         do r = 1, size(occ_req)
+            k = occ_req(r)
+            v_sum = v_sum + hev(k)
+            do j = 1, n
+               do i = 1, n
+                  g = g + hh(i, k)*hh(j, k)*w%dh_ij(:, i, j)
+               end do
+            end do
+         end do
+         if (allocated(w%g_add)) then         ! the additive kernel is OPTIONAL in
+            if (size(w%g_add) /= size(sta%q)) then    ! multi-surface mode (a pure-
+               call stop_ff('force_eval', 'the additive g_add is not of ndof length '// &
+                            '(a container-contract violation, formal shape check)')
+            end if
+            g = g + w%g_add                    ! construct container leaves it absent)
+         end if
+         v_sum = v_sum + w%v_add
+         deallocate (hh, hev)
+      case (r_adiab)
+         ! the adiabatic construct channel (v_surf/g_surf/d_ij) is not consumed by
+         ! this entry yet - the adiabatic aggregate fold is unrealized; a named stop,
+         ! never an undefined read of the scalar channel
+         call stop_ff('force_eval', 'the adiabatic construct channel (v_surf/g_surf/d_ij) '// &
+                      'is not consumed by this entry (the adiabatic aggregate fold is unrealized)')
+      case default
+         call stop_ff('force_eval', 'the container left the workspace empty (repr still '// &
+                      'r_empty after the call - no delivery)')
+      end select
       ! 5. Unit-contract fulfillment point (unique in the whole library): after
       !    pre-zeroing sta%f, element-wise sta%f(i) = sta%f(i) - g(i)*ev_kcal*e_conv
       !    (the one eV->internal conversion; how g is composed in multi-surface mode: 4')
@@ -390,35 +476,6 @@ contains
       end do
       t_kin = t_kin/e_conv
       e_tot = t_kin + v_pot
-      ! ————————————————————————————————————————————————
-      ! 4'. Multi-surface branch (the container's declared mode = diab/adiab - a
-      !     composition swap of steps 4-7). NOT REALIZED YET - kept as the roadmap:
-      !    a. Force-kernel composition: r_diab -> diagonalize ws%h_ij via utils/linalg to
-      !       compute the adiabatic view on the spot (eigenvalues = per-surface V,
-      !       eigenvectors = representation transform U); the current-occupation adiabatic
-      !       force kernel takes the transformed current rows; the dh_ij.U product needed
-      !       for the hop probability g_ij(dt) is fetched by the electronic phases
-      !       themselves (the facade does not pre-build it; the diagonalization itself is
-      !       system-independent generic physics and lawfully stays in the facade).
-      !       Delivery of U: an adiab-view cache field in ws, written by the facade and
-      !       read-only to the electronic phases (one-step lifetime, axiom C intact), or
-      !       a re-diagonalization inside the consuming member - to be fixed with the
-      !       first real consumers (noting the double O(n_surf^3) cost of the latter).
-      !       r_adiab -> g(:) = fold of the occupation-set rows ws%g_surf(:, occ) (the
-      !       current-occupation force kernel, E14; length 1 = the degenerate single-row
-      !       form; after a hop mqc_statistic updates the held occ (E16), recomputing
-      !       with new rows belongs to the next evaluation). In BOTH modes the additive
-      !       scalar kernel g_add folds on top of the construct-channel kernel -
-      !       stochastic laws / constraint potentials are electronic-state-independent,
-      !       they feed only the nuclear-force channel
-      !    b. v_pot convention: adiab -> v_surf(occ)*ev_kcal (the current-occupation
-      !       surfaces); diab -> population-weighted or current-surface (class-B
-      !       law-member convention, fixed by the consumer); the additive scalar v_add
-      !       folds in as usual; e_tot = t_kin + v_pot
-      !    c. radau note: fixed-step only on multi-surface paths (E13: enforced inside
-      !       the class-B member - not by a facade table) - adaptive substeps have no
-      !       well-defined "one step" dt semantics; this path only ever sees fixed steps
-      !       (same source as the propagator header note)
    end subroutine force_eval
 
    !------------------------------------------------------------------

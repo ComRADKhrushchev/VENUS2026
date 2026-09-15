@@ -39,6 +39,13 @@ contains
                  sina, sina2, g, pp, ppbs, ppbr, dia, u, r1, r2, r12, dif, a2
       n = size(d)
       if (n == 0) return
+      if (n == 1) then
+         ! the trivial eigenpair: a 1x1 matrix is its own eigen-decomposition (the
+         ! general path below reads a(n,n-1)/beta(n-1) - out of range at n = 1)
+         d(1) = a(1,1)
+         a(1,1) = 1.0d0
+         return
+      end if
       allocate (wk(n), betasq(n), gam(n), beta(n), pk(n), qk(n), eig(n), vec(n,n), &
                 iposv(n), ivpos(n), iord(n))
       rhosq = rho*rho

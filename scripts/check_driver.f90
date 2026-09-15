@@ -9,8 +9,8 @@
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 facade/sysdef_facade.f90 input.f90 utils/rng.f90 &
 !            globals/state.f90 globals/config_roster.f90 facade/elec_ws.f90 &
-!            facade/elec_facade.f90 facade/force_facade.f90 facade/sampler.f90 &
-!            utils/linalg.f90 utils/geometry.f90 dynamics/propagator.f90 &
+!            facade/elec_facade.f90 utils/linalg.f90 facade/force_facade.f90 &
+!            facade/sampler.f90 utils/geometry.f90 dynamics/propagator.f90 &
 !            methods/dist_boltzmann.f90 methods/dist_ebk.f90 methods/dist_incident.f90 &
 !            methods/dist_j.f90 methods/dist_rotation.f90 methods/dist_surface_oscillator.f90 &
 !            methods/dist_normalmode.f90 methods/dist_barrier_excitation.f90 &

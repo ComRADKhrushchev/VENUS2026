@@ -7,7 +7,7 @@
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 facade/sysdef_facade.f90 input.f90 globals/config_roster.f90 &
 !            globals/state.f90 facade/elec_ws.f90 facade/elec_facade.f90 &
-!            facade/force_facade.f90 dynamics/propagator.f90 methods/reg_prop.f90 &
+!            utils/linalg.f90 facade/force_facade.f90 dynamics/propagator.f90 methods/reg_prop.f90 &
 !            ../scripts/check_propagator.f90 -o build/check_propagator.exe
 ! Posture: the force chain is assembled CHECK-SIDE - a local analytic test container is
 !   bound through container_bind_pes (a degenerate no-op method row registered through
