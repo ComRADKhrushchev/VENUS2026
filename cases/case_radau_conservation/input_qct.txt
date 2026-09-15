@@ -1,0 +1,21 @@
+# case_radau_conservation —— 谐振容器自适应守恒基准（RADAU）
+# 与 case_harmonic_scatter 同体系同容器同种子，只差积分器（INTEGRATOR/ORDER）
+# 预期锚见 README.md 第 3 节（判据先行：先写后跑）
+SYSTEM_DIR = system
+TITLE = radau conservation baseline - H2 pair in reference well, RA15 order 8
+E_REL = 200.0
+B_MAX = 2.0
+R_SEP = 8.0
+DT = 0.05
+INTEGRATOR = RADAU
+ORDER = 8
+DIST_SCHEME = THERMALIZE,ROTATION
+T_EQ = 300.0
+N_EQ = 25
+DT_EQ = 0.05
+J_ROT = 3
+N_B = 1
+N_TRAJ = 8
+MAX_STEPS = 400
+ISEED = 20260915
+GWRITE_LEVEL = 2

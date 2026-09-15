@@ -1,0 +1,8 @@
+# case_harmonic_scatter 运行 stdout 记录（2026-09-15，gfortran 树 src/build/gfortran/venus.e，cwd=case 目录）
+# timing 行随机型而异，非确定性锚对象（锚：trajectories.txt 双跑逐位一致）
+assembly complete: trajectories=8 atoms=4 fragments=2 paradigm=0 members=11 init=ok columns=3
+statistics: trajectories=8 valid=8
+outcome counts: scattering=8
+conservation drift: trajectories=8 max|e_fin-e0|=  1.2648E-03 kcal/mol
+histograms: rows=8 files=hist_e_rel.dat hist_thta.dat
+timing: cpu=    0.11 s

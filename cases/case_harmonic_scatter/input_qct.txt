@@ -1,0 +1,20 @@
+# case_harmonic_scatter —— 谐振容器双片段散射基准（verlet）
+# 体系：两 H2 型片段（system/ 下 frag_a=弹丸、frag_b=靶，按名序即片段 1/2）
+# 容器：reference 谐振井（reference_pars.txt：K_HARM/Q_TERM/E_SPLIT）
+# 预期锚见 README.md 第 3 节（判据先行：先写后跑）
+SYSTEM_DIR = system
+TITLE = harmonic scatter baseline - H2 pair in reference well, verlet
+E_REL = 200.0
+B_MAX = 2.0
+R_SEP = 8.0
+DT = 0.05
+DIST_SCHEME = THERMALIZE,ROTATION
+T_EQ = 300.0
+N_EQ = 25
+DT_EQ = 0.05
+J_ROT = 3
+N_B = 1
+N_TRAJ = 8
+MAX_STEPS = 400
+ISEED = 20260915
+GWRITE_LEVEL = 2

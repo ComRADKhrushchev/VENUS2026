@@ -9,6 +9,10 @@ venus_test.e
 fort.*
 stdout*
 
+# 新树 case 运行产物（V：trajectories/直方图全文件不入库，README/results.txt 载摘录）
+cases/*/trajectories*.txt
+cases/*/hist_*.dat
+
 # SDD 草稿区
 .superpowers/
 
