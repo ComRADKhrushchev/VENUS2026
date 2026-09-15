@@ -16,7 +16,7 @@ module config_roster
    use sysdef_facade, only: staging_loaded, staging_frag_count, staging_frag_nat, &
                             staging_atom_symbols, staging_atom_masses, staging_atom_geometry, &
                             staging_cell_present, staging_unit_cell
-   use input, only: staging_n_rows, staging_key, staging_val
+   use input, only: staging_n_rows, staging_key, staging_val, staging_line
    implicit none
    private
    public :: roster_t, frag_t, roster, roster_load, roster_clear
@@ -288,12 +288,24 @@ contains
    ! count-check precedent; the input layer holds no system knowledge, E12).
    ! Molecular paradigm: neither key may appear. Surface paradigm: both required,
    ! staged values pulled into the roster - the single write site of the window
-   ! scalars (the S2-shaped one-way transfer: input stages, the roster pulls)
+   ! scalars (the S2-shaped one-way transfer: input stages, the roster pulls).
+   ! The staged-value pulls are NAMED interceptions (the seam_cast precedent shape:
+   ! key + source line + the quoted raw string on an unreadable value, loud-stop)
+   ! - never a bare runtime read error dying mid-assembly. Criteria ruling: the
+   ! failure arms are UNTRIGGERABLE through the public face - the staging fills
+   ! only from read_input, whose kind_posreal domain check parses the very same
+   ! string with the very same list-directed read ahead of the pull, so an
+   ! unreadable value loud-stops in read_input first (read-only accessors, no
+   ! other fill route - the same untriggerable-guard statute as the pre-access
+   ! bounds guard in roster_load step 2); guarded anyway per the fail-safe stance
+   ! for future staging/fill routes, and registered HERE in lieu of a
+   ! child-process criterion
    subroutine window_reconcile()
-      integer :: k
+      integer :: k, ios
       real(8) :: v
       character(len=512) :: sval    ! staging-value buffer (an internal read needs a
                                     ! variable, not an accessor call, as its unit)
+      character(len=640) :: msg     ! loud-stop message buffer (key + line + quoted value)
       if (reactants%surface_model == 0) then
          if (user_row('A_LAT') > 0) then
             call stop_assembly('key A_LAT is a surface-paradigm key, but this system derived '// &
@@ -314,7 +326,12 @@ contains
                             'supply it in the input')
       end if
       sval = staging_val(k)
-      read (sval, *) v
+      read (sval, *, iostat=ios) v
+      if (ios /= 0) then
+         write (msg, '(a,i0,a,a,a)') 'key A_LAT (line ', staging_line(k), &
+            '): bad real value "', trim(sval), '"'
+         call stop_assembly(trim(msg))
+      end if
       roster%a_lat = v
       k = user_row('BOXPAD')
       if (k == 0) then
@@ -323,7 +340,12 @@ contains
                             'A_LAT; supply it in the input')
       end if
       sval = staging_val(k)
-      read (sval, *) v
+      read (sval, *, iostat=ios) v
+      if (ios /= 0) then
+         write (msg, '(a,i0,a,a,a)') 'key BOXPAD (line ', staging_line(k), &
+            '): bad real value "', trim(sval), '"'
+         call stop_assembly(trim(msg))
+      end if
       roster%box_pad = v
    end subroutine window_reconcile
 
