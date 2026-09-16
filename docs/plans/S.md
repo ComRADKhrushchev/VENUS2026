@@ -68,66 +68,64 @@ S2 审计审 E27 后树、S3 文档批书写新契约、停放项表 P-6 的 wra
 
 ### S1 案例体系收口(总案 §8 S1)
 
-- [ ] S1.1 五 case 全量终跑核验(gfortran 树):stdout 证据行与入库 results.txt 逐字节一致
-  (timing 行除外),退出码 0、stderr 空;b_layer/chain_freq 两统计 case 若时长不可承受,
-  依 V.5 抽验模式各补一 case,其余以各自 V 相双跑判据在案作记录性收口(执行时如实标注覆盖方式)。
-- [ ] S1.2 判据与容差记录完备性清点:每 case README/results.txt 载明判据、锚与容差;
-  能力面→证据对照表(V 移交)逐行有载体、无空行。
+- [x] S1.1 五 case 全量终跑核验(2026-09-16,E27 后二次执行):三直跑 case 证据行与入库
+  results.txt 逐字节一致(harmonic/radau 原生一致;surface 存档为 LF 归一化,剥 CR 后一致);
+  b_layer 三子跑一致 + probe_glo 14 PASS;chain_freq 两腿探针空白归一口径一致(存档手工折行),
+  退出码全 0、stderr 空(chain_freq 的 STOP 0 为设计路径)。**覆盖方式:全量,未用降级路径。**
+- [x] S1.2 判据与容差记录完备性:五 case README §3 预期锚/§4 对照齐全(判据先行在案);
+  能力面→证据对照表八行全有载体。
 
-### S2 新程序完成度复审(总案 §8 S7;= T7)
+### S2 新程序完成度复审(总案 §8 S2;= T7)
 
-- [ ] S2.1 例程清单:src/ 全树(含 systems/)模块与例程逐个登记(脚本辅助 + 人工过)。
-- [ ] S2.2 三问复审:每例程过 spec 三问(只处理 Q/P/s/F 吗 / 按契约请求服务吗 /
-  内含体系分支或常数吗),结论入新审计 docs/completeness_audit_src.{md,json}
-  (旧 docs/completeness_audit.{md,json} 保留为历史参考,新件头注声明取代关系)。
-- [ ] S2.3 不变式三问抽查:driver / force_facade / recorder / sampler 各抽一例程深审
-  (原案的 predicate 抽查位按 E18 撤销,以 force_facade 容器终止槽位替补)。
+- [x] S2.1/S2.2 全树 50 文件 234 例程三问复审完成 → **docs/completeness_audit_src.{md,json}**
+  (零红项;三问 (c) 机械 grep 全树零命中;登记注记七条各有在案登记)。
+- [x] S2.3 不变式深审抽查四处(driver/force_facade/recorder/sampler)——审计报告 §3。
 
 ### S3 文档收尾(总案 §8 S3)
 
-- [ ] S3.1 新树指导文件:src/CLAUDE.md(构建/运行/判据程序约定,承接旧树 CLAUDE.md 的角色;
-  根 AGENTS.md 已有的内容引用不复制)。
-- [ ] S3.2 src/EXTENDING.md:扩展点按现实落地写——pes_* 体系成员(systems/)、dist_* 成员
-  (methods/ + 薄 reg_*)、终止原语(pred_reg_prim 两轨)、结果分类行、积分器注册(reg_prop 闭族);
-  各附"新增一件 = 新文件 + 薄 reg、零触碰现有文件"的 drag-in 演练步骤。
-- [ ] S3.3 src/README.md 收尾态更新(状态行 + 与 EXTENDING/CLAUDE 的衔接)。
-- [ ] S3.4 design_spec_completeness.md §4.2 回填:接口 A/B′ 现行正式签名(force_eval /
-  elec_prop / mqc_statistic + container_term;samp_reg/dist_proc_i)按落地形态书写;
-  退化点良定检查记录(adiabatic 全 no-op 退化成员 / 表面范式单片段跳过);双实现验证记录
-  按现实载体(A 轴三参考势位级 + 双编译器位级;B′ 轴五 case + probe 驱动覆盖的成员面;
-  配置面气相/表面双范式;电子轴 adiabatic 退化)。
-- [ ] S3.5 optimal_structure.md 状态行 → "implemented (new program)";根 README.md layout 更新
-  (src/ 新程序 + venus2026/ 只读参考;移除过时的迁移注记)。
-- [ ] S3.6 提交文档批(含根 AGENTS.md)。
+- [ ] S3.1 新树指导文件:src/CLAUDE.md。
+- [ ] S3.2 src/EXTENDING.md(扩展点按 E27 后契约)。
+- [ ] S3.3 src/README.md 收尾态更新(Build 区仍为 P0 骨架文案,需按 K3 现实重写)。
+- [ ] S3.4 design_spec_completeness.md §4.2 回填(E27 后契约)。
+- [ ] S3.5 optimal_structure.md 状态行 + 根 README.md layout 更新。
+- [ ] S3.6 提交文档批。
 
 ### S4 外部对账(总案 §8 S4)
 
-- [ ] S4.1 Notion "VENUS-TDHF 泛化" 任务勾选态同步——外部系统,无程序内通道;
-  本件登记为**用户侧条目**,S 收口时提醒执行。
+- [ ] S4.1 Notion "VENUS-TDHF 泛化" 任务勾选态同步——**用户侧条目**,S 收口提醒。
 
-### T1-T7 结构判据逐项核验(总案 §1;证据入本件验收区)
+### T1-T7 结构判据逐项核验(证据入本件验收区)
 
-- [ ] T1 文件结构:对照 src/README.md 现行层表逐文件在场(总案 §1 表的字面名按 E12/E14/E18/E19
-  漂移注记:predicate 併入容器槽、analysis/ 并入 output/、L3 成员分居 methods/+systems/)。
-- [ ] T2 零触碰扩展演练:复制一份参考势成员为变体(如 pes_leps 变体)拖入,make 全绿,
-  git diff 证明除新增文件外零改动;演练件随后撤销,证据(命令 + diff 摘要)入本件。
-- [ ] T3 双实现矩阵:按上节"现状事实"第三条的姿态清点现实载体,逐轴记录覆盖证据。
-- [ ] T4 单位契约:全库 grep 23.0605 / 0.04184 —— 仅 force_facade 换算点 + consts 立法定义点。
-- [ ] T5 单随机流:全库 grep RANDOM_NUMBER —— 仅 rng.f90 内部转换点。
-- [ ] T6 三相:driver 审读 + grep——装配→演化→统计调用序,演化循环内仅 facade/propagator/recorder。
-- [ ] T7 = S2(新审计产出即为 T7 证据)。
+- [x] T1 文件结构:50 源文件清点与 src/README 层表相符;漂移注记三条(predicate 撤 E18/
+  analysis 并入 output/utils 的 hessian 待 README 补行——S3.3 一并修)。
+- [x] T2 零触碰扩展演练(E27 新签名二次执行):systems/well2/(pot+reg 两新文件)拖入 →
+  第二次 make 全绿(登记过的 depend.mk 单轮迟滞)→ registry_gen 聚合 reg_well2(use+call)、
+  depend.mk 三边 → **git diff tracked 零改动**(仅新增未追踪文件夹)→ 撤销后重建绿、树干净。
+- [x] T3 双实现矩阵(按判据本意以现实载体):A 轴 = reference 三势(harmonic/morse/leps,
+  check_facade (q) 解析 vs 中心差分 + (s) 旧链位级,E27 后仍全 0)≥2 ✓;B′ 轴 = 11 个 dist
+  成员(五 case + 11 个 check_dist_* 判据程序覆盖)≥3 ✓;配置面双范式 = 气相四 case
+  (paradigm=0)+ 表面 case(POSCAR 胞,paradigm=1)✓;电子轴 = adiabatic 退化成员(完整形态
+  非绝热轴不在本仓库——总案 T3 字面名 RST/EMT-NN 同此,历史目标注记)。
+- [x] T4 单位契约:23.0605 与 ev_kcal 仅 force_facade(定义+注释);组合换算式
+  `-g*ev_kcal*e_conv` 唯一(facade fold 点);e_conv 定义在 consts,其余消费均为 I/O 侧
+  kcal/mol↔内部暂存(成员参数缝/报告列)——力边界换算唯一,T4 判据满足。
+- [x] T5 单随机流:全库 grep RANDOM_NUMBER 零命中( rng 全流 RAND0 族)。
+- [x] T6 三相:driver 审读——装配 10 步→演化(轨迹环×步进环:prop_step/elec_prop/
+  mqc_statistic/rec_frame/container_term)→统计(fin_eval 单趟+分类计数+直方图+漂移);
+  演化环内仅门面/传播器/记录器入口;E18 漂移注记(谓词位=container_term 容器槽)。
+- [x] T7 = S2(新审计产出在案)。
 
-### 停放项终局清点(V 移交;逐条裁决:维持停放/升级后续件/关闭)
+### 停放项终局清点(逐条裁决;E27 后复审)
 
-- [ ] P-1 装配期频率导出通道未接线(V-5;四证据在案)。
-- [ ] P-2 ifx 下 check_facade 两红腿((g) 1 ulp 构造性不等价;(r) eig_sym 算术序 1.29e-15 既有停放族)。
-- [ ] P-3 采样器→统计相初值快照通道(VI/OAMI/AMAI/AMBI/SDA/SDB 生产者,解锁 fin%ang(4..18))。
-- [ ] P-4 scripts/ 改进注记:check_facade (g) FAIL 行不打印 got-vs-expected。
-- [ ] P-5 C8 终审停放区六条(hist_thta 气相门控候选 / col_occ 守卫 / fin_t 初值参考量 / SDA/SDB /
-  plot_hist allocated 守卫 / lattice%q_ref)。
-- [ ] P-6 C2 停放区五条((r) 1e-15 性状 / fssh / iesh 后窗件 / r_adiab 构造通道 / 有状态成员 wrapper 终形)。
-- [ ] P-7 b_layer NU_COLL 携带无消费面注记。
-- 清点产物:本件"停放项终局表"——每条一行:登记处 / 触发条件 / S 相裁决(维持/升级/关闭)/ 去向。
+| # | 登记处 | 内容 | S 相裁决 | 去向 |
+|---|---|---|---|---|
+| P-1 | V-5/chain_freq §2 | 装配期频率导出通道未接线(机制存在零生产接线,四证据) | **维持停放 → 候选后续件** | E27 后形态明确:H 形容器可自带 Hessian→谱导出(容器文件夹私有通道);触发条件=首个多面容器落地 |
+| P-2 | V 停放②/results_check_facade_ifx.txt | ifx 下 check_facade (g)/(r) 两红腿 | **关闭(E27 消解)** | 判据腿随 ws 构造通道退役而消失;ifx 存档留历史参考 |
+| P-3 | C8→V 第 5 条 | 采样器→统计相初值快照通道(VI/OAMI/AMAI/AMBI/SDA/SDB 生产者,解锁 fin%ang(4..18)) | **维持停放** | 随 C8 触发条件;E27 不影响(recorder 读 holder 的 getter 面未动) |
+| P-4 | V 停放④ | check_facade (g) FAIL 行不打印 got-vs-expected(scripts/ 改进注记) | **关闭(E27 消解)** | (g) 腿对象已退役;其余容差判据均打印的通例仍在 |
+| P-5 | C8 终审停放区 | hist_thta 气相门控候选 / col_occ 守卫 / fin_t 初值参考量(=P-3 族) / SDA/SDB(=P-3 族) / plot_hist allocated 守卫 / lattice%q_ref 占位 | **六条全维持停放** | 均为设计变更/守卫候选,走流程触发;无一条因 E27 失效 |
+| P-6 | C2 停放区 | (r) 1e-15 性状 / fssh·iesh 后窗件 / r_adiab 构造通道 / 有状态成员 wrapper 终形 | (r) **关闭(对象腿随 E27 退役)**;wrapper 终形 **关闭(E27 消解:ws 传送退役,成员数据走容器文件夹私有模块,写回入口 occ_set/n_hop_set 已落地)**;fssh·iesh 后窗件 **维持→形态改写**(E27 后此类方法包居容器文件夹,待第一消费者);r_adiab 构造通道 **维持**(旧树材料) | fssh/iesh 触发条件不变(非绝热轴开工) |
+| P-7 | b_layer README | NU_COLL 携带无消费面注记 | **维持(如实注记)** | 无消费面即无行使面;首个消费者出现时处置 |
 
 ### 卫生项
 
