@@ -6,7 +6,7 @@
 ! of the source tree):
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 facade/sysdef_facade.f90 input.f90 globals/config_roster.f90 &
-!            globals/state.f90 facade/elec_ws.f90 facade/elec_facade.f90 &
+!            globals/state.f90 facade/elec_facade.f90 &
 !            utils/linalg.f90 facade/force_facade.f90 dynamics/propagator.f90 methods/reg_prop.f90 &
 !            ../scripts/check_propagator.f90 -o build/check_propagator.exe
 ! Posture: the force chain is assembled CHECK-SIDE - a local analytic test container is
@@ -204,7 +204,6 @@ program check_propagator
    use config,        only: prop_cfg => propagator
    use config_roster, only: roster
    use state,         only: state_t, state_create, state_destroy
-   use elec_ws,       only: ws_t, r_scalar
    use elec_facade,   only: method_reg
    use force_facade,  only: force_eval, container_bind_pes, container_init
    use propagator,    only: prop_step, prop_reg, verlet_step
@@ -332,7 +331,7 @@ program check_propagator
          allocate (roster%mass(2))         ! quartic branch must be bound (the trial runs
          roster%mass = [ 1.0d0, 4.0d0 ]    ! real forces before the estimate fires)
          call state_create(sa, 2)
-         call method_reg('adiabatic', '', noop_prop, noop_match)
+         call method_reg('adiabatic', noop_prop, noop_match)
          call container_bind_pes(test_pes)
          call container_init()
          call reg_prop_all()
@@ -364,7 +363,7 @@ program check_propagator
    ! degenerate no-op method row + the local branch container + the single assembly
    ! entry (fills the method slot, seeds the statistics holder), then the shipped
    ! registration rows - the family every criterion below dispatches through
-   call method_reg('adiabatic', '', noop_prop, noop_match)
+   call method_reg('adiabatic', noop_prop, noop_match)
    call container_bind_pes(test_pes)
    call container_init()
    call reg_prop_all()
@@ -1189,58 +1188,54 @@ contains
 
    ! the local branch test container (bound once; the check-side selector pot_sel picks
    ! the analytic branch): harmonic per-dof distinct stiffness/centers (the default),
-   ! kepler two-body attraction, uniform field, free flight. The gradient and energy in
-   ! eV (the member unit contract); fills the scalar channel
-   subroutine test_pes(q, mass, ws)
+   ! kepler two-body attraction, uniform field, free flight. The kernel and energy in
+   ! eV (the E27 delivery contract: g and v fully assigned)
+   subroutine test_pes(q, mass, g, v)
       real(8), intent(in)  :: q(:)     ! coordinates [A]
       real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (unused - pure PES branches)
-      type(ws_t), intent(inout) :: ws  ! workspace (scalar channel out)
+      real(8), intent(out) :: g(:)     ! the composed kernel dV/dq [eV/A]
+      real(8), intent(out) :: v        ! V [eV]
       integer :: n
       real(8) :: rr(3), rn, ex
       n = size(q)
       fcount = fcount + 1                     ! one container call per force_eval (facade
-                                             ! step 3) - the radau restart instrument (r-d)
+                                             ! step 2) - the radau restart instrument (r-d)
       if (rlog_on) then                       ! substep-geometry log (r-a1): append the
          if (rlog_n < size(rlog_q, 2)) then   ! q of every force site while armed
             rlog_n = rlog_n + 1
             rlog_q(:, rlog_n) = q
          end if
       end if
-      if (allocated(ws%g_add)) then
-         if (size(ws%g_add) /= n) deallocate (ws%g_add)
-      end if
-      if (.not. allocated(ws%g_add)) allocate (ws%g_add(n))
       select case (pot_sel)
       case (1)                                 ! harmonic: V = 1/2 sum k (q-qc)^2
-         ws%g_add = k_eV*(q - q_ctr)                            ! dV/dq [eV/A]
-         ws%v_add = 0.5d0*dot_product(k_eV, (q - q_ctr)*(q - q_ctr))  ! V [eV]
+         g = k_eV*(q - q_ctr)                            ! dV/dq [eV/A]
+         v = 0.5d0*dot_product(k_eV, (q - q_ctr)*(q - q_ctr))  ! V [eV]
       case (2)                                 ! kepler: V = -kep_k/|q1-q2|
          rr = q(1:3) - q(4:6)
          rn = sqrt(rr(1)**2 + rr(2)**2 + rr(3)**2)
-         ws%g_add(1:3) = kep_k*rr/rn**3        ! dV/dq1 = +k r/|r|^3 (attraction: F = -g*cal)
-         ws%g_add(4:6) = -ws%g_add(1:3)        ! dV/dq2 = -dV/dq1 (central two-body form)
-         ws%v_add = -kep_k/rn
+         g(1:3) = kep_k*rr/rn**3               ! dV/dq1 = +k r/|r|^3 (attraction: F = -g*cal)
+         g(4:6) = -g(1:3)                      ! dV/dq2 = -dV/dq1 (central two-body form)
+         v = -kep_k/rn
       case (3)                                 ! uniform field: V = -f.q
-         ws%g_add = f_uni
-         ws%v_add = -dot_product(f_uni, q)
+         g = f_uni
+         v = -dot_product(f_uni, q)
       case (4)                                 ! Morse: V = D(e^{-2au} - 2e^{-au}) per dof
-         ws%v_add = 0.0d0
+         v = 0.0d0
          do n = 1, size(q)
             ex = exp(-a_mor*(q(n) - q_ctr(n)))
-            ws%g_add(n) = 2.0d0*a_mor*D_eV*(ex - ex*ex)         ! dV/du [eV/A]
-            ws%v_add = ws%v_add + D_eV*(ex*ex - 2.0d0*ex)
+            g(n) = 2.0d0*a_mor*D_eV*(ex - ex*ex)             ! dV/du [eV/A]
+            v = v + D_eV*(ex*ex - 2.0d0*ex)
          end do
       case (5)                                 ! quartic wall: V = K u^4 (curvature 12Ku^2 -
-         ws%v_add = 0.0d0                      ! the stiffness-gradient branch)
+         v = 0.0d0                             ! the stiffness-gradient branch)
          do n = 1, size(q)
-            ws%g_add(n) = 4.0d0*K_wall*(q(n) - q_ctr(n))**3     ! dV/du [eV/A]
-            ws%v_add = ws%v_add + K_wall*(q(n) - q_ctr(n))**4
+            g(n) = 4.0d0*K_wall*(q(n) - q_ctr(n))**3         ! dV/du [eV/A]
+            v = v + K_wall*(q(n) - q_ctr(n))**4
          end do
       case default                             ! free flight: V = 0
-         ws%g_add = 0.0d0
-         ws%v_add = 0.0d0
+         g = 0.0d0
+         v = 0.0d0
       end select
-      ws%repr = r_scalar
    end subroutine test_pes
 
    ! degenerate no-op method members (the all-noop package this check registers so

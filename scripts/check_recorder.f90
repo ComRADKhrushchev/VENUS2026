@@ -5,7 +5,7 @@
 ! of the source tree):
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 facade/sysdef_facade.f90 input.f90 globals/state.f90 &
-!            facade/elec_ws.f90 facade/elec_facade.f90 globals/config_roster.f90 &
+!            facade/elec_facade.f90 globals/config_roster.f90 &
 !            utils/linalg.f90 facade/force_facade.f90 &
 !            output/recorder.f90 ../scripts/check_recorder.f90 -o build/check_recorder.exe
 ! Sample output files are written under build/ and read back line-by-line - the
@@ -83,7 +83,6 @@ program check_recorder
    use consts,       only: e_conv
    use state,        only: state_t, state_create, state_destroy
    use config_roster, only: roster
-   use elec_ws,      only: ws_t, r_scalar
    use elec_facade,  only: method_reg
    use force_facade, only: container_bind_pes, container_init
    implicit none
@@ -136,7 +135,7 @@ program check_recorder
          allocate (roster%mass(2), roster%symb(2)) ! carries the selection only)
          roster%mass = [ 1.5d0, 3.0d0 ]
          roster%symb = [ character(4) :: 'H', 'He' ]
-         call method_reg('adiabatic', '', noop_prop, noop_match)
+         call method_reg('adiabatic', noop_prop, noop_match)
          call container_bind_pes(zero_pes)
          call container_init()            ! the energy columns ride force_eval
          call rec_select(0)
@@ -165,7 +164,7 @@ program check_recorder
    ! landed): degenerate method row + check-local ZERO-force container + the
    ! single assembly entry - v_pot lands 0 on it, t_kin the analytic kinetic fold.
    ! Assembled CHECK-SIDE; the tree's default binding posture stays untouched
-   call method_reg('adiabatic', '', noop_prop, noop_match)
+   call method_reg('adiabatic', noop_prop, noop_match)
    call container_bind_pes(zero_pes)
    call container_init()
 
@@ -405,19 +404,15 @@ contains
       v = 0.0d0
    end function col_probe
 
-   ! the check-local zero container: empty gradient and energy (eV member units)
+   ! the check-local zero container: empty kernel and energy (eV member units)
    ! - v_pot/e_tot ride the zero potential, the mechanism-level posture
-   subroutine zero_pes(q, mass, ws)
+   subroutine zero_pes(q, mass, g, v)
       real(8), intent(in)  :: q(:)     ! coordinates [A] (unused - zero force)
       real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (unused)
-      type(ws_t), intent(inout) :: ws  ! workspace (scalar channel out)
-      if (allocated(ws%g_add)) then
-         if (size(ws%g_add) /= size(q)) deallocate (ws%g_add)
-      end if
-      if (.not. allocated(ws%g_add)) allocate (ws%g_add(size(q)))
-      ws%g_add = 0.0d0
-      ws%v_add = 0.0d0
-      ws%repr = r_scalar
+      real(8), intent(out) :: g(:)     ! the composed kernel dV/dq [eV/A] (zero)
+      real(8), intent(out) :: v        ! V [eV] (zero)
+      g = 0.0d0
+      v = 0.0d0
    end subroutine zero_pes
 
    ! degenerate no-op method members (the row container_init resolves)

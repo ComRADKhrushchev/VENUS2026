@@ -2,19 +2,22 @@
 
 The library home of the generic methods (E14 spec §5, rebuilt from the former
 interface_electronic/ + interface_distributions/): pre-stored, parameter-free method
-packages and reusable algorithm components that any system binds by name. Everything
-here is physics-generic code — the same FSSH machinery serves any system; system
-specificity enters only through the ws container, state, and config at runtime (E12
+packages and reusable algorithm components. Everything here is physics-generic code;
+system specificity enters only through the method's own data channels at runtime (E12
 ruling: system material lives in systems/<system>/; a method that embeds system
 parameters or system knowledge does not belong here — see also the
 knowledge-ownership audit: system/method-specific knowledge must not enter generic
-code).
+code). E27 composition root: a SYSTEM-SPECIFIC method package (bespoke Hamiltonian +
+bespoke evolution law) is container material - it lives in its systems/<system>/
+folder, shares private modules with the container's H definition, and registers its
+method row from a reg_*.f90 in that same folder (one registration site; the former
+ws interchange between the two homes is retired).
 
 ## File prefixes (self-describing families)
 
 | Prefix | Family | Registered by | Present / planned |
 |---|---|---|---|
-| `elec_*` | MQC method packages — {prop member, match member [, sync member]}, one `method_reg` row each | its thin `reg_<package>.f90` (assembly phase) | `elec_adiabatic` (present — the all-no-op degenerate seed); `elec_tsh` / `elec_iesh` / `elec_ehrenfest` phase C |
+| `elec_*` | MQC method packages — {prop member, match member [, sync member]}, one `method_reg` row each | its thin `reg_<package>.f90` (assembly phase; in methods/ for generic packages, in systems/<system>/ for container-composed ones - E27) | `elec_adiabatic` (present — the all-no-op degenerate seed); `elec_tsh` / `elec_iesh` / `elec_ehrenfest` phase C |
 | `dist_*` | initial-state distribution members (the B' sampler family; parameters via config — E12 wording carried, zero embedded system data) | thin `reg_dist_*.f90` at C5 together with the sample routines (K2 E3 slimming ruling) | boltzmann / ebk / incident (present — migrated from the former interface_distributions/, E14); the remaining 9 arrive C5 |
 | `amp_*` | shared amplitude integrators — library modules, not packages (Corollary 1: FSSH and Ehrenfest share the same prop code; the method count drops multiplicatively) | none (components, consumed via use — level 2) | `amp_rk` / `amp_expm` phase C |
 | `reg_*` | thin registration modules — build material, not methods | (they are the registration) | `reg_adiabatic` (present — the sole reg file of the K2 seed) |
@@ -24,9 +27,11 @@ code).
 **Level 1 — whole packages** (the standard path, zero code):
 `config%electronic%method = 'fssh'` binds the assembled package at container_init; the
 mqc_statistic / elec_prop facade dispatch lands directly in the package's match/prop
-members. The container author writes no method code at all. Dispatch chain of
-mqc_statistic: facade table lookup -> match member (reads sta%s%a + sta%p + ws; g_ij
-from the library formula; rng-sampled hop; writes sta%occ/sta%p; optional force_eval
+members. A generic package (methods/) binds any system; a container-composed package
+(E27, systems/) binds its own folder's system. Dispatch chain of
+mqc_statistic: facade table lookup -> match member (reads sta%s%a + sta%p + its own
+data channels; g_ij from the library formula; rng-sampled hop; writes the held occ
+via occ_set / the counter via n_hop_set / sta%p; optional force_eval
 self-call) -> sync tail.
 
 **Level 2 — reusable components** (the assembly path): the library modules expose

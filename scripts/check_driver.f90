@@ -8,7 +8,7 @@
 ! source tree):
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 facade/sysdef_facade.f90 input.f90 utils/rng.f90 &
-!            globals/state.f90 globals/config_roster.f90 facade/elec_ws.f90 &
+!            globals/state.f90 globals/config_roster.f90 &
 !            facade/elec_facade.f90 utils/linalg.f90 facade/force_facade.f90 &
 !            facade/sampler.f90 utils/geometry.f90 dynamics/propagator.f90 &
 !            methods/dist_boltzmann.f90 methods/dist_ebk.f90 methods/dist_incident.f90 &
@@ -354,7 +354,7 @@ contains
       ! value, not the package default)
       call reg_adiabatic_all()
       call method_bind('adiabatic')
-      call container_bind_pes(reference_pes, 'scalar')
+      call container_bind_pes(reference_pes)
       call harm_set_constant(kk)
       call state_create(stc, size(roster%mass), max(electronic%n_surf, 1))
       ! conversion calibration: one force_eval at a single-offset geometry with

@@ -8,11 +8,10 @@
 ! Contract:
 !   reg_reference_all() - the class-A binding, unconditional (one
 !     container per run; the drag-in does not consult anything): the
-!     isotropic well in scalar mode, delivery declared 'scalar'. The
-!     member init runs BEFORE the bind: the well's default constant is
-!     staged into the potential module, so the bound PES is computable
-!     the moment the slot is filled (the degenerate posture without a
-!     parameter file runs on the default constant)
+!     isotropic well. The member init runs BEFORE the bind: the well's
+!     default constant is staged into the potential module, so the bound
+!     PES is computable the moment the slot is filled (the degenerate
+!     posture without a parameter file runs on the default constant)
 !   reg_reference_init() - the assembly seam: load the parameter file
 !     reference_pars.txt from the run directory, then bind the OPTIONAL
 !     slots the file provides - Q_TERM -> the termination judgment,
@@ -41,7 +40,7 @@ contains
    !                       aggregate class-A entry with its delivery declared
    subroutine reg_reference_all()
       call harm_set_constant(reference_k_default())
-      call container_bind_pes(reference_pes, 'scalar')
+      call container_bind_pes(reference_pes)
    end subroutine reg_reference_all
 
    !------------------------------------------------------------------

@@ -11,7 +11,7 @@
 ! anchors genuinely ride the bound container):
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 facade/sysdef_facade.f90 input.f90 utils/rng.f90 &
-!            globals/state.f90 globals/config_roster.f90 facade/elec_ws.f90 &
+!            globals/state.f90 globals/config_roster.f90 &
 !            facade/elec_facade.f90 methods/elec_adiabatic.f90 &
 !            methods/reg_adiabatic.f90 utils/linalg.f90 facade/force_facade.f90 &
 !            utils/geometry.f90 output/final_state.f90 &
@@ -185,7 +185,7 @@ program check_final_state
    ! container bound through the public face + the check-staged well constant ----------
    call reg_adiabatic_all()
    call method_bind('adiabatic')
-   call container_bind_pes(reference_pes, 'scalar')
+   call container_bind_pes(reference_pes)
    call harm_set_constant(kk)
 
    ! ---------- criteria ----------
@@ -495,7 +495,7 @@ contains
       character(len=32) :: nm
       call reg_adiabatic_all()
       call method_bind('adiabatic')
-      call container_bind_pes(reference_pes, 'scalar')
+      call container_bind_pes(reference_pes)
       call reference_load()                        ! reads ./reference_pars.txt
       call container_bind_classify(reference_classify)
       call wipe_roster()

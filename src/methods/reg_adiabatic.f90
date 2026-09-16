@@ -19,6 +19,6 @@ contains
    !------------------------------------------------------------------
    ! reg_adiabatic_all() - fill the 'adiabatic' package row (one call, one row)
    subroutine reg_adiabatic_all()
-      call method_reg('adiabatic', '', ad_prop, ad_match)
+      call method_reg('adiabatic', ad_prop, ad_match)
    end subroutine reg_adiabatic_all
 end module reg_adiabatic

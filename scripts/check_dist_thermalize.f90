@@ -8,7 +8,7 @@
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 facade/sysdef_facade.f90 input.f90 &
 !            globals/config_roster.f90 globals/state.f90 &
-!            utils/rng.f90 facade/elec_ws.f90 facade/elec_facade.f90 &
+!            utils/rng.f90 facade/elec_facade.f90 &
 !            utils/linalg.f90 facade/force_facade.f90 dynamics/propagator.f90 &
 !            methods/reg_prop.f90 facade/sampler.f90 &
 !            methods/dist_thermalize.f90 methods/seam_cast.f90 &
@@ -109,7 +109,6 @@ program check_dist_thermalize
    use config,        only: reactants, propagator
    use config_roster, only: roster, roster_clear
    use state,         only: state_t, state_create, state_destroy
-   use elec_ws,       only: ws_t, r_scalar
    use elec_facade,   only: method_reg
    use force_facade,  only: container_bind_pes, container_init
    use reg_prop,      only: reg_prop_all
@@ -195,7 +194,7 @@ program check_dist_thermalize
    ! the verlet registration row - the equilibration run inside every
    ! sample below is genuine free-flight propagation, assembled CHECK-SIDE
    ! (the tree's default binding posture stays untouched)
-   call method_reg('adiabatic', '', noop_prop, noop_match)
+   call method_reg('adiabatic', noop_prop, noop_match)
    call container_bind_pes(zero_pes)
    call container_init()
    call reg_prop_all()
@@ -341,19 +340,15 @@ contains
       call samp_reg('incident', stand_incident)
    end subroutine samp_reg_incident
 
-   ! the check-local zero container: empty gradient and energy (eV member
+   ! the check-local zero container: empty kernel and energy (eV member
    ! units) - the free-flight posture of every equilibration run below
-   subroutine zero_pes(q, mass, ws)
+   subroutine zero_pes(q, mass, g, v)
       real(8), intent(in)  :: q(:)     ! coordinates [A] (unused - zero force)
       real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (unused)
-      type(ws_t), intent(inout) :: ws  ! workspace (scalar channel out)
-      if (allocated(ws%g_add)) then
-         if (size(ws%g_add) /= size(q)) deallocate (ws%g_add)
-      end if
-      if (.not. allocated(ws%g_add)) allocate (ws%g_add(size(q)))
-      ws%g_add = 0.0d0
-      ws%v_add = 0.0d0
-      ws%repr = r_scalar
+      real(8), intent(out) :: g(:)     ! the composed kernel dV/dq [eV/A] (zero)
+      real(8), intent(out) :: v        ! V [eV] (zero)
+      g = 0.0d0
+      v = 0.0d0
    end subroutine zero_pes
 
    ! degenerate no-op method members (the row container_init resolves)

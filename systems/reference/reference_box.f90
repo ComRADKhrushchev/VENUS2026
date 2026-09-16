@@ -9,9 +9,9 @@
 !   anything; it exists so the whole program can be driven end to end
 !   against a closed-form force law whose exact dynamics are known.
 ! Container slots served (the drag-in file binds them):
-!   PES           reference_pes - scalar mode: g_add = K*q [eV/A], the
+!   PES           reference_pes - the composed kernel g = K*q [eV/A], the
 !                 GRADIENT of the well (the facade folds the force
-!                 F = -g_add), v_add = K/2*|q|^2 [eV] (both through
+!                 F = -g), v = K/2*|q|^2 [eV] (both through
 !                 harm_vg of reference_pot - this module carries the
 !                 constant K and hands it to the member through
 !                 harm_set_constant; the class-A unit contract:
@@ -44,7 +44,6 @@
 !   split in kcal/mol on the final-state channel.
 !=====================================================================
 module reference_box
-   use elec_ws,     only: ws_t, r_scalar
    use state,       only: state_t
    use final_state, only: fin_t
    use reference_pot, only: harm_vg, harm_set_constant
@@ -162,23 +161,17 @@ contains
    end subroutine reference_load
 
    !------------------------------------------------------------------
-   ! reference_pes(q, mass, ws) - the container aggregate class-A entry: the
-   !                 isotropic well in scalar mode, computed by the member
-   !                 harm_vg (which carries the constant this module staged
-   !                 through harm_set_constant). The workspace arrives as
-   !                 the facade's holder alias, so the delivery array is
-   !                 (re)allocated here on every call; mass is unused (a
-   !                 pure potential)
-   subroutine reference_pes(q, mass, ws)
+   ! reference_pes(q, mass, g, v) - the container aggregate class-A entry: the
+   !                 isotropic well, computed by the member harm_vg (which
+   !                 carries the constant this module staged through
+   !                 harm_set_constant). The delivery contract fully assigns
+   !                 g and v; mass is unused (a pure potential)
+   subroutine reference_pes(q, mass, g, v)
       real(8), intent(in)  :: q(:)     ! coordinates [A] (all dof, flattened)
       real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (unused)
-      type(ws_t), intent(inout) :: ws  ! workspace (filled: scalar mode)
-      real(8) :: v                     ! the member's energy return [eV]
-      ws%repr = r_scalar
-      if (allocated(ws%g_add)) deallocate (ws%g_add)
-      allocate (ws%g_add(size(q)))
-      call harm_vg(size(q)/3, q, v, ws%g_add)  ! dV/dq [eV/A] (the facade folds F = -g)
-      ws%v_add = v                            ! V [eV]
+      real(8), intent(out) :: g(:)     ! the composed kernel dV/dq [eV/A] (the facade folds F = -g)
+      real(8), intent(out) :: v        ! V [eV]
+      call harm_vg(size(q)/3, q, v, g)
    end subroutine reference_pes
 
    !------------------------------------------------------------------
