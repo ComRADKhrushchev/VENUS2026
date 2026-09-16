@@ -1,35 +1,12 @@
 !=====================================================================
-! analysis/plot_hist.f90 - L4 analysis: five histogram/impact-map kinds (normalization
-!                           parameterized; lattice constants
-!                           all passed as arguments - no system constants)
-! (module name hist: Fortran forbids a module sharing its contained routine's name; the
-!  routine name plot_hist is the one fixed by the plan
-!  §1 batch-4 table - the module yields the name to the routine)
-! Reference: src_VENUS/HIST.f90:26-68 (plot_Erel_hist: bin centers lo+(i-1/2)d :48-53,
-!       [lo,hi) binning int((v-lo)/d)+1 :56-60, TOTAL & P normalization line :66),
-!       :70-93 (plot_Erel_impact_pos: cell-folded drop points + (x,y,e_rel,z_min) four
-!       columns written :87-92),
-!       :95-131 (plot_theta_hist - same-form angle version), :134-230
-!       (plot_site_histograms: site-grouped double histograms - top/brg/hcp/fcc four groups,
-!       per-group TOTAL & P :219-221, n_bin<=1000 guard :167-172), :232-311
-!       (plot_Erel_by_bounce: bounce-count grouping + merge_at merge threshold :265-274,
-!       >=merge_at folded into the last bin :283-296, n_bnc<0 skipped :284), :313-373 (surfcell:
-!       Wigner-Seitz-type nearest-site assignment - minloc over the four cell corners / five
-!       bridge-edge midpoints / two face-center candidate points
-!       :340-372), :375-404 (Dist_cell: unit-cell PBC folding - fractional lattice-vector
-!       coordinates rounded
-!       and folded back :393-403);
-!       src_VENUS/VENUS.f90:286-299 (the five call sites + HISTO directory layout - to the
-!       statistics-phase driver)
-!       (see previous line)
-! Excision warning (hardwired system knowledge - the new version passes everything as
-! arguments; K2 plan sourcing note):
-!   (1) auro and PI/3 lattice constants hardwired (HIST.f90:19, :89, :188 - Au(111) system)
-!       -> passed via lat_t (same source as the roster unit-cell fields - a_lat/skew);
-!   (2) site names 'top'/'brg'/'hcp'/'fcc' and triangular-lattice corner/bridge/center
-!       geometry hardwired (:165,
-!       :340-345) -> site candidate sets as data (finalized in C8; the skeleton keeps the four
-!       names for cross-checking)
+! plot_hist.f90 - five histogram/impact-map kinds over trajectory final-state rows
+! Design:
+!   One dispatcher (plot_hist) unifies the five kinds: plain energy/angle
+!   histograms, the impact-position map, and the site-grouped /
+!   bounce-count-grouped histograms. Normalization is parameterized; all
+!   lattice constants arrive as arguments (lat_t) - no system constants.
+!   Module named hist: Fortran forbids a module sharing its contained
+!   routine's name.
 !=====================================================================
 module hist
    implicit none
@@ -37,63 +14,55 @@ module hist
    public :: hist_spec_t, hist_data_t, lat_t, plot_hist
    public :: k_e_hist, k_t_hist, k_pos, k_site, k_bnc
 
-   ! Five spec keys (values of spec%kind - the parameterized unification of the old five
-   ! plot_* functions)
-   integer, parameter :: k_e_hist = 1  ! kind 1: energy histogram (old plot_Erel_hist)
-   integer, parameter :: k_t_hist = 2  ! kind 2: angle histogram (old plot_theta_hist)
-   integer, parameter :: k_pos    = 3  ! kind 3: impact-position map (old plot_Erel_impact_pos)
-   integer, parameter :: k_site   = 4  ! kind 4: site-grouped histograms (old plot_site_histograms)
-   integer, parameter :: k_bnc    = 5  ! kind 5: bounce-count-grouped histograms (old plot_Erel_by_bounce)
+   ! Five spec keys (values of spec%kind)
+   integer, parameter :: k_e_hist = 1  ! kind 1: energy histogram
+   integer, parameter :: k_t_hist = 2  ! kind 2: angle histogram
+   integer, parameter :: k_pos    = 3  ! kind 3: impact-position map
+   integer, parameter :: k_site   = 4  ! kind 4: site-grouped histograms
+   integer, parameter :: k_bnc    = 5  ! kind 5: bounce-count-grouped histograms
 
    ! Histogram specification (range / bin count / normalization - all input data)
    type :: hist_spec_t
       integer :: kind = 0                  ! five-kind key (k_*)
-      character(len=64) :: file_out = ''   ! output file name (old 'HISTO/...' - the directory
-                                           ! layout belongs to the driver; grouped kinds derive
-                                           ! names as
-      ! file_out prefix + group name)
-      real(8) :: v_lo = 0.0d0              ! range lower bound [units of the quantity] (old Erel_min/theta_min)
-      real(8) :: v_hi = 0.0d0              ! range upper bound (old Erel_max/theta_max)
-      integer :: n_bin = 0                 ! bin count [count] (<=1000 guard, old :167-172/:265-268)
+      character(len=64) :: file_out = ''   ! output file name (grouped kinds derive names as
+                                           ! this prefix + group name)
+      real(8) :: v_lo = 0.0d0              ! range lower bound [units of the binned quantity]
+      real(8) :: v_hi = 0.0d0              ! range upper bound [units of the binned quantity]
+      integer :: n_bin = 0                 ! bin count [count] (capped at 1000)
       integer :: merge_at = 0              ! kind-5 merge threshold [count] (bounce counts >= this fold into the last bin)
-      logical :: norm_p = .false.          ! final TOTAL & P normalization line (old :66/:220)
+      logical :: norm_p = .false.          ! write the final TOTAL & P normalization line
    end type hist_spec_t
 
-   ! Trajectory row table (aggregation of recorder final-state rows - the old AErelS/AInitX
-   ! etc. global arrays turned into members)
+   ! Trajectory row table (aggregation of recorder final-state rows)
    type :: hist_data_t
-      integer :: n_traj = 0                    ! trajectory row count [row] (old NT)
-      real(8), allocatable :: e_rel(:)         ! final relative energy column [kcal/mol] (old AErelS)
-      real(8), allocatable :: thta(:)          ! scattering-angle column [deg] (old AThtaS = ANG(19))
-      real(8), allocatable :: x0(:)            ! initial drop-point x column [Å] (old AInitX = RX0)
-      real(8), allocatable :: y0(:)            ! initial drop-point y column [Å] (old AInitY = RY0)
-      real(8), allocatable :: z_min(:)         ! minimum-height column [Å] (old AZminS)
-      real(8), allocatable :: v_fin(:)         ! final potential-energy column [kcal/mol] (old AVfinS)
-      integer, allocatable :: n_bnc(:)         ! bounce-count column [count] (old NBncS; -1 = invalid placeholder)
-      character(len=3), allocatable :: site(:) ! site column [-] (old site - record_all :19)
+      integer :: n_traj = 0                    ! trajectory row count [row]
+      real(8), allocatable :: e_rel(:)         ! final relative energy column [kcal/mol]
+      real(8), allocatable :: thta(:)          ! scattering-angle column [deg]
+      real(8), allocatable :: x0(:)            ! initial drop-point x column [Å]
+      real(8), allocatable :: y0(:)            ! initial drop-point y column [Å]
+      real(8), allocatable :: z_min(:)         ! minimum-height column [Å]
+      real(8), allocatable :: v_fin(:)         ! final potential-energy column [kcal/mol]
+      integer, allocatable :: n_bnc(:)         ! bounce-count column [count] (-1 = invalid placeholder)
+      character(len=3), allocatable :: site(:) ! site column [-]
    end type hist_data_t
 
-   ! Lattice constants (all passed as arguments - no system constants; same source as the
-   ! roster unit-cell fields)
+   ! Lattice constants (all passed as arguments - no system constants)
    type :: lat_t
-      real(8) :: a_lat = 0.0d0     ! lattice constant [Å] (old hardwired auro - excision warning (1))
-      real(8) :: skew = 0.0d0      ! unit-cell skew angle [rad] (old hardwired PI/3 - excision warning (1))
-      real(8) :: q_ref(2) = 0.0d0  ! reference site coordinates [Å] (old Qref - unit-cell
-                                   ! origin;
-                                   ! the old call site hardwired Qr2 = 2.55476, VENUS.f90:290)
+      real(8) :: a_lat = 0.0d0     ! lattice constant [Å]
+      real(8) :: skew = 0.0d0      ! unit-cell skew angle [rad]
+      real(8) :: q_ref(2) = 0.0d0  ! reference site coordinates [Å] (unit-cell origin)
    end type lat_t
 contains
    !------------------------------------------------------------------
-   ! plot_hist(spec, data, lattice) - dispatch of the five histogram/impact-map kinds
-   ! (normalization parameterized)
-   ! Reference: HIST.f90:26-311 (the five functions), :313-404 (the surfcell/Dist_cell tools);
-   !       until the site candidate sets are data-driven, kind 4 / the site column runs with
-   !       the four names for cross-checking - finalized in C8
+   ! plot_hist(spec, data, lattice) - dispatch of the five histogram/impact-map
+   ! kinds (normalization parameterized)
+   !------------------------------------------------------------------
    subroutine plot_hist(spec, data, lattice)
       type(hist_spec_t), intent(in) :: spec      ! histogram specification (kind key / range / bin count / normalization)
       type(hist_data_t), intent(in) :: data      ! trajectory row table (recorder aggregation)
       type(lat_t), intent(in) :: lattice         ! lattice constants (arguments - no system constants)
       integer :: nb, mrg                         ! guarded bin count / merge threshold
+      ! 1. guards: known kind; positive bin count and nonempty range (except the map)
       if (spec%kind < k_e_hist .or. spec%kind > k_bnc) then
          write (0, '(a,i0)') 'plot_hist: unknown histogram kind ', spec%kind
          write (0, '(a)') 'plot_hist: loud-stop (the kind key is outside the five-kind set)'
@@ -111,10 +80,12 @@ contains
             ' the range must satisfy v_hi > v_lo)'
          stop 1
       end if
+      ! 2. clamp the bin count to the fixed-count array bound; floor the merge threshold
       nb = spec%n_bin
       if (nb > 1000) nb = 1000                   ! the fixed-count array bound
       mrg = spec%merge_at
       if (mrg < 1) mrg = 1
+      ! 3. dispatch to the kind routine
       select case (spec%kind)
       case (k_e_hist)
          call column_hist(spec%file_out, data%e_rel, data%n_traj, spec, nb)
@@ -131,8 +102,9 @@ contains
 
    !------------------------------------------------------------------
    ! column_hist(fname, vals, n_traj, spec, nb) - one plain (center, count)
-   !              histogram file, optionally closed by the TOTAL & P line
-   !              (the two plain kinds share everything but their column)
+   ! histogram file, optionally closed by the TOTAL & P line (the two plain
+   ! kinds share everything but their column)
+   !------------------------------------------------------------------
    subroutine column_hist(fname, vals, n_traj, spec, nb)
       character(len=*), intent(in) :: fname      ! output file name (caller-staged)
       real(8), intent(in) :: vals(:)             ! the binned column
@@ -143,6 +115,7 @@ contains
       integer :: u, i, bi
       dlt = (spec%v_hi - spec%v_lo)/dble(nb)
       cnt = 0.0d0
+      ! 1. bin the rows ([lo,hi) half-open)
       do i = 1, n_traj
          if (vals(i) >= spec%v_lo .and. vals(i) < spec%v_hi) then
             bi = int((vals(i) - spec%v_lo)/dlt) + 1
@@ -150,9 +123,11 @@ contains
          end if
       end do
       open (newunit=u, file=fname, status='replace', action='write')
+      ! 2. write bin centers and counts
       do i = 1, nb
          write (u, '(2f12.6)') spec%v_lo + (dble(i) - 0.5d0)*dlt, cnt(i)
       end do
+      ! 3. optional TOTAL & P normalization line
       if (spec%norm_p) then
          write (u, '(a9,f14.8,f12.6)') 'TOTAL & P:', sum(cnt(1:nb)), &
                                        sum(cnt(1:nb))/dble(max(n_traj, 1))
@@ -161,9 +136,9 @@ contains
    end subroutine column_hist
 
    !------------------------------------------------------------------
-   ! pos_map(fname, data, lattice) - the impact-position map: every row's
-   !              drop point folded into the reference cell, four columns
-   !              (x, y, e_rel, z_min)
+   ! pos_map(fname, data, lattice) - the impact-position map: every row's drop
+   ! point folded into the reference cell, four columns (x, y, e_rel, z_min)
+   !------------------------------------------------------------------
    subroutine pos_map(fname, data, lattice)
       character(len=*), intent(in) :: fname      ! output file name (caller-staged)
       type(hist_data_t), intent(in) :: data      ! trajectory row table
@@ -179,14 +154,13 @@ contains
    end subroutine pos_map
 
    !------------------------------------------------------------------
-   ! site_hists(spec, data, lattice, nb) - site-grouped histograms: every
-   !              row folded into the reference cell, assigned its nearest
-   !              site candidate (cell corners = top / bridge-edge midpoints
-   !              = brg / the two face centroids = hcp, fcc - candidates
-   !              constructed from a_lat and skew, the group labels the
-   !              four conventional names), then one derived-name histogram
-   !              file per group with the GROUP's row count as the P
-   !              denominator
+   ! site_hists(spec, data, lattice, nb) - site-grouped histograms: every row
+   ! folded into the reference cell and assigned its nearest site candidate
+   ! (cell corners = top, bridge-edge midpoints = brg, the two face centroids
+   ! = hcp/fcc - candidates constructed from a_lat and skew), then one
+   ! derived-name histogram file per group with the GROUP's row count as the
+   ! P denominator
+   !------------------------------------------------------------------
    subroutine site_hists(spec, data, lattice, nb)
       type(hist_spec_t), intent(in) :: spec      ! histogram specification (file_out = the name prefix)
       type(hist_data_t), intent(in) :: data      ! trajectory row table
@@ -197,7 +171,7 @@ contains
       real(8) :: dist(11), f(2), dlt, cnt(4, 1000)
       integer :: count_all(4), mi, g, u, i, bi
       dlt = (spec%v_hi - spec%v_lo)/dble(nb)
-      ! the eleven site candidates of the unit cell (relative to the cell origin)
+      ! 1. the eleven site candidates of the unit cell (relative to the cell origin)
       cell(:, 1) = [0.0d0, 0.0d0]
       cell(:, 2) = [lattice%a_lat, 0.0d0]
       cell(:, 3) = [lattice%a_lat*cos(lattice%skew), lattice%a_lat*sin(lattice%skew)]
@@ -212,6 +186,7 @@ contains
       cand(:, 11) = (cell(:, 2) + cell(:, 4) + cell(:, 3))/3.0d0   ! fcc
       cnt = 0.0d0
       count_all = 0
+      ! 2. fold each row, nearest-candidate assignment -> group count + [lo,hi) bin
       do i = 1, data%n_traj
          call cell_fold([data%x0(i), data%y0(i)], lattice, f)
          do mi = 1, 11
@@ -233,6 +208,7 @@ contains
             if (bi >= 1 .and. bi <= nb) cnt(g, bi) = cnt(g, bi) + 1.0d0
          end if
       end do
+      ! 3. one derived-name histogram file per group (group row count = P denominator)
       do g = 1, 4
          open (newunit=u, file=trim(spec%file_out)//'_'//gname(g)//'.dat', status='replace', &
                action='write')
@@ -249,9 +225,9 @@ contains
 
    !------------------------------------------------------------------
    ! bounce_hists(spec, data, nb, mrg) - bounce-count-grouped histograms:
-   !              invalid rows skipped, bounce counts at/above the merge
-   !              threshold folded into the ge class, one derived-name
-   !              histogram file per class
+   ! invalid rows skipped, bounce counts at/above the merge threshold folded
+   ! into the ge class, one derived-name histogram file per class
+   !------------------------------------------------------------------
    subroutine bounce_hists(spec, data, nb, mrg)
       type(hist_spec_t), intent(in) :: spec      ! histogram specification (file_out = the name prefix)
       type(hist_data_t), intent(in) :: data      ! trajectory row table
@@ -261,8 +237,10 @@ contains
       character(len=256) :: fname
       integer :: u, i, bi, ci
       dlt = (spec%v_hi - spec%v_lo)/dble(nb)
+      ! 1. mrg exact bounce classes + one merged >= mrg class
       allocate (cnt(mrg + 1, nb))
       cnt = 0.0d0
+      ! 2. per-row class selection + [lo,hi) binning (invalid rows skipped)
       do i = 1, data%n_traj
          if (data%n_bnc(i) < 0) cycle
          if (data%n_bnc(i) >= mrg) then
@@ -275,6 +253,7 @@ contains
             if (bi >= 1 .and. bi <= nb) cnt(ci, bi) = cnt(ci, bi) + 1.0d0
          end if
       end do
+      ! 3. one derived-name file per class
       do ci = 1, mrg + 1
          if (ci < mrg + 1) then
             write (fname, '(a,i0,a)') trim(spec%file_out)//'_bounce_', ci - 1, '.dat'
@@ -292,11 +271,12 @@ contains
 
    !------------------------------------------------------------------
    ! cell_fold(q, lattice, r) - fold one drop point into the reference cell:
-   !              fractional lattice coordinates truncated to the enclosing
-   !              cell, returning the Cartesian offset of q within it
-   !              (relative to the cell origin at q_ref; the folded remainder
-   !              lies in [0,1] - an exactly integer non-positive coordinate
-   !              folds to the upper boundary 1.0 under the -1 adjustment)
+   ! fractional lattice coordinates truncated to the enclosing cell, returning
+   ! the Cartesian offset of q within it (relative to the cell origin at
+   ! q_ref; the folded remainder lies in [0,1] - an exactly integer
+   ! non-positive coordinate folds to the upper boundary 1.0 under the -1
+   ! adjustment)
+   !------------------------------------------------------------------
    subroutine cell_fold(q, lattice, r)
       real(8), intent(in) :: q(2)                ! the drop point [A]
       type(lat_t), intent(in) :: lattice         ! lattice constants

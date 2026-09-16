@@ -1,17 +1,11 @@
 !=====================================================================
-! geometry.f90 - L5 instrument: geometric transforms (orientation rotations / center-of-mass
-!                separation / angular velocity and angular momentum / alignment steps / quadrature nodes)
-! Reference: src_VENUS/ROTATE.f90:19-54 (random Euler orientation); src_VENUS/ROTATEJKM.f:21-108 ((J,M) orientation);
-!       src_VENUS/ArbitraryAxisRotation.f:18-75 (arbitrary-axis rotation); src_VENUS/CENMAS.f90:16-50 (center-of-mass separation);
-!       src_VENUS/ANGVEL.f:9-20 (angular-velocity subtraction); src_VENUS/ROTN.f90:18-104 (angular momentum / rotational energy);
-!       src_TEST/interface_TEST.f90:76-108 (rigid-body alignment steps Z/Y); src_VENUS/GLPAR.f:23-69 (Gauss-Legendre)
-! Port notes (C1): arithmetic carried over VERBATIM per routine; adaptations legislated by
-!       the frozen signatures - the old WASTE common (QQ/PP) is the module-private COM-frame
-!       workspace rebuilt by cenmas on every call; the old WT dummy (fragment total mass) is
-!       summed internally; angles unify on RADIANS (old ROTALINE/ROTATEJKM took degrees);
-!       ROTATEJKM's j_vec is intent(in) (the old AM was inout - the rotated J stays local);
-!       amom's omega is optional; the old NAM global skip-switch and GLPAR's SAVE root
-!       cache are not carried (stateless calls).
+! geometry.f90 - geometric transforms: orientation rotations, center-of-mass
+!                separation, angular momentum/velocity, alignment steps, quadrature
+! Design:
+!   Stateless routines over (state, mass, list) triples; all angles in RADIANS.
+!   The COM-frame workspace q_cm_frm/p_cm_frm is module-private and rebuilt by
+!   cenmas on every call (derived quantities do not enter state) - cenmas is the
+!   precondition of rot_euler/rot_jkm/angvel/amom.
 !=====================================================================
 module geometry
    use consts, only: pi, two_pi, e_conv
@@ -21,16 +15,14 @@ module geometry
    private
    public :: rot_euler, rot_jkm, rot_axis, cenmas, angvel, amom, align_step, gl_nodes
 
-   ! Center-of-mass frame workspace (derived quantities do not enter state - K1 decision D2; the old
-   ! QQ/PP common block internalized as module-private; rebuilt by cenmas on every call -
-   ! the simplest lifetime form, refinable in phase C):
-   real(8), allocatable :: q_cm_frm(:)  ! center-of-mass-frame coordinates [Å] (old QQ)
-   real(8), allocatable :: p_cm_frm(:)  ! center-of-mass-frame momenta [amu·Å/(10 fs)] (old PP)
+   ! Center-of-mass frame workspace (derived quantities do not enter state; rebuilt
+   ! by cenmas on every call):
+   real(8), allocatable :: q_cm_frm(:)  ! center-of-mass-frame coordinates [Å]
+   real(8), allocatable :: p_cm_frm(:)  ! center-of-mass-frame momenta [amu·Å/(10 fs)]
 contains
    !------------------------------------------------------------------
    ! cenmas(st, mass, list, q_cm, v_cm) - center-of-mass position/velocity computation + separation of
    ! center-of-mass-frame coordinates and momenta
-   ! Reference: src_VENUS/CENMAS.f90:16-50 (WT summed internally from mass(list))
    subroutine cenmas(st, mass, list, q_cm, v_cm)
       type(state_t), intent(in) :: st    ! physical state (read-only; in-list atoms enter the sums)
       real(8), intent(in) :: mass(:)     ! per-atom masses [amu]
@@ -39,6 +31,7 @@ contains
       real(8), intent(out) :: v_cm(3)    ! center-of-mass velocity [Å/(10 fs)]
       integer :: i, j, j3, j2, j1
       real(8) :: wt
+      ! 1. center-of-mass position and velocity sums over the atom list
       wt = sum(mass(list))
       do i = 1, 3
          v_cm(i) = 0.0d0
@@ -58,6 +51,7 @@ contains
          v_cm(i) = v_cm(i)/wt
          q_cm(i) = q_cm(i)/wt
       end do
+      ! 2. rebuild the COM-frame workspace (q/p minus the COM position/velocity)
       if (allocated(q_cm_frm)) deallocate (q_cm_frm)
       if (allocated(p_cm_frm)) deallocate (p_cm_frm)
       allocate (q_cm_frm(size(st%q)), p_cm_frm(size(st%q)))
@@ -76,7 +70,6 @@ contains
    !------------------------------------------------------------------
    ! rot_euler(st, mass, list) - rotate a fragment about its center of mass by random Euler
    ! angles (coordinates and momenta transformed together)
-   ! Reference: src_VENUS/ROTATE.f90:19-54
    subroutine rot_euler(st, mass, list)
       type(state_t), intent(inout) :: st  ! physical state (the in-list q/p components rotated in place)
       real(8), intent(in) :: mass(:)      ! per-atom masses [amu]
@@ -86,6 +79,7 @@ contains
       real(8) :: qcm(3), vcm(3)
       integer :: i, j
       call cenmas(st, mass, list, qcm, vcm)   ! the COM-frame workspace precondition
+      ! 1. draw random Euler angles and build the rotation matrix
       rand = rng_u()
       rphi = two_pi*rand
       rand = rng_u()
@@ -107,6 +101,7 @@ contains
       rzx = -snthta*cschi
       rzy = snthta*snchi
       rzz = csthta
+      ! 2. rotate the COM-frame q/p in place and refresh the workspace
       do i = 1, size(list)
          j = 3*list(i)
          st%q(j-2) = q_cm_frm(j-2)*rxx + q_cm_frm(j-1)*rxy + q_cm_frm(j)*rxz
@@ -124,8 +119,6 @@ contains
    ! rot_jkm(st, mass, list, j_vec, j_rot, m_proj) - orient a fragment by (J,M) rotations
    ! (rotate J onto the z axis + projection angle + random azimuth about J + random rotation
    ! about the normal)
-   ! Reference: src_VENUS/ROTATEJKM.f:21-108; src_VENUS/ROTATEY.f:13-29 (the about-y step);
-   !       src_VENUS/ROTATEZ.f:13-27 (the about-z step); src_VENUS/ArbitraryAxisRotation.f:63-72
    subroutine rot_jkm(st, mass, list, j_vec, j_rot, m_proj)
       type(state_t), intent(inout) :: st  ! physical state (the in-list q/p components rotated in place)
       real(8), intent(in) :: mass(:)      ! per-atom masses [amu]
@@ -137,7 +130,7 @@ contains
       real(8) :: csthta, snthta, phi, qcm(3), vcm(3), p1(3), p2(3), x1(3), x2(3)
       integer :: i, j, k
       call cenmas(st, mass, list, qcm, vcm)   ! the COM-frame workspace precondition
-      ! rotate J about z into the xz plane (old :21-41)
+      ! 1. rotate J about z into the xz plane
       xt2 = j_vec(1)
       yt2 = j_vec(2)
       zt2 = j_vec(3)
@@ -157,7 +150,7 @@ contains
       xt3 = xt2*rxx + yt2*rxy
       yt3 = xt2*ryx + yt2*ryy
       zt3 = zt2
-      ! rotate J within the xz plane onto the z axis (old :43-62)
+      ! 2. rotate J within the xz plane onto the z axis
       rxx = zt2/sqrt(xt2**2 + yt2**2 + zt2**2)
       rxz = -sqrt(xt2**2 + yt2**2)/sqrt(xt2**2 + yt2**2 + zt2**2)
       rzx = -rxz
@@ -175,10 +168,9 @@ contains
       end do
       xt4 = xt3*rxx + zt3*rxz
       zt4 = xt3*rzx + zt3*rzz
-      ! J now on z; rotate about y so J makes acos(m/sqrt(J(J+1))) with the normal (old :64-70)
+      ! 3. J now on z; rotate about y so J makes acos(m/sqrt(J(J+1))) with the normal
       csthta = dble(m_proj)/sqrt(dble(j_rot*j_rot + j_rot))
       snthta = sqrt(1.0d0 - csthta**2)
-      ! (the about-y step, ROTATEY form with cos entry)
       do i = 1, size(list)
          j = 3*list(i)
          st%q(j-2) = q_cm_frm(j-2)*csthta + q_cm_frm(j)*snthta
@@ -190,8 +182,7 @@ contains
          p_cm_frm(j-2) = st%p(j-2)
          p_cm_frm(j)   = st%p(j)
       end do
-      ! random azimuth about the current J axis (direction (snthta,0,csthta)); radians
-      ! (the old code carried degrees through C4)
+      ! 4. random azimuth about the current J axis (direction (snthta,0,csthta)); radians
       p1 = (/ 0.0d0, 0.0d0, 0.0d0 /)
       p2 = (/ snthta, 0.0d0, csthta /)
       phi = two_pi*rng_u()
@@ -214,7 +205,7 @@ contains
          q_cm_frm(j-2:j) = st%q(j-2:j)
          p_cm_frm(j-2:j) = st%p(j-2:j)
       end do
-      ! random rotation about the surface normal (cylindrical symmetry, ROTATEZ form)
+      ! 5. random rotation about the surface normal (cylindrical symmetry)
       phi = two_pi*rng_u()
       do i = 1, size(list)
          j = 3*list(i)
@@ -240,8 +231,6 @@ contains
    !------------------------------------------------------------------
    ! rot_axis(pt_a, pt_b, pt_in, ang, pt_out) - rotate a point about an arbitrary axis (pt_a->pt_b),
    ! Murray closed form
-   ! Reference: src_VENUS/ArbitraryAxisRotation.f:18-75 (closed-form expansion :63-72; axis
-   !       normalization :32-35; ang in RADIANS - the old th took degrees)
    subroutine rot_axis(pt_a, pt_b, pt_in, ang, pt_out)
       real(8), intent(in)  :: pt_a(3)    ! axis start coordinates [Å]
       real(8), intent(in)  :: pt_b(3)    ! axis end coordinates [Å] (axis direction = pt_b - pt_a)
@@ -270,7 +259,6 @@ contains
    !------------------------------------------------------------------
    ! angvel(st, mass, list, omega) - subtract the rigid-body rotation contribution m*(omega x r) from
    ! the momenta
-   ! Reference: src_VENUS/ANGVEL.f:9-20
    subroutine angvel(st, mass, list, omega)
       type(state_t), intent(inout) :: st  ! physical state (the in-list st%p components subtracted in place)
       real(8), intent(in) :: mass(:)      ! per-atom masses [amu]
@@ -293,7 +281,6 @@ contains
    !------------------------------------------------------------------
    ! amom(st, mass, list, j_vec, e_rot, omega) - angular momentum / rotational energy (including inertia-
    ! tensor inversion)
-   ! Reference: src_VENUS/ROTN.f90:18-104 (the NAM skip-switch not carried - always computes)
    subroutine amom(st, mass, list, j_vec, e_rot, omega)
       type(state_t), intent(in) :: st          ! physical state (read-only; r, p via the COM workspace)
       real(8), intent(in) :: mass(:)           ! per-atom masses [amu]
@@ -308,6 +295,7 @@ contains
       e_rot = 0.0d0
       if (present(omega)) omega = 0.0d0
       if (size(list) == 1) return
+      ! 1. angular-momentum vector from the COM-frame workspace
       do i = 1, size(list)
          j = list(i)
          j3 = 3*j; j2 = j3 - 1; j1 = j2 - 1
@@ -316,7 +304,7 @@ contains
          j_vec(3) = j_vec(3) + (q_cm_frm(j1)*p_cm_frm(j2) - q_cm_frm(j2)*p_cm_frm(j1))
       end do
       if (size(list) == 2) then
-         ! the linear special case: E = |J|^2/(2I), I = sum m r^2 (old :35-47)
+         ! the linear special case: E = |J|^2/(2I), I = sum m r^2
          aixx = 0.0d0
          do i = 1, size(list)
             j = 3*list(i) + 1
@@ -329,7 +317,7 @@ contains
          e_rot = (j_vec(1)**2 + j_vec(2)**2 + j_vec(3)**2)/aixx/2.0d0/e_conv
          return
       end if
-      ! the inertia tensor (old :52-69)
+      ! 2. the inertia tensor
       aixx = 0.0d0; aiyy = 0.0d0; aizz = 0.0d0
       aixy = 0.0d0; aixz = 0.0d0; aiyz = 0.0d0
       do i = 1, size(list)
@@ -345,7 +333,7 @@ contains
       det = aixx*(aiyy*aizz - aiyz*aiyz) - aixy*(aixy*aizz + aiyz*aixz) - &
             aixz*(aixy*aiyz + aiyy*aixz)
       if (abs(det) >= 0.01d0) then
-         ! inverse by the adjugate (old :70-81) + omega = I^-1 J (old :83-87)
+         ! inverse by the adjugate + omega = I^-1 J
          uxx = (aiyy*aizz - aiyz*aiyz)/det
          uxy = (aixy*aizz + aixz*aiyz)/det
          uxz = (aixy*aiyz + aixz*aiyy)/det
@@ -356,7 +344,7 @@ contains
          wy = uxy*j_vec(1) + uyy*j_vec(2) + uyz*j_vec(3)
          wz = uxz*j_vec(1) + uyz*j_vec(2) + uzz*j_vec(3)
       else
-         ! near-singular (linear geometry): the linear special-case formula (old :88-102)
+         ! near-singular (linear geometry): the linear special-case formula
          aixx = 0.0d0
          do i = 1, size(list)
             j = 3*list(i) + 1
@@ -376,7 +364,6 @@ contains
    !------------------------------------------------------------------
    ! align_step(st, i_axis, ang, list) - one rigid-body alignment step (about z or about y, through the
    ! origin; coordinates and momenta transformed together)
-   ! Reference: src_TEST/interface_TEST.f90:76-90 (Z step); :94-108 (Y step)
    subroutine align_step(st, i_axis, ang, list)
       type(state_t), intent(inout) :: st  ! physical state (the in-list q/p components rotated in place)
       integer, intent(in) :: i_axis       ! rotation axis (3 = about z; 2 = about y, ang = target cos)
@@ -417,8 +404,6 @@ contains
    !------------------------------------------------------------------
    ! gl_nodes(x_lo, x_hi, node, wts) - Gauss-Legendre quadrature nodes and weights (symmetric halving +
    ! Newton refinement)
-   ! Reference: src_VENUS/GLPAR.f:23-50 (node/weight mapping); :55-69 (the PL recursion); the
-   !       old SAVE root cache not carried (stateless)
    subroutine gl_nodes(x_lo, x_hi, node, wts)
       real(8), intent(in)  :: x_lo       ! integration lower bound
       real(8), intent(in)  :: x_hi       ! integration upper bound
@@ -443,7 +428,7 @@ contains
          wts(n+1-i) = wts(i)
       end do
    contains
-      ! Legendre polynomial of order n + its derivative (old PL :55-69)
+      ! Legendre polynomial of order n + its derivative
       real(8) function pl(x, n, dpl)
          real(8), intent(in) :: x
          integer, intent(in) :: n

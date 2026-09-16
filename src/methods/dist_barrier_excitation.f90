@@ -1,84 +1,13 @@
 !=====================================================================
-! dist_barrier_excitation.f90 - distribution member (methods/ library):
-!                     barrier-excitation sampling of a fragment at a
-!                     saddle - a stabilization energy e_stab is split
-!                     over a GIVEN orthonormal mass-weighted stable-mode
-!                     table (uniform point on the unit sphere in mode
-!                     space, uniform phase per mode - the microcanonical
-!                     construction), and the reaction coordinate carries
-!                     a momentum kick only: ZERO displacement along the
-!                     reaction coordinate (the fragment stays ON the
-!                     saddle in that direction), momentum magnitude
-!                     fixed (sqrt(2*e_conv*e_bar), mode 0) or thermally
-!                     Maxwell-drawn along one dimension
-!                     (sqrt(2*kb*t_bar*Exp(1)), mode 1), with the sign
-!                     drawn from a FRESH uniform (products/reactants
-!                     equally likely). The state is written about the
-!                     carrier's center-of-mass origin: q = qz_com +
-!                     (C*Q)/sqrt(m), p = sqrt(m)*(C*P + pbar*c_rc).
-! Contract:
-!   barrier_excitation_init(p) - validate the member parameters and
-!     saddle data, bind the served fragment. Loud-stops name the
-!     offending field and value:
-!       e_stab < 0 (stabilization energy; zero is legal - pure barrier
-!       kick); n_e_bar not 0 or 1 (barrier energy-law selector); mode 0
-!       with e_bar < 0 (barrier energy); mode 1 with t_bar <= 0 (barrier
-!       temperature); the binding battery (no roster fragment table /
-!       no scheme array / length mismatch / the member word absent from
-!       the scheme-code table / zero or multiple carriers); an
-!       unallocated table (stable modes or reaction coordinate); a
-!       frequency table and eigenvector table of different column
-!       counts; an eigenvector table whose row count is not 3*(carrier
-!       atom count); a mode count that leaves no room for the three
-!       translations and the reaction coordinate (n_mode > 3*nat - 4);
-!       e_stab > 0 with an empty stable table (no support to absorb
-!       it); a non-positive frequency; a stable table that is not
-!       orthonormal to 1e-8; a stable column not orthogonal to the
-!       mass-weighted translations; a reaction coordinate of the wrong
-!       length; a reaction coordinate not unit to 1e-8; a reaction
-!       coordinate not orthogonal to the translations; a reaction
-!       coordinate overlapping the stable-mode span.
-!     Precompute: the COM-shifted seed coordinates, the replicated
-!       sqrt(mass) vector, and e_stab_int = e_stab*e_conv.
-!   barrier_excitation_sample(sta) - one realization: gaussian vector g
-!     (one per stable mode), u = g/|g| (degenerate-draw guard idles in
-!     practice), the energy split, per-mode amplitudes and uniform
-!     phases; then the barrier momentum and its fresh-uniform sign; then
-!     the back-transformation onto the carrier's q/p components.
-!     Identities exact by construction: sum_k 0.5*(P_k^2 + w_k^2*Q_k^2)
-!     = e_stab_int; c_rc . sqrt(m)*(q - qz_com) = 0; c_rc . p/sqrt(m) =
-!     +/- sqrt(2*e_conv*e_bar) (mode 0); total momentum zero;
-!     the COM of the written q is the origin; p/sqrt(m) lies in
-!     span([C, c_rc]).
-!     The saddle data (stable-mode table + reaction coordinate) ARRIVES
-!     as assembly data - deriving it from a Hessian at the saddle is
-!     assembly-phase mechanism; this member consumes any data meeting
-!     the contract above (its criteria program drives a synthetic
-!     saddle).
-! Rulings carried in the member's design (variant inventory against the
-!   old defect register, semantics only, no citations): the old
-!   magnitude-sign correlation - the same deviate that built the thermal
-!   barrier momentum also flipped its sign, so large momenta carried one
-!   sign and small momenta the other - is NOT carried (the sign comes
-!   from a fresh uniform; the criteria program pins the sign/magnitude
-!   independence); the directed-trajectory variant (a fixed small step
-!   along the reaction coordinate compared against a bond length to
-!   choose the sign towards products or reactants) is NOT carried (it
-!   encodes which distance defines "towards products" - system
-!   knowledge the roster does not hold; the sign here is symmetric
-!   random, and directing a trajectory is driver business); the
-!   in-sampler measurement of the old routine (force-chain calls,
-!   rotational analysis and echo prints inside the sampling path) is NOT
-!   carried (the member writes state; bookkeeping belongs to the
-!   caller); the collinear FIXED-ENERGY trigger variants are NOT
-!   implemented (pre-deletion rule: the collinear pseudo-mode overflowed
-!   its step bound and stopped the run). The member itself is fused and
-!   stays on the roster: the legal body (microcanonical stable modes +
-!   barrier momentum at a saddle) is clean.
-! Units: e_stab/e_bar [kcal/mol] (input, converted with e_conv); t_bar
-!   [K]; E [internal] (= kcal/mol * e_conv); w_mode [rad/(10 fs)]; c_mode
-!   and c_rc orthonormal/unit in mass-weighted coordinates; q
-!   [Angstrom]; p [amu*Ang/(10 fs)]; masses [amu].
+! dist_barrier_excitation.f90 - distribution member: saddle sampling
+!   (e_stab split over given stable modes + reaction-coordinate
+!   momentum kick, fresh-uniform sign, zero rc displacement)
+! Design:
+!   Saddle data arrives as assembly data; init validates it loudly and
+!   sample writes the carrier's q/p about its COM origin. The barrier-
+!   momentum sign is a fresh uniform independent of the magnitude.
+!   Units: e_stab/e_bar [kcal/mol], t_bar [K], E [internal], w_mode
+!   [rad/(10 fs)], q [Angstrom], p [amu*Ang/(10 fs)], m [amu].
 !=====================================================================
 module dist_barrier_excitation
    use consts,        only: kb_code, e_conv, two_pi

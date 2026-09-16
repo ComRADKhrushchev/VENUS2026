@@ -1,26 +1,14 @@
 !=====================================================================
-! reg_dist_ebk.f90 - registration module (methods/): ONE samp_reg call
-!                    registers the 'ebk' distribution member row - the
-!                    reg file is the atomic registration unit (a new
-!                    member = its method file + this one thin file;
-!                    zero edits to existing files)
-! Contract:
-!   reg_dist_ebk_all() - register the ebk member's sampling routine
-!     under its scheme word 'ebk' (the word the input grammar accepts
-!     for DIST_SCHEME and the per-fragment dispatch resolves). Passing
-!     ebk_sample as samp_reg's procedure dummy checks its conformance
-!     to the dist_proc_i interface at compile time. Executed once in
-!     the assembly phase, before any samp_run.
-!   reg_dist_ebk_init() - the ASSEMBLY SEAM entry (this member's shape:
-!     NO input key stages an ebk parameter - the spectroscopic constants
-!     w_e/w_ex_e/b_rot have no production source yet, so the receiver
-!     keeps its field defaults and a SELECTED ebk loud-stops at its own
-!     w_e check - the fail-loud posture; the routine exists so the seam
-!     is uniform across the member family). Guard: an UNSELECTED member
-!     skips (no dist_scheme row carries its word). Three-party zero
-!     knowledge: the driver knows no member, the input knows no member,
-!     the member never touches the driver.
-! Units: none (registration carries names and code references only).
+! reg_dist_ebk.f90 - register the 'ebk' distribution member
+! Design:
+!   One samp_reg call fills the member-table row under the scheme word
+!   the input grammar accepts for DIST_SCHEME; the reg file is the
+!   atomic registration unit (a new member = its method file + one thin
+!   reg file; zero edits to existing files).
+!   _init is the assembly seam with no staged keys: no input key stages
+!   an ebk parameter (the spectroscopic constants have no production
+!   source), so a selected member loud-stops at its own w_e check
+!   (fail-loud); an unselected member skips.
 !=====================================================================
 module reg_dist_ebk
    use sampler,   only: samp_reg, samp_code
@@ -38,8 +26,8 @@ contains
    end subroutine reg_dist_ebk_all
 
    !------------------------------------------------------------------
-   ! reg_dist_ebk_init() - the assembly seam: no staged keys, the member's
-   !                        own init runs on field defaults (fail-loud)
+   ! reg_dist_ebk_init() - assembly seam: no staged keys, the member's own
+   !                        init runs on field defaults (fail-loud)
    subroutine reg_dist_ebk_init()
       type(ebk_params_t) :: p            ! member-parameter receiver (field defaults;
                                          ! no input key stages an ebk parameter)

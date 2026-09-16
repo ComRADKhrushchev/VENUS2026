@@ -1,81 +1,14 @@
 !=====================================================================
-! dist_thermalize.f90 - distribution member (methods/ library): MD
-!              equilibration mechanism - Maxwell velocity seed of the
-!              owned components at the target temperature, exact drift
-!              removal (the mass-weighted COM-velocity projection
-!              p'_i = p_i - (m_i/M)*P onto zero net momentum), then a
-!              bounded equilibration run of n_eq propagation steps at
-!              the member step size through the evolution service.
-! Conservation algebra (the declaration this member carries):
-!   post-equilibration kinetic-energy expectation E[KE] =
-!     (3*nat - 3)*kb*t_eq/2 exactly, independent of the mass
-!     distribution - the Maxwell seed followed by the exact
-!     MASS-WEIGHTED (COM-velocity) projection p'_i = p_i -
-!     (m_i/M)*P onto zero net momentum removes exactly three degrees
-!     of freedom from the Gaussian; the equilibration run at the bath
-!     temperature preserves the expectation (a mechanism-level
-!     declaration: the trajectory numbers are posterior to the force
-!     chain).
-! Division of labor (the ruling this member shares with the assembly):
-!   the member owns the EQUILIBRATION MECHANISM (seed + drift removal +
-!   the bounded run through the propagator - an internal
-!   evolution-service call is legal, boundary 4); assembling the run
-!   around it (which other members participate, trajectory accounting)
-!   is driver business. Since the Ruling H minimal path the force chain
-!   is real: the run propagates the owned components under the assembled
-!   force law - the zero-force trajectories of the criteria are a
-!   property of the check-side container binding (free flight), not of
-!   the chain; the trajectory numbers are posterior to the force chain.
-! Contract:
-!   thermalize_init(p) - validate the member parameters (target
-!     temperature, step count, step size), bind the served fragment
-!     (exactly one carrier of the thermalize scheme), precompute the
-!     expectation constant. Loud-stops name the offending field and
-!     value:
-!       t_eq <= 0 (target temperature [K] - no silent zero-temperature
-!       branch); n_eq < 1 (step count); dt_eq <= 0 (step size [10 fs]);
-!       no roster fragment table (assembly order); no per-fragment
-!       scheme array; length mismatch against the roster; the member
-!       word absent from the scheme-code table (a library-assembly
-!       failure); zero or multiple carrier fragments; a state whose
-!     momentum vector ends before the carrier's last owned component
-!     (the roster offset included - a direct call against a
-!     short-of-fragment state).
-!   thermalize_sample(sta) - (1) seed every owned component of the
-!     carrier fragment with a fresh Gaussian momentum at sqrt(m_i*kb*
-!     t_eq); (2) apply the mass-weighted COM-velocity projection
-!     p'_i = p_i - (m_i/M)*P per component, P the owned-set total
-!     momentum, M the carrier mass (the owned-set total momentum
-!     becomes exactly zero; this is the projection the declared
-!     expectation form assumes); (3) swap the
-!     global propagator step to dt_eq, run n_eq propagation steps
-!     through the evolution service, restore the step and the
-!     trajectory time (the equilibration run neither consumes
-!     trajectory time nor leaves the global step changed). sta is the
-!     sampler runtime channel; this member writes ONLY its owned
-!     momentum components.
-!   thermalize_t_eq() / thermalize_n_eq() / thermalize_dt_eq() - the
-!     equilibration parameters init received.
-!   thermalize_e_kin_expect() - the declared post-equilibration
-!     kinetic-energy expectation (3*nat-3)*kb*t_eq/2 [internal energy]
-!     (exposed for criteria anchoring of the conservation algebra).
-!   thermalize_frag() / thermalize_nat() - the bound carrier fragment
-!     and its atom count.
-! Variant inventory against the old defect register (semantics only, no
-!   citations): the zero-temperature silent branch is NOT carried (a
-!   loud-stop names it instead); the bystander-freeze choreography
-!   (displacing/freezing the non-target fragments during the run) is
-!   NOT carried (it trespasses component ownership - assembly/driver
-!   business); the hardwired default step is NOT carried (dt_eq is a
-!   member parameter applied through the configuration step channel
-!   with swap-and-restore); the restart branch with a random step count
-!   is NOT carried; periodic in-run resampling is NOT carried (the run
-!   is bare propagation - bath coupling is the thermostat member's
-!   face); the two-counter equilibration split is NOT carried (a single
-!   step count); diagnostics prints are NOT carried.
-! Units: t_eq [K]; dt_eq [10 fs]; masses [amu] (roster); kb_code
-!   internal energy per K; momenta [amu*Ang/(10 fs)]; e_kin_expect
-!   [internal energy].
+! dist_thermalize.f90 - distribution member: MD equilibration mechanism
+!   - Maxwell seed of the owned components, exact drift removal, then a
+!   bounded run of n_eq propagation steps through the evolution service
+! Design:
+!   The COM-velocity projection p'_i = p_i - (m_i/M)*P removes exactly
+!   three degrees of freedom, so E[KE] = (3*nat-3)*kb*t_eq/2 exactly.
+!   The member writes its carrier's owned momenta, swaps the global
+!   step to dt_eq for the run and restores step + time after; no
+!   bystander freezing, no in-run bath coupling (thermostat's face).
+!   Units: t_eq [K]; dt_eq [10 fs]; p [amu*Ang/(10 fs)]; E [internal].
 !=====================================================================
 module dist_thermalize
    use consts,        only: kb_code
@@ -84,7 +17,7 @@ module dist_thermalize
    use config,        only: reactants, prop_cfg => propagator   ! alias to avoid clashing with the module name
    use config_roster, only: roster
    use sampler,       only: samp_code
-   use propagator,    only: prop_step     ! evolution service (boundary 4: an internal call is legal)
+   use propagator,    only: prop_step     ! evolution service (an internal call is legal)
    implicit none
    private
    public :: thermalize_params_t, thermalize_init, thermalize_sample, &
@@ -226,11 +159,11 @@ contains
       end do
 
       ! (3) the bounded equilibration run at the member step size, through
-      !     the evolution service (boundary 4): the global step and the
-      !     trajectory time are swapped for the run and RESTORED after it
-      !     (the force chain is real since the Ruling H minimal path - the
-      !     criteria's zero-force trajectories come from their check-side
-      !     container binding, see the header)
+      !     the evolution service: the global step and the trajectory time
+      !     are swapped for the run and RESTORED after it (the run
+      !     propagates under the real assembled force law; any zero-force
+      !     criteria trajectories come from their check-side container
+      !     binding, not from this member)
       t_saved = sta%t
       dt_saved = prop_cfg%dt
       prop_cfg%dt = dt_eq_c

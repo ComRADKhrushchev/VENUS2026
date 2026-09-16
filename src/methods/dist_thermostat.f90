@@ -1,56 +1,14 @@
 !=====================================================================
-! dist_thermostat.f90 - distribution member (methods/ library): bath
-!              thermostat - the velocity-reset mechanism of an Andersen
-!              bath: one reset draws FRESH Gaussian momenta for the owned
-!              components at the bath temperature,
-!              p(i,c) = sigma(i)*g, sigma(i)^2 = m_i*kb*T_bath
-!              (the Maxwell-shape declaration this member carries).
-! Division of labor (the ruling this member shares with the dynamics
-!   side): the member owns the RESET MECHANISM and the bath parameters;
-!   the collision schedule (when a reset fires during a run) and the
-!   Langevin integration are force-chain/propagator business. The
-!   collision frequency is loaded bath data for that side, exposed
-!   through thermostat_nu - loaded, not dropped.
-! Contract:
-!   thermostat_init(p) - validate the member parameters (bath
-!     temperature, collision frequency), bind the served fragment
-!     (exactly one carrier of the thermostat scheme), precompute the
-!     per-atom Maxwell widths from the roster masses. Loud-stops name
-!     the offending field and value:
-!       t_bath <= 0 (bath temperature [K]); nu_coll <= 0 (collision
-!       frequency [1/(10 fs)]); no roster fragment table (assembly
-!       order); no per-fragment scheme array; length mismatch against
-!       the roster; the member word absent from the scheme-code table
-!       (a library-assembly failure); zero or multiple carrier
-!       fragments (one member instance carries one parameter set).
-!   thermostat_sample guards: sample before init; a state whose
-!     momentum vector ends before the carrier's last owned component
-!     (the roster offset included - a direct call against a
-!     short-of-fragment state). One reset: every owned component of the
-!     carrier fragment receives a fresh Gaussian momentum at the
-!     declared width. sta is the sampler runtime channel; this member
-!     writes ONLY its owned momentum components (q/f untouched, and the
-!     atoms outside the carrier untouched).
-!   thermostat_t_bath() / thermostat_nu() - the bath parameters init
-!     received (collision frequency = carried bath data).
-!   thermostat_frag() / thermostat_nat() - the bound carrier fragment
-!     and its atom count.
-!   thermostat_sigma(i) - the declared Maxwell width sqrt(m_i*kb*T) of
-!     carrier-atom i [amu*Ang/(10 fs)] (exposed for criteria anchoring
-!     of the conservation algebra).
-! Variant inventory against the old defect register (semantics only, no
-!   citations): the brute rescale-to-exact-temperature face is NOT
-!   carried (a deterministic rescale biases the declared Maxwell
-!   marginals - the reset is the exact Gaussian draw); the periodic
-!   in-run resampling schedule is NOT carried (dynamics-side business,
-!   the member is the reset mechanism); net-momentum zeroing is NOT
-!   carried here (drift removal is the equilibration face's business -
-!   doing it inside a reset would bias the declared marginals); a
-!   rigid-atom exclusion list is NOT carried (the roster is the sole
-!   composition channel, the carrier is whole); diagnostics prints are
-!   NOT carried.
-! Units: t_bath [K]; nu_coll [1/(10 fs)]; masses [amu] (roster); kb_code
-!   internal energy per K; sigma [amu*Ang/(10 fs)] = internal momentum.
+! dist_thermostat.f90 - distribution member: Andersen-bath velocity
+!   reset - one reset draws fresh Gaussian momenta for the owned
+!   components at p(i,c) = sigma(i)*g, sigma(i)^2 = m_i*kb*T_bath
+! Design:
+!   The member owns the exact Gaussian reset only (no deterministic
+!   rescale, no in-run schedule, no net-momentum zeroing - those would
+!   bias the Maxwell marginals or belong to other members). The
+!   collision schedule and Langevin integration are dynamics-side
+!   business; nu_coll is loaded bath data exposed via thermostat_nu.
+!   Units: t_bath [K]; nu_coll [1/(10 fs)]; sigma [amu*Ang/(10 fs)].
 !=====================================================================
 module dist_thermostat
    use consts,        only: kb_code

@@ -1,19 +1,13 @@
 !=====================================================================
 ! seam_cast.f90 - staged-string -> number cast for the assembly seam
-!                 (methods/): the one shared conversion the reg
-!                 member-parameter loaders read their staged raw values
-!                 through - an unreadable value (a hand typo like
-!                 T_GLO = 3O0) is a NAMED loud-stop here, never a bare
-!                 runtime read error dying mid-assembly
-! Placement (the zero-knowledge audit): the cast is PURE FORM - key
-!   name, raw string and source line in, converted number out; no
-!   member word, no driver symbol, no staging accessor (the caller
-!   hands what it already hoisted). It lives beside the seam it serves,
-!   so the input framework keeps its posture (value semantics are
-!   member-side knowledge) and every reg file stays a thin loader.
-! Message shape: the input framework's own value parsers - key + line
-!   + the unreadable value, quoted - so a bad value reads identically
-!   wherever it is caught.
+! Design:
+!   Pure form: key name, raw string and source line in, converted
+!   number out - no member word, no driver symbol, no staging accessor
+!   (the caller hands what it already hoisted).
+!   An unreadable value (e.g. a hand typo like T_GLO = 3O0) is a named
+!   loud-stop here, never a bare runtime read error dying mid-assembly;
+!   the message shape (key + line + the unreadable value, quoted)
+!   matches the input framework's own value parsers.
 !=====================================================================
 module seam_cast
    implicit none
@@ -52,9 +46,9 @@ contains
       stop 1
    end subroutine seam_int
 
-   ! seam_tag(ln) - the source-line suffix of a message (a staged member key
-   !                always arrives from a data line, ln >= 1; the ln <= 0 arm
-   !                is the defensive default-tag shape)
+   ! seam_tag(ln) - the source-line suffix of a message (a staged key arrives
+   !                from a data line, ln >= 1; ln <= 0 falls back to the
+   !                default tag)
    function seam_tag(ln) result(tag)
       integer, intent(in) :: ln
       character(len=24) :: tag

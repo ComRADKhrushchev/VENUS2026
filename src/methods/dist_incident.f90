@@ -1,62 +1,14 @@
 !=====================================================================
-! dist_incident.f90 - distribution member (methods/ library): incident-
-!                     channel distribution - the collision prescription
-!                     (collision energy, impact parameter, beam
-!                     orientation, drop point), sampled once per
-!                     trajectory AFTER the per-fragment members have
-!                     written the fragment interiors
-! Contract:
-!   inc_init(p) - validate the member parameters and the collision
-!     geometry, precompute the mode-2 rejection envelope. Loud-stops
-!     name the offending field/value: n_e_rel outside {0,1,2}; mode 0
-!     with t_trans <= 0; mode 2 with v_width <= 0; n_thta / n_chi /
-!     n_b outside {0,1}; n_aim outside {0,1,2}; a polar prescription
-!     with thta_max outside its legal interval ((0, pi/2] when
-!     sampled, [0, pi/2] when fixed); n_aim = 1 with no unit cell
-!     staged (box_lx / box_ly / skew); n_aim = 2 with box_pad <= 0; a
-!     collision-energy mode needing e_rel (1 or 2) with e_rel <= 0;
-!     b_max <= 0; r_sep <= 0; a gas-phase system whose fragment count
-!     is not two (fragment 1 = projectile, fragment 2 = target); a
-!     surface system whose fragment count is not one (the surface
-!     itself is not a roster fragment). e_rel / b_max / r_sep are
-!     system-level incident prescriptions read from config%reactants
-!     at init - the member parameters carry only the distribution
-!     shapes, no duplication.
-!   inc_sample(sta) - one draw: cos(theta) (fixed theta_max, or
-!     uniform on [cos(theta_max), 1] - P(theta) prop. to sin(theta));
-!     azimuth chi (fixed, or uniform on [0, 2*pi)); aiming radius b
-!     (fixed b_max, or b_max*sqrt(U) - b^2 uniform on [0, b_max^2])
-!     with disk azimuth phi (uniform, or chi in the fixed-b mode - the
-!     offset stays in the beam tilt plane); drop point (origin,
-!     uniform in the unit cell s1*a1 + s2*a2 with a1 = (box_lx, 0),
-!     a2 = box_ly*(cos(skew), sin(skew)), or uniform in the cluster
-!     box [-box_pad, box_pad]^2); collision speed v per mode
-!     (0: E = e_conv*r_kcal*t_trans*gamma(2); 1: E = e_conv*e_rel;
-!     2: rejection from DENS(v) = v^3*exp(-((v-v0)/v_width)^2) with
-!     v0 = sqrt(2*e_conv*e_rel/mu_eff) - the envelope is exact: the
-!     density peaks at v* = v0/2 + sqrt(v0^2/4 + 3*v_width^2/2), the
-!     proposal is uniform on [0, 5*v*] and DENS(v) <= DENS(v*) for
-!     every v >= 0). Assembly (one placement formula for both
-!     paradigms - the surface convention is the superset): incident
-!     direction u = (-sin(theta)*cos(chi), -sin(theta)*sin(chi),
-!     -cos(theta)) (pointing at the target); the target site (the
-!     target fragment COM, or the aim point on the surface) is
-!     (rx0, ry0, 0); the projectile fragment COM is the target site
-!     + b*(cos(phi), sin(phi), 0) + r_sep*(sin(theta)*cos(chi),
-!     sin(theta)*sin(chi), 1) - the drop height is r_sep exactly and
-!     the lateral beam back-off r_sep*sin(theta) keeps the beam
-!     aimed at the target site; the fragment interiors ride along
-!     through their COM shifts (positions rewritten by translation,
-!     internal geometry untouched). Momenta are ADDITIVE: gas pair -
-!     fragment COM velocities +(m2/M)*v*u and -(m1/M)*v*u (the
-!     relative speed v rides on unchanged fragment centers of mass;
-!     per-fragment momentum increments +/- mu_eff*v*u); surface -
-!     projectile COM velocity +v*u (the surface takes the recoil,
-!     mu_eff = m1).
-! Units: angles [rad]; t_trans [K]; energies - e_rel [kcal/mol] and
-!   t_trans enter through e_conv / r_kcal into the internal unit;
-!   speeds [Angstrom/(10 fs)] and momenta [amu*Angstrom/(10 fs)] (the
-!   units hbar_code ties together); lengths [Angstrom]; masses [amu].
+! dist_incident.f90 - distribution member: incident-channel collision
+!   prescription (energy, impact parameter, beam orientation, drop
+!   point), sampled after the per-fragment members write the interiors
+! Design:
+!   One placement formula for both paradigms (surface superset):
+!   projectile COM = target site + b offset + r_sep back-off; interiors
+!   ride along via COM shifts, momenta are additive. e_rel / b_max /
+!   r_sep are system-level prescriptions from config%reactants - member
+!   parameters carry only distribution shapes.
+!   Units: angles [rad]; t_trans [K]; e_rel [kcal/mol] via e_conv; speeds [Ang/(10 fs)]; p [amu*Ang/(10 fs)].
 !=====================================================================
 module dist_incident
    use consts,        only: pi, two_pi, e_conv, r_kcal

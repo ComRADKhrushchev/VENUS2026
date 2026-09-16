@@ -1,20 +1,10 @@
 !=====================================================================
-! analysis/density.f90 - L4 analysis: quantum density of states (Beyer-Swinehart direct
-!                         counting) and
-!                         formatted eigenvalue/vector output
-! Reference: src_VENUS/DENQ.f:10-18 (DENQ: cumulative state counts at the two probe energies
-!       E +/- 50, density =
-!       (SUM1-SUM2)/100 central difference), :25-96 (SUMQ direct counting: energy bin width
-!       DEL = 1.0
-!       :40, +20 bins of margin :50-51, per-mode effective integer frequencies
-!       NEFIN = int(W/DEL+0.499999)
-!       :57-59, T-array addition sequence T(j+ne_i)+=T(j) :63-77, cumulation T(i)+=T(i-1)
-!       :81-83, E/DEL linear interpolation :86-89, negative-probe early return :44-47, T
-!       allocation/release :53/:93);
-!       src_VENUS/EIGOUT.f:1-39 (eigenvalue output: upper/lower triangle swap to take row
-!       vectors :13-19,
-!       6-column blocks writing eigenvalues EIG and per-row vector components :21-31,
-!       post-write transpose restore :33-38)
+! density.f90 - quantum density of states and formatted eigenvalue/vector output
+! Design:
+!   dens_states: Beyer-Swinehart direct counting of the cumulative state count
+!   N(e); density taken by central difference at e +/- 50 bins. eig_out: writes
+!   eigenvalues with their vectors in 6-column blocks (vectors temporarily
+!   transposed to rows, restored after writing). Energies in unit bins (del = 1).
 !=====================================================================
 module density
    implicit none
@@ -22,18 +12,14 @@ module density
    public :: dens_states, eig_out
 contains
    !------------------------------------------------------------------
-   ! dens_states(w_mode, e_probe, rho) - density of states (Beyer-Swinehart direct counting +
-   !                                      central difference)
-   ! (see previous line)
-   ! Reference: DENQ.f:10-18 (the differencing shell); DENQ.f:25-96 (SUMQ direct counting -
-   ! inlined as step 1)
+   ! dens_states(w_mode, e_probe, rho) - density of states dN/dE at e_probe by
+   ! central difference of the cumulative count at e +/- 50 bins
+   !------------------------------------------------------------------
    subroutine dens_states(w_mode, e_probe, rho)
-      real(8), intent(in) :: w_mode(:)  ! normal-mode frequency table [energy bins] (old WK -
-                                        ! effective frequencies in units of the bin width DEL;
-                                        ! cm^-1 -> bin conversion done via
-      ! consts in the assembly phase - finalized in phase C)
-      real(8), intent(in) :: e_probe    ! probe energy [energy bins] (old EN)
-      real(8), intent(out) :: rho       ! density of states dN/dE [1/bin] (old RHO)
+      real(8), intent(in) :: w_mode(:)  ! normal-mode frequency table [energy bins] (effective
+                                        ! frequencies in units of the bin width del)
+      real(8), intent(in) :: e_probe    ! probe energy [energy bins]
+      real(8), intent(out) :: rho       ! density of states dN/dE [1/bin]
       real(8) :: s_hi, s_lo             ! the cumulative counts at the two probes
       call sum_count(w_mode, e_probe + 50.0d0, s_hi)
       call sum_count(w_mode, e_probe - 50.0d0, s_lo)
@@ -42,8 +28,8 @@ contains
 
    !------------------------------------------------------------------
    ! sum_count(w_mode, e, n_states) - cumulative quantum state count N(e) by
-   !                                  Beyer-Swinehart direct counting (the
-   !                                  differencing shell's step 1, inlined here)
+   ! Beyer-Swinehart direct counting
+   !------------------------------------------------------------------
    subroutine sum_count(w_mode, e, n_states)
       real(8), intent(in) :: w_mode(:)     ! normal-mode frequency table [energy bins]
       real(8), intent(in) :: e             ! probe energy [energy bins]
@@ -53,10 +39,13 @@ contains
       real(8) :: frac                      ! the interpolation remainder within one bin
       integer :: ne(size(w_mode))          ! per-mode effective integer frequencies [bin]
       integer :: maxt, nd, i, k
+      ! 1. negative probe: no states below the zero-point level
       if (e < 0.0d0) then
-         n_states = 0.0d0                  ! no states below the zero-point level
+         n_states = 0.0d0
          return
       end if
+      ! 2. counting grid (probe rounded up + 20 margin bins) + per-mode effective
+      !    integer frequencies
       maxt = int(e/del + 0.499999d0) + 20  ! grid up, plus 20 bins of margin
       do i = 1, size(w_mode)
          ne(i) = int(w_mode(i)/del + 0.499999d0)
@@ -64,14 +53,17 @@ contains
       allocate (t(maxt))
       t(1) = 1.0d0                         ! the zero-point state
       t(2:maxt) = 0.0d0
-      do i = 1, size(w_mode)               ! one forward pass per mode: the
-         do k = 1, maxt - ne(i)            ! counting core t(ne_i + k) += t(k)
+      ! 3. counting core: one forward pass per mode, t(ne_i + k) += t(k)
+      do i = 1, size(w_mode)
+         do k = 1, maxt - ne(i)
             t(ne(i) + k) = t(ne(i) + k) + t(k)
          end do
       end do
-      do i = 2, maxt                       ! prefix sum: exact levels -> N(E)
+      ! 4. prefix sum: exact levels -> N(E)
+      do i = 2, maxt
          t(i) = t(i) + t(i - 1)
       end do
+      ! 5. linear interpolation of N(E) within the bin
       nd = int(e/del)
       frac = e/del - dble(nd)
       n_states = t(nd + 1) + (t(nd + 2) - t(nd + 1))*frac
@@ -79,16 +71,17 @@ contains
    end subroutine sum_count
 
    !------------------------------------------------------------------
-   ! eig_out(a, eig, unit) - formatted eigenvalue/vector output (6-column blocks; restored after writing)
-   ! Reference: EIGOUT.f:13-39
+   ! eig_out(a, eig, unit) - formatted eigenvalue/vector output in 6-column
+   ! blocks (the matrix's column convention restored after writing)
+   !------------------------------------------------------------------
    subroutine eig_out(a, eig, unit)
-      real(8), intent(inout) :: a(:,:)  ! eigenvector matrix (entry: vectors by column - the
-                                         ! linalg eig_sym convention; temporarily transposed to
-                                         ! rows before writing, restored in place after)
-      real(8), intent(in) :: eig(:)     ! eigenvalues (ascending, aligned with the columns of a;
-                                         ! the old global EIG now passed as a dummy argument)
-      integer, intent(in) :: unit       ! output unit number [-] (old dummy argument IP)
+      real(8), intent(inout) :: a(:,:)  ! eigenvector matrix (entry: vectors by column, the
+                                         ! linalg eig_sym convention; temporarily transposed
+                                         ! to rows before writing, restored in place after)
+      real(8), intent(in) :: eig(:)     ! eigenvalues (ascending, aligned with the columns of a)
+      integer, intent(in) :: unit       ! output unit number [-]
       integer :: n, i, l, k, k6
+      ! 1. guards: the matrix must carry at least an n x n block
       n = size(eig)
       if (size(a, 1) < n .or. size(a, 2) < n) then
          write (0, '(a,i0,a,i0,a,i0)') 'eig_out: the eigenvector matrix is ', size(a, 1), 'x', &
@@ -97,6 +90,7 @@ contains
          stop 1
       end if
       call swap_triangles(a, n)         ! column vectors temporarily row-stored
+      ! 2. one 6-column block per pass: eigenvalues, then one row per component
       k = 0
       do while (k < n)
          l = k + 1

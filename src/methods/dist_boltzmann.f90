@@ -1,43 +1,14 @@
 !=====================================================================
-! dist_boltzmann.f90 - distribution member (methods/ library): Boltzmann
-!                      vibrational distribution - each normal mode's
-!                      vibrational quantum number is drawn from the thermal
-!                      geometric distribution P(n) = (1-q)*q^n with
-!                      q = exp(-(h*c/k)*nu/T)
-! Contract:
-!   boltz_init(p) - validate the member parameters, precompute the per-mode
-!     geometric constants and bind the served fragment. Loud-stops name the
-!     offending field and value:
-!       t_vib_a <= 0 (temperature [K]); w_mode_a unallocated (the zero
-!       spectrum of a no-op frequency-derivation chain - legal loud-stop,
-!       not a silent zero table); a non-positive entry in w_mode_a
-!       [cm^-1]; n_mode_a /= size(w_mode_a).
-!     Binding: the served fragment is the roster fragment whose
-!     dist_scheme row selects THIS member (the member word looked up in the
-!     sampler scheme-code table). Exactly one such fragment is required:
-!     zero -> loud-stop; two or more -> loud-stop (one member instance
-!     carries one parameter set, so a second carrier would be silently
-!     skipped - the multi-fragment face is the retained t_vib_b field and
-!     the un-finalized second-side frequency table).
-!   boltz_sample(sta) - one draw per mode: n_i = floor(g/dum_i) with g a
-!     unit-exponential deviate and dum_i = (h*c/k)*nu_i/T, which gives
-!     P(n) = (1-q)*q^n exactly. The draw lands in the member's quantum-
-!     number table (read back through boltz_last_n). sta is the sampler
-!     runtime channel; this member writes NO q/p components - its runtime
-!     product is the quantum-number table, because Cartesian normal-mode
-!     assembly additionally needs the mode eigenvectors of the
-!     frequency-derivation chain (mass-weighted Hessian eigen-problem at
-!     the fragment equilibrium geometry, an assembly-time mechanism that
-!     hands this member its frequency table; through a no-op chain the
-!     spectrum is absent and boltz_init loud-stops - the degradation
-!     posture is fail-loud, never a silent zero table).
-!   boltz_last_n(m) - copy of the last drawn quantum-number table entry.
-! Frequency derivation (assembly-time mechanism, not member code): the
-!   w_mode_a table arrives as member data from the Hessian eigenvalue chain
-!   (force procedure -> mass-weighted Hessian -> eigenvalues -> sqrt scaling
-!   -> [cm^-1]); the member only stores and consumes it.
-! Units: nu [cm^-1], T [K]; h*c/k = 1.43878 cm*K (member constant hc_k);
-!   quantum numbers are dimensionless counts.
+! dist_boltzmann.f90 - distribution member: Boltzmann vibrational
+!   distribution - per-mode quantum numbers drawn from the thermal
+!   geometric law P(n) = (1-q)*q^n, q = exp(-(h*c/k)*nu/T)
+! Design:
+!   The frequency table arrives as assembly data (Hessian eigenvalue
+!   chain); a missing spectrum fails loudly, never a silent zero table.
+!   The member writes no q/p components - its runtime product is the
+!   quantum-number table (read back via boltz_last_n), since Cartesian
+!   assembly additionally needs the assembly-side mode eigenvectors.
+!   Units: nu [cm^-1], T [K], h*c/k = 1.43878 cm*K; n dimensionless.
 !=====================================================================
 module dist_boltzmann
    use rng,           only: rng_gamma

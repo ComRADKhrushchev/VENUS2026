@@ -1,59 +1,14 @@
 !=====================================================================
-! dist_j.f90 - distribution member (methods/ library): rotational-state
-!              sampling - the draw of the rotational quantum number J
-!              itself from the thermal Boltzmann-J distribution over a
-!              LINEAR rotor's ladder
-!              P(J) prop. (2J+1)*exp(-E_J/kT), E_J = hbar^2*J(J+1)/(2*I)
-!              with I the perpendicular moment of inertia of the carrier's
-!              equilibrium geometry (roster-derived, never a duplicated
-!              constant).
-! Division of labor (the ruling this member and dist_rotation share): the
-!   J-draw and the orientation/angular-velocity realization at a GIVEN J
-!   are separate members - THIS member draws J and writes NO q/p; its
-!   runtime product is the integer J (read back through j_last_j, the
-!   same table-getter posture as the boltzmann quantum-number member).
-!   dist_rotation realizes the fragment's orientation and angular
-!   momentum at the J it is given. Wiring J from this member's table into
-!   rotation's parameter is assembly-phase business, not member code.
-! Contract:
-!   j_init(p) - validate the member parameter, derive the carrier's
-!     perpendicular moment of inertia from the roster equilibrium
-!     geometry, precompute the exponent constant, the support bound and
-!     the rejection envelope, and bind the served fragment. Loud-stops
-!     name the offending field and value:
-!       t_rot <= 0 (temperature [K]); no roster fragment table (assembly
-!       order); no per-fragment scheme array; length mismatch against the
-!       roster; the member word absent from the scheme-code table (a
-!       library-assembly failure); zero or multiple carrier fragments
-!       (one member instance carries one parameter set); a carrier with
-!       fewer than two atoms (a single atom has no rotational degree of
-!       freedom); a carrier geometry whose inertia tensor vanishes
-!       (coincident atoms); a nonlinear carrier (this member samples the
-!       LINEAR rotor ladder - the symmetric-top face with its K structure
-!       is not carried: it needs a symmetry-axis designation the roster
-!       does not hold); a rotational temperature so high the support scan
-!       reaches its cap without the tail cut (the ladder is effectively
-!       flat to the cap - the support bound must never silently clamp).
-!   j_sample(sta) - one draw by rejection: J uniform on [0, j_max]
-!     (integer), accepted when u*p_env <= P(J); the envelope is the
-!     distribution maximum (exact - P is unimodal with the peak located
-!     by the scan). The draw lands in the member's quantum-number slot
-!     (j_last_j). sta is the sampler runtime channel; this member writes
-!     NO q/p components.
-!   j_last_j() - copy of the last drawn rotational quantum number.
-!   j_c_rot() - the exponent constant hbar^2/(2*I*kb*T) [-] (exposed for
-!     criteria anchoring of the roster-derived moment of inertia).
-!   j_j_max() - the support bound of the rejection table [-].
-! Variant inventory against the old defect register (semantics only, no
-!   citations): the thermal symmetric-top face and the equipartition face
-!   of the old rotational selector are NOT carried - both duplicate the
-!   J-draw business this member owns under the division ruling, the first
-!   needing symmetry-axis designation the roster lacks; the nuclear-spin
-!   statistical weights are NOT carried (system-specific spin data - a
-!   knowledge-ownership exclusion, not a member face).
-! Units: t_rot [K]; I [amu*Ang^2] (roster); hbar_code, kb_code internal;
-!   the exponent constant and J are dimensionless. E_J = hbar^2*J(J+1)/
-!   (2*I) in internal energy units matches kb_code*T by construction.
+! dist_j.f90 - distribution member: draw of the rotational quantum
+!   number J from the thermal linear-rotor ladder
+!   P(J) prop. (2J+1)*exp(-E_J/kT), E_J = hbar^2*J(J+1)/(2*I)
+! Design:
+!   The moment of inertia is derived from the carrier's roster
+!   equilibrium geometry (never duplicated); the carrier must be
+!   linear. This member draws J only (read back via j_last_j) and
+!   writes no q/p; dist_rotation realizes the orientation at a given
+!   J, and wiring J between them is assembly-phase business.
+!   Units: t_rot [K]; I [amu*Ang^2]; hbar_code/kb_code internal.
 !=====================================================================
 module dist_j
    use consts,        only: hbar_code, kb_code

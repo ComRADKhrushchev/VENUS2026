@@ -1,66 +1,14 @@
 !=====================================================================
-! dist_rotation.f90 - distribution member (methods/ library): fragment
-!                     rotation realization at a GIVEN rotational quantum
-!                     number J - random orientation of the carrier about
-!                     its center of mass plus angular momentum
-!                     |L| = sqrt(J(J+1))*hbar with an isotropic direction
-!                     (perpendicular to the bond for a linear carrier),
-!                     realized as rigid-body momenta p_i = m_i*(omega x r_i)
-! Division of labor (the ruling this member and dist_j share): the J-draw
-!   and the realization at a given J are separate members - THIS member
-!   takes J as its parameter (j_rot) and writes the carrier's q (random
-!   orientation) and p (rigid-body angular momentum); dist_j draws J
-!   itself from the thermal Boltzmann-J ladder and writes nothing.
-!   Feeding a drawn J from dist_j's table into this member's parameter is
-!   assembly-phase wiring, not member code.
-! Contract:
-!   rotation_init(p) - validate the member parameter and bind the served
-!     fragment. Loud-stops name the offending field and value:
-!       j_rot < 0 (quantum number); the binding battery (no roster
-!       fragment table / no scheme array / length mismatch / the member
-!       word absent from the scheme-code table / zero or multiple
-!       carriers); a carrier with fewer than two atoms (a single atom has
-!       no rotational degree of freedom); a carrier geometry whose
-!       inertia tensor vanishes (coincident atoms).
-!     Precompute: the COM-shifted seed coordinates from the roster
-!     equilibrium geometry (the fragment is re-seeded at every draw) and
-!     the angular-momentum magnitude |L| = sqrt(J(J+1))*hbar_code.
-!   rotation_sample(sta) - one realization:
-!     1. write the carrier's q from the COM-shifted seed, zero its p
-!     2. random orientation about the fragment COM (rot_euler - the
-!        geometry instrument; coordinates and momenta rotate together,
-!        the momenta being zero at this point)
-!     3. inertia tensor at the WRITTEN orientation, diagonalized
-!        (eigenvalues are orientation-invariant, the vectors are not -
-!        hence the per-draw diagonalization)
-!     4. L: magnitude |L| along an isotropic direction; a linear carrier
-!        (smallest eigenvalue ~0) projects the direction perpendicular to
-!        the molecular axis - rotation about the axis is no degree of
-!        freedom of the linear rotor, and the axis component would divide
-!        by the vanishing eigenvalue
-!     5. omega = I^-1 L in the principal frame (the linear branch skips
-!        the axis component exactly); p_i = m_i*(omega x r_i)
-!     Identities exact by construction: total momentum = omega x
-!     sum(m r) = 0 (COM frame); L = sum r x m(omega x r) = I*omega; the
-!     written geometry is the seed geometry rigidly rotated.
-!     Translation (where the fragment sits, how fast it flies) belongs to
-!     the incident channel - this member owns the internal rotation only.
-! Variant inventory against the old defect register (semantics only, no
-!   citations): the thermal symmetric-top face and the equipartition face
-!   of the old rotational initializer are NOT carried - both draw J
-!   internally, duplicating the business dist_j owns under the division
-!   ruling (the first additionally needs a symmetry-axis designation the
-!   roster does not hold); the K-projection orientation variant is NOT
-!   carried for the same designation reason (surface-normal and body-axis
-!   projection quantum numbers are surface-member knowledge, not this
-!   member's);
-!   the debug prints and the mid-loop consistency stop of the old
-!   three-law selector are not carried (the three laws collapse into the
-!   single realization law here; the consistency check lives in this
-!   member's criteria program as an exact identity instead).
-! Units: j_rot [-]; coordinates [Angstrom]; momenta [amu*Ang/(10 fs)];
-!   |L| and hbar_code [internal angular momentum unit]; omega
-!   [rad/(10 fs)]; the inertia tensor [amu*Ang^2].
+! dist_rotation.f90 - distribution member: fragment rotation realization
+!   at a GIVEN J - random orientation about the COM plus
+!   |L| = sqrt(J(J+1))*hbar isotropic, written as rigid-body momenta
+!   p_i = m_i*(omega x r_i)
+! Design:
+!   This member takes J as its parameter; dist_j draws J itself, and
+!   wiring a drawn J between them is assembly-phase business. A linear
+!   carrier (smallest inertia eigenvalue ~0) gets L perpendicular to
+!   the molecular axis; translation is the incident channel's business.
+!   Units: q [Ang]; p [amu*Ang/(10 fs)]; |L|/hbar_code internal; omega [rad/(10 fs)]; inertia [amu*Ang^2].
 !=====================================================================
 module dist_rotation
    use consts,        only: hbar_code

@@ -1,212 +1,21 @@
 !=====================================================================
-! propagator.f90 - L3 closed family: nuclear propagators (verlet/symple/radau three-member registration +
-!                   unified dispatch stepping - the integrator body holds no system knowledge;
-!                   a pure integrator: frame output and termination are the driver's affair)
-! Family algorithms (semantics): verlet = velocity Verlet (order=1) and the
-!   third-order Beeman predictor-corrector (order=2); symple = the 4/6/8th-order
-!   alternating drift-kick composition (Schlier coefficients); radau = the RA15
-!   Gauss-Radau adaptive sequence. Every force evaluation goes through force_eval
-!   exclusively - stochastic/dissipative laws are facade members, never inlined
-!   integrator code; no debug prints live in the stepping path.
-!
-! -- E14 hooks withdrawal (legislated; spec §8) --
-!   hooks_t / hook_out_i / hook_term_i / the second prop_step argument are deleted: the propagator
-!   reverts to a pure integrator. The integration loop directly calls prop_step and the facade
-!   phase entries (elec_prop / mqc_statistic) plus rec_frame / container_term - the four-phase
-!   orchestration is explicit in the driver. Frame output and termination move to the driver;
-!   this also repairs the latent timing defect of the hooks form - a hooks%term checkpoint fired
-!   after nuclear propagation but before the electronic phases, so a termination there skipped
-!   the step's electronic evolution and left an inconsistent state.
-!
-! -- endpoint-force contract (spec §3 - the propagator member obligation, legislated here) --
-!   prop_step returns only after the endpoint force has been evaluated: the ws held by elec_facade
-!   corresponds to the returned sta%q. Under MQC the velocity-Verlet right-end force cannot be
-!   folded into the next step's left end - the amplitude propagation of phase 2 (elec_prop) needs
-!   the endpoint H - and between the two force sites the electronic phases run (a hop may change
-!   the held occupation set, E16), so each step evaluates its own left-end force afresh.
-!
-! -- dt channel note (E9, re-anchored by E14; spec §3) --
-!   dt is no longer a force_eval argument - force_eval(sta, e_tot) is the pure force entry (two
-!   dummies; the E9 g_ij(dt) channel belongs to elec_prop's dt dummy, the electronic phase). The
-!   member's step is the fixed dt from config (prop_cfg%dt): verlet/symple take it directly; radau
-!   seeds its adaptive sequence from it (substep sites are interior - moot now that the force entry
-!   carries no dt). The multi-surface x radau conflict stays caught by the method-package member
-!   itself (E13, carried: a fixed-step-only law loud-stops on dt semantics it cannot live with -
-!   adaptive sequence boundaries have no well-defined "one step" dt; no facade table; same source
-!   as the force_facade multi-surface note), so the multi-surface path only ever sees fixed steps;
-!   this note pins the adiabatic-path behavior to stay unchanged.
-!
-! -- Beeman force history (module-private staging - the force-differencing state of the order=2
-!    branch, legislated by the family design) --
-!   The Beeman corrector differences the forces of two consecutive step starts. The staged
-!   history lives as module-private statics, carried across prop_step calls: a
-!   continuous-propagation assumption, matching the driver's trajectory loop (one propagator
-!   instance advances one trajectory; the staging is rebuilt on every boot). FIRST-STEP BOOT,
-!   registered semantics: with no usable history - nothing staged yet, a size change of the
-!   state, a fresh trajectory (sta%t = 0), or a STEP-SIZE change (the equal-spacing AM
-!   quadrature must not consume an f_prev staged at another spacing - thermalize's dt
-!   swap) - the step runs the full velocity-Verlet sequence and stages its left-end
-!   force as the next step's history; from the second step on, genuine Beeman
-!   differencing. A velocity-Verlet step (order=1) CLEARS the staging: mode switches
-!   never inherit a history they did not build. The rule is symmetric across the family:
-!   the verlet/symple entries clear the radau staging (rad_forget) as the radau entry
-!   clears the Beeman staging - no member resumes a carry another member desynchronized.
-!
-!   CORRECTOR FORM (registered design decision): the velocity corrector is the two-step
-!   Adams-Moulton quadrature p += dt(5F(t+dt) + 8F(t) - F(t-dt))/12; positions ride the
-!   third-order predictor untouched. The classic Beeman corrector p += dt(2F(t+dt) +
-!   F(t))/6 - algebraically the same, once the predictor is substituted, as the
-!   position-difference form p = m(q-q_prev)/dt + dt(2F(t+dt)+F(t))/6 - is
-!   exactly SECOND order: the substitution telescopes the position sequence to the Stoermer
-!   recursion q_{n+1} = 2q_n - q_{n-1} + dt^2 F_n (measured scaling ratio ~4, not 8). The
-!   family design legislates third-order positions at order=2, so the corrector carries the
-!   third-order-consistent coefficients; staging, boot semantics, and the two-evaluations-
-!   per-step cost are identical to the classic form.
-!
-! -- symple composition cache (module-private staging - the per-order coefficient table of
-!    the drift-kick member, legislated by the family design) --
-!   Coefficients: Christoph Schlier's 1999 composition sets (order 4: N = 5 stages;
-!   order 6: N = 8; order 8: N = 17). The half table a(0..N) is literal and the second
-!   half is mirror-copied, a(k) = a(2N-k) - the palindromic structure IS the exact
-!   single-step time reversibility of the composition. The symplecticity normalization
-!   reads directly off the array: the kick coefficients (even sites, a(0)+a(2)+...+
-!   a(2N)) sum to 1 and the drift coefficients (odd sites) sum to 1 - together a unit
-!   advance of p and q. The cache keys on order: a switch of config%propagator%order
-!   reloads the table (the table is a pure function of order - no trajectory state is
-!   held, contrast the Beeman staging). HYGIENE: a symple step builds no force history,
-!   so it clears the Beeman staging on entry - mode switches never inherit a history
-!   they did not build (the order=1 rule, applied symmetrically). A step makes N+1
-!   force evaluations (one per loop head i = 0..N-1 plus the final beat); the last
-!   evaluation sits at the endpoint q - the header endpoint-force contract holds with
-!   no extra evaluation.
-!
-!   ORDER-4 SIGN CORRECTION (documented deviation from the historical table): the
-!   historical order-4 half table carries the four middle kicks with flipped signs -
-!   its a(2) = +1/3 with the mirror a(4) = a(6) = -1/3, a(8) = +1/3. That set is
-!   exactly SECOND order: the modified-frequency series of the composed harmonic map
-!   has theta = h(1 + h^2/6 + ...) - the order-4 condition (vanishing h^2 term) fails
-!   in exact rational arithmetic, and the measured one-step error scales dt^3 on
-!   quartic and Kepler potentials (a validated harness reproduces order 4 for
-!   Forest-Ruth and order 2 for velocity Verlet, so the instrument is sound). With
-!   a(2) = -1/3 the h^2 term vanishes IDENTICALLY (rational arithmetic) and the
-!   measured one-step error scales dt^5 - genuine fourth order; the orders 6/8
-!   tables are verified genuine as transcribed (their series vanish through h^6/h^8
-!   and the measured scalings are dt^7/dt^9). The correction flips one sign of the
-!   historical table; every other value, the palindromic structure and both
-!   normalizations are untouched (the kick sum is sign-invariant: +-(1/3) cancels
-!   either way). Criteria (s-b)/(s-d) of check_propagator anchor the fourth-order
-!   behavior; (s-a4) anchors the loaded values bit-level against an independently
-!   transcribed copy of the CORRECTED table.
-!
-! -- radau sequence cache (module-private staging - the Gauss-Radau adaptive member,
-!    legislated by the family design) --
-!   Algorithm: Everhart's RA15 - the 8-point left Gauss-Radau collocation sequence
-!   integrator (node 0 plus seven interior nodes of [0,1]; positions and velocities
-!   carry the sequence solution to 15th order). One prop_step call = ONE SEQUENCE:
-!   a trial length tt is consumed, the seven interior substep geometries are solved
-!   by iterated prediction and divided-difference correction (B = the per-sequence
-!   MONOMIAL coefficients of the acceleration in the node variable; the substep
-!   predictor is the seventh-order B expansion, the corrector differences the folded
-!   substep forces through the ra triangle), and the close-out advances q/p by the
-!   exact integrals of the B polynomial (w/u weights - exact moments of s^j, no
-!   quadrature error in the close-out itself). dt seeds ONLY the first sequence;
-!   from the second on, the length is member-internal (the header dt-channel note).
-!
-!   CONSTANTS (loaded once, pure functions of nothing): the nodes hh, the weights
-!   w(j) = 1/(n(n+1)) and u(j) = 1/n (n = j+1), and the 21-entry triangles cc/d/ra
-!   built by Everhart's column recurrences over the nodes. COEFFICIENT VERIFICATION:
-!   the node values are the canonical published RA15 set; the check program anchors
-!   them independently both through the Gauss-Radau defining identity (the mapped
-!   nodes are roots of the Legendre combination P8+P7) and through the observed
-!   substep geometries of a first sequence; the w/u closed forms are re-derived in
-!   the check; the ra triangle is anchored entry-by-entry as reciprocals of node
-!   differences; the cc/d inner entries have no closed form observable through the
-!   frozen public face and are anchored by the machinery-exactness criterion (one
-!   sequence on a harmonic branch reproduces the closed-form map to roundoff - a
-!   wrong triangle coefficient anywhere breaks the corrector convergence and the
-!   error jumps above the window by orders of magnitude).
-!
-!   CROSS-SEQUENCE CARRY (the registered semantics this member exists to keep):
-!   bb/ee/bd are the Newton-type carry across sequences - at each accepted close-out
-!   the converged B is extrapolated onto the NEXT sequence's scale through the
-!   binomial shift ee(j) = q^j sum_{l>=j} C(l,j) B(l) (q = next/old length ratio),
-!   and the running correction bd = B_converged - ee_previous is added on top; the
-!   next sequence iterates only twice against this predictor. FIRST SEQUENCE BOOT
-!   (mirroring the Beeman rule): no staging yet, a size change of the state, or a
-!   fresh trajectory (sta%t = 0) - the staging starts at zero, the length seeds from
-!   dt (clamped), the first sequence iterates SIX times (later sequences two).
-!   ENTRY RE-FOLD (the p-seam guard): the working velocity rad_v is re-folded from
-!   sta%p at every entry, after the boot check - an external write to sta%p between
-!   sequences (a facade phase's momentum projection, thermalize's Maxwell seed) must
-!   survive the close-out write-back (sta%p = rad_v*m would otherwise restore the
-!   stale workspace velocity); with no external write the round-trip is an ulp-level
-!   identity. A verlet/symple step between radau calls drops the whole carry
-!   (rad_forget, the mirrored hygiene rule of the Beeman note).
-!   RESTART TEST (first sequence only): after the trial, the adaptive length is
-!   computed from the error estimate; if it does not exceed the trial (tp/tt <= 1)
-!   the sequence is DISCARDED and retried at 0.8*tp - the trial's converged B is
-!   retained as the retry's predictor (the published structure; it makes the retry
-!   converge, and the retry re-evaluates the head force afresh at the same origin).
-!   TERMINATION GUARD (legislated deviation, same family as the accept-equality
-!   note below): the restart count is capped at ten. A seed under whose force law
-!   the trial diverges (predictor overflow poisons B, hv goes non-finite, and the
-!   accept comparison never passes) would otherwise spin the trial loop forever -
-!   a measured instance is the quartic wall at seed 0.5 under ifx rounding; the
-!   cap turns that path into a named loud-stop. Every legitimate measured case
-!   needs at most two restarts, so ten carries fivefold margin.
-!   DIVERGED-TRIAL GUARD (the cap's blind spot, legislated alongside it): the cap only sees
-!   FAILED accept comparisons, so the NaN variant of a divergence (hv /= hv makes
-!   every comparison false) spins into it, but a diverged trial under a dt_min
-!   floor takes the opposite exit - the probe clamps back UP to the trial length,
-!   the equality path of the accept test admits it, and garbage closes out with
-!   no naming (and later sequences run no accept test at all). The guard sits at
-!   the hv estimate itself, on every trial of every sequence: hv non-finite or
-!   beyond the divergence bound 1e30 loud-stops named. The bound's anchors:
-!   legitimate measured hv peaks near 9e8 (quartic wall, seed 0.2, order 12),
-!   free flight gives exactly 0, diverged trials land >= 1e50 - the bound keeps
-!   >20 decades of margin above the legitimate maximum.
-!   CLOSE-OUT STATE GUARD (the backstop, after the estimate's own blind side was
-!   measured): hv is assembled through a max() reduction, and Fortran's max with
-!   a NaN argument is PROCESSOR-DEPENDENT - at -O0 a measured instance keeps the
-!   finite side, so a diverged floor-pinned trial whose B carries NaN in some
-!   components closes out hv below the bound, accepts through the equality path,
-!   and writes a state with NaN components hiding behind moderate maxval
-!   magnitudes. The backstop tests the closed-out state itself, PER COMPONENT
-!   (no reduction, no evaluation-order dependence): non-finite q or v, |q| beyond
-!   the physical-absurdity bound 1e8 A (legitimate runs peak |q| ~ 5), or |v|
-!   beyond 1e10 A/(10 fs) (legitimate peaks ~ 50; p = m*v rides the v test) -
-!   garbage sits 7+ decades from every legitimate value, beyond the reach of any
-!   rounding-level difference. The estimate guard stays (it names the divergence
-!   EARLY, before wasted close-out work); the state guard is the one that cannot
-!   be rounded past.
-!
-!   TCORR (for the record): the next-length exponent constant is 1.0 - the
-!   10^(-112/9) alternative of the source material remains its commented-out
-!   state and is NOT adopted here.
-!
-!   ADAPTIVITY: hv = max_k |B7_k| * w(7) / tval^7 estimates the error coefficient
-!   (tval = |tt| truncated to single precision - the historical noise floor of the
-!   estimator, kept); the next length is tp = (ss/hv)^(1/9) with ss = 10^(-order)
-!   (order = the accuracy exponent, legal domain 1..15 - below that ss loses all
-!   accuracy meaning, above it the target sinks under machine resolution), signed
-!   by the integration direction taken from dt's sign; growth is limited to 1.4*tt
-!   per sequence. dt_min/dt_max (the deferred fields this member lands) are
-!   MAGNITUDE bounds on the accepted sequence length, applied to every adaptive
-!   assignment, the boot seed, AND the 0.8 restart probe - no CONSUMED sequence
-!   length ever crosses a bound; <=0 = unclamped. With a floor active, a probe
-!   that floors back up to the trial length accepts (the accept test admits
-!   equality; in the unclamped world tp == tt is measure-zero, so this is the
-!   published strict > everywhere else) - the alternative is an infinite retry
-!   cycle, since the 0.8 shrink cannot move a floor-pinned probe. A positive
-!   pair with dt_min > dt_max is contradictory and loud-stops at boot, named.
+! propagator.f90 - closed family of nuclear propagators (verlet/symple/radau + prop_step dispatch)
+! Design:
+!   Pure integrators: all forces come through force_eval(sta, e_tot) - the eV ->
+!   internal-unit conversion lives in force_facade; frame output and termination
+!   are the driver's affair. Contract: prop_step returns only after the endpoint
+!   force at the returned sta%q has been evaluated. Members hold module-private
+!   staging (Beeman force history, symple coefficient cache, radau cross-sequence
+!   carry), rebuilt on a fresh trajectory / size change / step-size change and
+!   cleared on member switch. Units: time [10 fs], length [A]; masses from the
+!   roster, expanded per atom over its three components.
 !=====================================================================
 module propagator
    use state,         only: state_t
-   use config,        only: prop_cfg => propagator   ! alias to avoid clashing with the module name
-                                                      ! (prop_cfg is the config instance 'propagator')
+   use config,        only: prop_cfg => propagator   ! alias: the config instance 'propagator'
+                                                      ! clashes with the module name
    use config_roster, only: roster
-   use force_facade,  only: force_eval               ! the pure force entry (sta, e_tot) - no dt
-                                                      ! dummy, see the header note
+   use force_facade,  only: force_eval               ! the pure force entry (sta, e_tot)
    implicit none
    private
    public :: prop_reg, prop_step
@@ -229,24 +38,20 @@ module propagator
    type(integ_entry_t) :: reg_tbl(max_integ)  ! registry (module-private)
    integer :: n_reg = 0                       ! registered row count [row]
 
-   ! Beeman force history (see the header note): the staged F(t) of the previous order=2
-   ! step + its readiness flag
-   real(8), allocatable :: f_prev(:)          ! F(t-dt) of the upcoming Beeman step [internal
-                                              ! force units] (sta%f units)
+   ! Beeman force history: the staged F(t) of the previous order=2 step + readiness flag
+   real(8), allocatable :: f_prev(:)          ! staged F(t-dt) of the upcoming Beeman step
+                                              ! (sta%f units)
    logical :: f_prev_ok = .false.             ! history usable [flag]
    real(8) :: dt_staged = 0.0d0               ! step size the staged f_prev is spaced at [10 fs]
-                                              ! (a dt change re-boots: the AM corrector assumes
-                                              ! equal spacing)
+                                              ! (a dt change re-boots the equal-spacing AM corrector)
 
-   ! symple composition cache (see the header note): the coefficient table a(0:2N) +
-   ! the stage count N + the order key the table was loaded for (reload on change)
-   real(8) :: sym_a(0:34) = 0.0d0             ! composition coefficients a(k) [dimensionless]
-                                              ! (k = 0..2N; 2N = 10/16/34 at orders 4/6/8)
+   ! symple composition cache: coefficient table a(0:2N), stage count N, order key
+   real(8) :: sym_a(0:34) = 0.0d0             ! composition coefficients a(k), k = 0..2N
+                                              ! (2N = 10/16/34 at orders 4/6/8)
    integer :: sym_n = 0                       ! stage count N [stage]
    integer :: sym_order_cached = 0            ! order key of the loaded table [order]
 
-   ! radau constants (see the header note): loaded once, pure functions of nothing -
-   ! nodes, w/u weights, the 21-entry triangle tables, and the triangular index map
+   ! radau constants: loaded once - nodes, w/u weights, 21-entry triangle tables
    integer, parameter :: rad_nw(8) = [ 0, 0, 1, 3, 6, 10, 15, 21 ]  ! column-start map:
                                               ! entries nw(k)+1..nw(k+1) form triangle column k
    real(8) :: rad_hh(8) = 0.0d0               ! Gauss-Radau nodes hh(1..8), hh(1) = 0 [s]
@@ -257,9 +62,8 @@ module propagator
    real(8) :: rad_ra(21) = 0.0d0              ! triangle: difference recursion = 1/(node diffs)
    logical :: rad_const_ok = .false.          ! constants loaded [flag]
 
-   ! radau cross-sequence carry (see the header note): the B-coefficient staging and
-   ! the folded working state of the upcoming sequence - trajectory state, carried
-   ! across prop_step calls (rebuilt on every boot)
+   ! radau cross-sequence carry: the B-coefficient staging of the upcoming sequence
+   ! (trajectory state, carried across prop_step calls, rebuilt on every boot)
    real(8), allocatable :: rad_bb(:, :)       ! monomial B coefficients (7, n_dof)
    real(8), allocatable :: rad_ee(:, :)       ! binomial extrapolation onto the next scale
    real(8), allocatable :: rad_bd(:, :)       ! running correction B_converged - ee_previous
@@ -271,7 +75,6 @@ module propagator
 contains
    !------------------------------------------------------------------
    ! prop_reg(id, proc) - register an integrator member into the closed-family registry
-   ! Reference: docs/final_completion_plan.md §7 X4 (unified integrator protocol + three-member registration)
    subroutine prop_reg(id, proc)
       integer, intent(in) :: id           ! integrator code [-] (1=verlet/2=symple/3=radau -
                                           ! the key of config%propagator%id)
@@ -294,8 +97,6 @@ contains
 
    !------------------------------------------------------------------
    ! prop_step(sta) - step dispatch: call the registered member per config%propagator%id
-   ! Reference: spec §8 (the driver four-phase loop calls this as phase 1; the orchestration
-   !       lives in the driver - this module keeps only the stepping)
    subroutine prop_step(sta)
       type(state_t), intent(inout) :: sta   ! physical state (advanced one step/sequence by the member)
       integer :: j
@@ -311,11 +112,7 @@ contains
 
    !------------------------------------------------------------------
    ! verlet_step(sta) - velocity Verlet (order=1) / third-order Beeman (order=2) single step
-   ! Both branches satisfy the endpoint-force contract literally: the LAST force
-   ! evaluation of the step sits at the returned sta%q (velocity Verlet: the right-end
-   ! half-kick force; Beeman: the post-predictor re-evaluation - the corrector that
-   ! follows moves only p, never q). sta%t advances by dt; q/p/mass per the unit
-   ! contract (masses from the roster, expanded per atom over its three components).
+   ! Both branches end with the endpoint force at the returned sta%q; sta%t advances by dt.
    subroutine verlet_step(sta)
       type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
       integer :: k
@@ -324,22 +121,20 @@ contains
       e = 0.0d0                             ! force_eval fills it; the integrator does not consume it
       dt = prop_cfg%dt
 
-      call rad_forget()                     ! hygiene: this member builds no radau carry (the
-                                           ! radau-entry rule for the Beeman history, mirrored)
+      call rad_forget()                     ! hygiene: this member builds no radau carry
 
       select case (prop_cfg%order)
-      case (1)                              ! velocity Verlet
+      case (1)                              ! 1. velocity Verlet
          call beeman_forget()               ! mode-switch hygiene: VV steps carry no history
          call vv_advance(sta, dt)
          sta%t = sta%t + dt
 
-      case (2)                              ! third-order Beeman
+      case (2)                              ! 2. third-order Beeman
          if (beeman_boot_needed(sta)) then
-            ! FIRST-STEP BOOT (registered semantics, header note): no usable history - run
-            ! the velocity-Verlet sequence, staging its left-end force as the next step's
-            ! history (the extra head evaluation is deterministic and unused by the update)
+            ! FIRST-STEP BOOT: no usable history - run the velocity-Verlet sequence,
+            ! staging its left-end force as the next step's history
             call beeman_forget()
-            call force_eval(sta, e)         ! F(t): left end, evaluated afresh (header contract)
+            call force_eval(sta, e)         ! F(t): left end, evaluated afresh (endpoint contract)
             allocate (f_prev(size(sta%f)))
             f_prev = sta%f
             f_prev_ok = .true.
@@ -357,8 +152,8 @@ contains
             end do
             call force_eval(sta, e)         ! F(t+dt) at the predicted (final) q - the endpoint
             do k = 1, size(roster%mass)
-               ! momentum corrector (two-step Adams-Moulton, header note): p += dt(5F(t+dt)
-               ! + 8F(t) - F(t-dt))/12 (q untouched - positions stay on the predictor)
+               ! momentum corrector (two-step Adams-Moulton): p += dt(5F(t+dt)+8F(t)-F(t-dt))/12
+               ! (q untouched - positions stay on the predictor)
                sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) &
                   + (5.0d0*sta%f(3*k-2:3*k) + 8.0d0*f_prev(3*k-2:3*k) - f_tm1(3*k-2:3*k)) &
                   *(dt/12.0d0)
@@ -374,13 +169,11 @@ contains
 
    !------------------------------------------------------------------
    ! symple_step(sta) - 4th/6th/8th-order symplectic single step (alternating drift-kick
-   !                   composition, the Schlier coefficient sets of the header note)
-   ! The legislated sequence: per-order coefficient load on first use (the cache keys on
-   ! order), then the alternating loop - force_eval BEFORE each kick (N evaluations),
-   ! p += dt*a(2i)*f, q += dt*a(2i+1)*p/m - then the final beat (force_eval at the
-   ! endpoint q, p += dt*a(2N)*f) and sta%t += dt. Endpoint-force contract: the final
-   ! beat's evaluation is the LAST of the step and sits at the returned sta%q. sta%f on
-   ! return is the composed endpoint force; q/p/mass per the unit contract (as verlet_step).
+   !                   composition, Schlier coefficient sets)
+   ! Load the per-order coefficient table on first use, run the alternating loop
+   ! (force_eval before each kick, p += dt*a(2i)*f, q += dt*a(2i+1)*p/m), then the
+   ! final beat at the endpoint q and sta%t += dt - the final evaluation is the last
+   ! of the step and sits at the returned sta%q.
    subroutine symple_step(sta)
       type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
       integer :: i, k
@@ -389,11 +182,10 @@ contains
       dt = prop_cfg%dt
 
       call beeman_forget()                  ! hygiene: this member builds no force history
-                                           ! (the header-note rule, applied symmetrically)
-      call rad_forget()                     ! and no radau carry (the same rule, mirrored)
+      call rad_forget()                     ! and no radau carry
       if (sym_order_cached /= prop_cfg%order) call symple_load(prop_cfg%order)
 
-      do i = 0, sym_n - 1                   ! alternating loop: kick a(2i), drift a(2i+1)
+      do i = 0, sym_n - 1                   ! 1. alternating loop: kick a(2i), drift a(2i+1)
          call force_eval(sta, e)            ! F at the current q, before the kick
          do k = 1, size(roster%mass)
             sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) + sta%f(3*k-2:3*k)*(dt*sym_a(2*i))
@@ -402,7 +194,7 @@ contains
             sta%q(3*k-2:3*k) = sta%q(3*k-2:3*k) + sta%p(3*k-2:3*k)*(dt*sym_a(2*i + 1)/roster%mass(k))
          end do
       end do
-      call force_eval(sta, e)               ! the final beat's force site = the endpoint q
+      call force_eval(sta, e)               ! 2. the final beat's force site = the endpoint q
       do k = 1, size(roster%mass)
          sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) + sta%f(3*k-2:3*k)*(dt*sym_a(2*sym_n))
       end do
@@ -410,18 +202,12 @@ contains
    end subroutine symple_step
 
    !------------------------------------------------------------------
-   ! radau_step(sta) - one RA15 Gauss-Radau sequence (adaptive step; the roadmap of
-   !                   the skeleton realized - constants load, velocity fold and
-   !                   iteration counts, substep predictor-difference-corrector,
-   !                   sequence close-out with restart test, adaptive length with
-   !                   dt_min/dt_max clamping, endpoint-force close-out)
-   ! The legislated sequence (the header note carries the full semantics): boot as
-   ! needed, then ONE accepted sequence per call - q/p/t advance by the sequence
-   ! length tt, the substep force sites sit at interior node geometries so the close-out
-   ! evaluates the endpoint force explicitly (the header contract, sta%f on return is
-   ! the force at the returned sta%q), and the B-carry/next length are staged for the
-   ! following call. q/p/mass per the unit contract (masses from the roster, folded
-   ! per component; p is written back from the folded working velocity at close-out).
+   ! radau_step(sta) - one RA15 Gauss-Radau sequence (adaptive step)
+   ! Boot as needed, then ONE accepted sequence per call: q/p/t advance by the
+   ! sequence length tt, the close-out evaluates the endpoint force explicitly
+   ! (sta%f on return is the force at the returned sta%q), and the B-carry/next
+   ! length are staged for the following call. p is written back from the folded
+   ! working velocity at close-out.
    subroutine radau_step(sta)
       type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
       integer :: m, j, k, l, i, jd, ni, nq, nrst
@@ -432,8 +218,8 @@ contains
       real(8) :: qs(size(sta%q))            ! sequence-origin geometry save/restore
       e = 0.0d0                             ! force_eval fills it; the integrator does not consume it
 
-      ! order is the accuracy exponent (ss = 10^-order); dt gives the direction and
-      ! the first-sequence seed - both illegal values are named loud-stops
+      ! 1. order = the accuracy exponent (ss = 10^-order); dt gives the direction and the
+      !    first-sequence seed - both illegal values are named loud-stops
       if (prop_cfg%order < 1 .or. prop_cfg%order > 15) then
          call stop_propi('radau_step', 'illegal propagator order for radau', prop_cfg%order, &
                          '(1..15 - the accuracy exponent of ss = 10^-order)')
@@ -446,24 +232,24 @@ contains
       if (prop_cfg%dt < 0.0d0) dir = -1.0d0
       ss = 10.0d0**(-prop_cfg%order)
 
+      ! 2. hygiene + boot as needed; re-fold the working velocity from sta%p so an
+      !    external write between sequences survives the close-out write-back
       call beeman_forget()                  ! hygiene: this member builds no Beeman history
       if (.not. rad_const_ok) call radau_load()
       if (radau_boot_needed(sta)) call radau_boot(sta)
       nq = size(sta%q)
-      do k = 1, nq                          ! re-fold the working velocity from sta%p (the
-         rad_v(k) = sta%p(k)/roster%mass((k + 2)/3)   ! p-seam guard of the header note): an
-      end do                                ! external write between sequences must survive the
-                                            ! close-out write-back; otherwise an ulp identity
+      do k = 1, nq                          ! re-fold the working velocity from sta%p
+         rad_v(k) = sta%p(k)/roster%mass((k + 2)/3)
+      end do
       ni = 6                                ! first sequence iterates six times,
       if (rad_seq_ok) ni = 2                ! later sequences twice (the B-carry)
 
-      ! ---- sequence trial loop (restart-capable; the accept test fires on the first
-      ! sequence only - once a sequence has been accepted the carried B makes rejection
-      ! pointless, the published structure) ----
+      ! ---- 3. sequence trial loop (restart-capable; the accept test fires on the
+      ! first sequence only - once a sequence has been accepted the carried B makes
+      ! rejection pointless) ----
       nrst = 0
       do
-         ! g coefficients from the carried B (the triangle-d conversion): gg(i) =
-         ! bb(i) + sum_{j>i} d(column j, offset i)*bb(j)
+         ! g coefficients from the carried B (triangle-d conversion)
          do k = 1, nq
             do i = 1, 7
                acc = rad_bb(i, k)
@@ -499,8 +285,7 @@ contains
                end do
                do k = 1, nq
                   ! corrector: difference the folded substep force against the head value,
-                  ! walk the ra recursion (jd-1 factors), then accumulate the correction
-                  ! through the cc triangle into every lower B coefficient
+                  ! walk the ra recursion, accumulate through the cc triangle into B
                   temp = gg(jd, k)
                   gk = (fj(k) - rad_f1(k))/s
                   if (jd == 1) then
@@ -524,17 +309,11 @@ contains
                   hv = max(hv, abs(rad_bb(7, k)))
                end do
                hv = hv*rad_w(7)/tval**7
-               ! diverged-trial guard (the cap's blind spot): hv non-finite (NaN: hv /= hv;
-               ! Inf: above the bound) or beyond the documented divergence bound closes
-               ! the floor-pinned silent-accept hole - a diverged trial under a dt_min
-               ! floor would pin the probe back UP to the trial length and accept
-               ! garbage through the equality path with no naming (the retry cap only
-               ! sees FAILED comparisons: the NaN variant spins into it, the Inf and
-               ! huge-but-finite variants never do). The bound 1e30 sits >20 decades
-               ! above every measured legitimate hv (worst ~9e8, quartic seed 0.2
-               ! order 12) and >120 decades below overflow; the guard fires on every
-               ! trial of every sequence, so a divergence on a later (test-exempt)
-               ! sequence is named too, not silently propagated
+               ! diverged-trial guard: hv non-finite (NaN or Inf) or beyond the
+               ! divergence bound 1e30 loud-stops - a diverged trial under a dt_min
+               ! floor would otherwise clamp back up to the trial length and accept
+               ! garbage through the equality path, unnamed (legitimate measured hv
+               ! peaks near 9e8, so the bound keeps >20 decades of margin)
                if (hv /= hv .or. hv > 1.0d30) then
                   call stop_prop('radau_step', 'diverged trial sequence: the error'// &
                                  ' estimate hv is non-finite or beyond the divergence'// &
@@ -544,11 +323,10 @@ contains
             end if
          end do
 
-         ! ---- first-sequence accept test: adapt from hv, clamp, and either accept or
-         ! discard-and-retry at 0.8*tp (the trial's converged B survives as the retry's
-         ! predictor - the header-note semantics; the probe is floored too, and a probe
-         ! that floors to the trial length ACCEPTS - the 0.8 shrink cannot move a
-         ! floor-pinned probe, so a strict > there would retry the same length forever)
+         ! ---- first-sequence accept test: adapt from hv, clamp, accept - or discard
+         ! and retry at 0.8*tp (the converged B survives as the retry's predictor; a
+         ! probe floored back to the trial length accepts at equality, else it would
+         ! retry the same length forever) ----
          if (rad_seq_ok) exit               ! an accepted past sequence: no restart path
          tpn = (ss/hv)**(1.0d0/9.0d0)*dir
          call rad_clamp(tpn, dir)
@@ -556,9 +334,9 @@ contains
          if (rad_tp/tt >= 1.0d0) exit       ! accept (>= : equality is the floor-pinned
          rad_tp = 0.8d0*rad_tp              ! case - in the unclamped world tp == tt is
          call rad_clamp(rad_tp, dir)        ! measure-zero, so >= is the published >)
-         nrst = nrst + 1                    ! termination guard (header note): a diverging
-         if (nrst > 10) then                ! trial poisons B and never accepts - named
-            call stop_prop('radau_step', & ! loud-stop beats an eternal silent spin
+         nrst = nrst + 1                    ! termination guard: a diverging trial never
+         if (nrst > 10) then                ! accepts - a named loud-stop beats a silent spin
+            call stop_prop('radau_step', & ! forever
                            'first sequence failed to accept after 10 restarts (the'// &
                            ' error estimate diverges - the dt seed is too large for'// &
                            ' this force law, or the trial overflowed)')
@@ -570,9 +348,9 @@ contains
          end do
       end do
 
-      ! ---- sequence close-out: advance by tt through the exact B moments (w/u), fold
-      ! the endpoint force (the header contract - the LAST force evaluation of the step
-      ! sits at the returned sta%q) and stage the next sequence's head values ----
+      ! ---- 4. sequence close-out: advance by tt through the exact B moments (w/u),
+      ! guard the closed-out state, evaluate the endpoint force and stage the next
+      ! sequence's head values ----
       do k = 1, nq
          sta%q(k) = sta%q(k) + rad_v(k)*tt + t2*(rad_f1(k)*0.5d0 + rad_bb(1, k)*rad_w(1) &
                     + rad_bb(2, k)*rad_w(2) + rad_bb(3, k)*rad_w(3) + rad_bb(4, k)*rad_w(4) &
@@ -582,18 +360,11 @@ contains
                     + rad_bb(6, k)*rad_u(6) + rad_bb(7, k)*rad_u(7))
       end do
 
-      ! ---- close-out state sanity (the backstop the hv estimate cannot be): the
-      ! estimate guard above reads hv through a max() REDUCTION, and Fortran's max
-      ! with a NaN argument is processor-dependent - a measured -O0 instance keeps
-      ! the finite side, hv stays below the bound, the floor-pinned equality path
-      ! accepts, and the closed-out state carries NaN components with moderate
-      ! maxval magnitudes (q ~ 1, p ~ 40 - invisible to any aggregate print).
-      ! This guard tests EVERY component directly (no reduction, no evaluation
-      ! order to depend on) and fires on non-finite or physically-absurd values:
-      ! |q| > 1e8 A (a centimeter-wide molecule; legitimate runs peak |q| ~ 5) or
-      ! |v| > 1e10 A/(10 fs) (legitimate peaks ~ 50; p = m*v rides the same test).
-      ! Garbage is 7+ decades away from every legitimate value - rounding-level
-      ! differences cannot bridge that, at any optimization level ----
+      ! ---- close-out state guard (per component, no reduction): non-finite or
+      ! physically-absurd values loud-stop - the max()-reduced hv estimate cannot
+      ! catch NaN components (Fortran max with a NaN argument is
+      ! processor-dependent). Bounds: |q| > 1e8 A or |v| > 1e10 A/(10 fs)
+      ! (legitimate runs peak |q| ~ 5, |v| ~ 50; p = m*v rides the v test) ----
       do k = 1, nq
          if (sta%q(k) /= sta%q(k) .or. rad_v(k) /= rad_v(k) &
              .or. abs(sta%q(k)) > 1.0d8 .or. abs(rad_v(k)) > 1.0d10) then
@@ -608,23 +379,22 @@ contains
       sta%t = sta%t + tt
       rad_seq_ok = .true.
       rad_ns = rad_ns + 1
-      call force_eval(sta, e)               ! the endpoint force (header contract)
+      call force_eval(sta, e)               ! the endpoint force (endpoint contract)
       do k = 1, nq
          rad_f1(k) = sta%f(k)/roster%mass((k + 2)/3)   ! next sequence's head acceleration
          sta%p(k) = rad_v(k)*roster%mass((k + 2)/3)    ! p written back from the working velocity
       end do
 
-      ! ---- adaptive length of the next sequence: (ss/hv)^(1/9), growth-limited to
-      ! 1.4*tt, then clamped (the header-note order: the limiter shapes the adaptive
-      ! request, the bounds are hard) ----
+      ! ---- 5. adaptive length of the next sequence: (ss/hv)^(1/9), growth-limited
+      ! to 1.4*tt, then clamped (the limiter shapes the request, the bounds are hard) ----
       tpn = dir*(ss/hv)**(1.0d0/9.0d0)
       if (tpn/tt > 1.4d0) tpn = tt*1.4d0
       call rad_clamp(tpn, dir)
       rad_tp = tpn
 
-      ! ---- the B-carry onto the next scale: binomial shift of the converged B by the
+      ! ---- 6. B-carry onto the next scale: binomial shift of the converged B by the
       ! length ratio, plus the running correction (bd stays zero through the first
-      ! accepted sequence - there is no earlier extrapolation to difference against) ----
+      ! accepted sequence - no earlier extrapolation to difference against) ----
       qr = rad_tp/tt
       do k = 1, nq
          if (rad_ns /= 1) then
@@ -655,7 +425,7 @@ contains
    !------------------------------------------------------------------
 
    ! vv_advance(sta, dt) - the velocity-Verlet update, shared by the order=1 branch and
-   ! the Beeman boot (the boot step is thereby IDENTICAL to an order=1 step from the
+   ! the Beeman boot (the boot step is thereby identical to an order=1 step from the
    ! same state): left-end force afresh, half kick, full drift, endpoint force, half kick
    subroutine vv_advance(sta, dt)
       type(state_t), intent(inout) :: sta
@@ -683,37 +453,32 @@ contains
       dt_staged = 0.0d0                     ! the flag, the array, and its spacing move together
    end subroutine beeman_forget
 
-   ! beeman_boot_needed(sta) - the registered boot condition: no usable history
-   ! (nothing staged yet, or a size change of the state) or a fresh trajectory
-   ! (sta%t = 0). Split into its own function so size(f_prev) is evaluated ONLY
-   ! when the staging flag says the array is allocated - Fortran does not
-   ! guarantee short-circuit .or., and a size() on an unallocated array is
-   ! nonconforming (the flag and the allocation move together: forget clears
-   ! both, the boot sets both)
+   ! beeman_boot_needed(sta) - the boot condition: no usable history (nothing staged,
+   ! a size change of the state) or a fresh trajectory (sta%t = 0). Own function so
+   ! size(f_prev) is evaluated only when the staging flag says the array is allocated
+   ! (Fortran does not guarantee short-circuit .or.; a size() on an unallocated
+   ! array is nonconforming)
    logical function beeman_boot_needed(sta)
       type(state_t), intent(in) :: sta
       beeman_boot_needed = .true.
       if (f_prev_ok) then
-         ! the dt key: the staged history is spaced at dt_staged - the equal-spacing AM
-         ! quadrature would silently degrade on a dt swap (thermalize's dt_eq run)
+         ! the dt key: a dt swap re-boots - the equal-spacing AM quadrature would
+         ! silently degrade on history staged at another spacing
          beeman_boot_needed = (size(f_prev) /= size(sta%q) .or. sta%t == 0.0d0 &
                                .or. prop_cfg%dt /= dt_staged)
       end if
    end function beeman_boot_needed
 
    ! symple_load(order) - fill the composition cache for one order (4/6/8; loud-stop
-   ! otherwise, named for the member). The half table a(0..N) is literal, the second
-   ! half mirror-copied (a(2N-k) = a(k), k = 0..N-1) - Schlier's 1999 sets, the values
-   ! verified bit-level against an independently transcribed historical copy (the
-   ! header note); the table is a pure function of order, so the cache reloads on a
-   ! change of the order key
+   ! otherwise). The half table a(0..N) is literal and the second half mirror-copied
+   ! (a(2N-k) = a(k)) - Schlier's 1999 sets, verified bit-level by the check program;
+   ! the cache reloads on a change of the order key (a pure function of order)
    subroutine symple_load(order)
       integer, intent(in) :: order          ! composition order [-] (4, 6 or 8)
       integer :: k
       select case (order)
-      case (4)                              ! N = 5 (SIGN-CORRECTED vs the historical
-                                           ! table - the correction is legislated in the
-                                           ! module header note; criterion (s-b) anchors it)
+      case (4)                              ! N = 5 (sign-corrected vs the historical table:
+                                           ! the historical a(2) is exactly second order)
          sym_n = 5
          sym_a(0) = 0.5d0
          sym_a(1) = -1.0d0/48.0d0
@@ -762,13 +527,11 @@ contains
       sym_order_cached = order
    end subroutine symple_load
 
-   ! radau_load() - fill the constant cache once: the Gauss-Radau nodes (the canonical
+   ! radau_load() - fill the constant cache once: the Gauss-Radau nodes (canonical
    ! published values, hh(1) = 0), the closed-form w/u weights, and the 21-entry
-   ! cc/d/ra triangles from Everhart's column recurrences - column k (k = 3..7) fills
-   ! entries nw(k)+1..nw(k+1) from column k-1; entry 1 (column 2) is seeded first.
-   ! The ra entries are reciprocals of node differences by construction, the cc/d
-   ! recurrences are the published differencing algebra (the header-note verification
-   ! anchors: ra entry-by-entry, cc/d through the machinery-exactness criterion)
+   ! cc/d/ra triangles from Everhart's column recurrences (column k fills entries
+   ! nw(k)+1..nw(k+1) from column k-1; column 2 is seeded first; ra entries are
+   ! reciprocals of node differences by construction)
    subroutine radau_load()
       integer :: k, l, la, lb, lc, ld, le, n
       rad_hh(1) = 0.0d0
@@ -810,10 +573,9 @@ contains
    end subroutine radau_load
 
    ! radau_boot(sta) - first-call staging: zero the B-carry, fold the working velocity
-   ! from p, seed the sequence length from dt (clamped - the bounds are hard on the
-   ! accepted lengths, the seed included), and evaluate the head force at the current
-   ! geometry (the first sequence's f1; later sequences take it from the close-out).
-   ! A positive dt_min/dt_max pair with dt_min > dt_max is contradictory - named here
+   ! from p, seed the sequence length from dt (clamped), and evaluate the head force
+   ! at the current geometry. A positive dt_min/dt_max pair with dt_min > dt_max is
+   ! contradictory - named here
    subroutine radau_boot(sta)
       type(state_t), intent(inout) :: sta
       integer :: k
@@ -845,10 +607,9 @@ contains
       end do
    end subroutine radau_boot
 
-   ! radau_boot_needed(sta) - the registered boot condition (the Beeman-rule form): no
-   ! staging yet, a size change of the state, or a fresh trajectory (sta%t = 0).
-   ! allocated() is unconditionally safe; the size probe runs only under it (the
-   ! short-circuit discipline of beeman_boot_needed)
+   ! radau_boot_needed(sta) - the boot condition: no staging yet, a size change of the
+   ! state, or a fresh trajectory (sta%t = 0). allocated() is unconditionally safe;
+   ! the size probe runs only under it
    logical function radau_boot_needed(sta)
       type(state_t), intent(in) :: sta
       radau_boot_needed = .true.
@@ -857,11 +618,10 @@ contains
       end if
    end function radau_boot_needed
 
-   ! rad_forget() - clear the radau cross-sequence staging (member-switch hygiene): the
-   ! entries of the other two members drop the B-carry - the radau entry's beeman_forget
-   ! rule, mirrored (a switch 3 -> 1/2 -> 3 at t /= 0 must boot afresh, not resume a
-   ! stale carry). Deallocating rad_bb drives radau_boot_needed back to true; the carry
-   ! counters reset with it (beeman_forget's flag-and-value pattern)
+   ! rad_forget() - clear the radau cross-sequence staging (member-switch hygiene):
+   ! deallocating rad_bb drives radau_boot_needed back to true; the carry counters
+   ! reset with it (a switch 3 -> 1/2 -> 3 at t /= 0 must boot afresh, not resume a
+   ! stale carry)
    subroutine rad_forget()
       if (allocated(rad_bb)) deallocate (rad_bb, rad_ee, rad_bd, rad_f1, rad_v)
       rad_seq_ok = .false.
@@ -869,9 +629,7 @@ contains
    end subroutine rad_forget
 
    ! rad_clamp(tp, dir) - apply the dt_min/dt_max MAGNITUDE bounds to one sequence
-   ! length (either sign; <=0 bound = unclamped). Applied to every adaptive assignment,
-   ! the boot seed, and the 0.8 restart probe - no consumed length crosses a bound
-   ! (header note)
+   ! length (either sign; <=0 bound = unclamped) - no consumed length crosses a bound
    subroutine rad_clamp(tp, dir)
       real(8), intent(inout) :: tp
       real(8), intent(in) :: dir

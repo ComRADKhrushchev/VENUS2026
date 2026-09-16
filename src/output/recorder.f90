@@ -1,113 +1,11 @@
 !=====================================================================
-! recorder.f90 - L4 recording: column-style recorder of trajectory frames / final states
-!                (column = name + extractor registration mechanism; column selection by
-!                preset level or list - system knowledge parameterized via roster/list)
-! Reference: src_VENUS/GWRITE.f90:25-31 (frame header: trajectory number / step number / time
-!       + T/V/H energy line),
-!       :49-60 (fort.1NNN molecule files: step header + E0(eV)/T(eV)/H(eV) lines + the
-!       designated atom's
-!       Q/V triple), :106-117 (all-atom Q/P flattened section - GWRITE_LEVEL>=2),
-!       :122-127 (per-atom force section - GWRITE_LEVEL>=5), :133-143 (NFQP full-coordinate
-!       stdout section), :145 (FLUSH checkpoint flush);
-!       src_VENUS/HIST.f90:8-24 (record_all final-state record columns: Ntz/Nb/Site/RX0/RY0/
-!       Zmin/Vfinal/Erel/Theta/Ephi - the source of the rec_final column group; the site column
-!       via surfcell
-!       :19 - lattice parameterized into the plot_hist module);
-!       src_VENUS/VENUS.f90:405/:450/:459 (GWRITE call sites - the old orchestration of the
-!       NIP checkpoint interval,
-!       new version: the driver four-phase loop calls rec_frame directly after mqc_statistic,
-!       spec §8 - hooks withdrawn), :572 (the CLOSE(1000+NTZ) unit
-!       close-out - orchestration belongs to the driver);
-!       src_TEST/interface_TEST.f90:18-30 (POT0 energy convention - the energy-column
-!       extractor convention)
-! Excision warning (four spots of system knowledge in GWRITE - do not carry over when
-! referencing; K2 plan sourcing note):
-!   (1) Hardwired atom labels: 'Q(C)='/'V(C)=' treat atom 1 as the system's designated atom
-!       (:59-60)
-!       -> the observed object is designated via roster fragments / lists;
-!   (2) Mass-threshold element names: W(i)<50 -> 'C '/'Au ' labels (:110-114) -> labels
-!       taken from roster%symb;
-!       (see previous line)
-!   (3) nearest-Au diagnostics: distance/coordinates/component scan from the designated atom
-!       to the nearest Au (:68-99)
-!       -> nearest-neighbor diagnostic column parameterized (target atom and candidate set via
-!       the roster, finalized in C8);
-!   (4) Hardwired PBC box: derived from the QZB(1,.) extrema + 6.0 Å padding (:69-87) ->
-!       box parameters via the roster unit-cell fields (box_lx/box_ly/skew);
-!   Also: the E0/23.0605 eV display conversion (:57) is not scattered in this module - the eV
-!   convention belongs to the unit contract
-!   (the single force_facade ev_kcal point, same source as T4); the old random-number echo
-!   section (:30) and
-!   the old temperature echo section (:33-45) belong to old task branches - not carried over
-! Observable-source statute (E14, spec §4 - the electronic observable column groups):
-!   population columns read the sta%s%rho DIAGONALS, coherence columns the OFF-diagonals -
-!   the recorder NEVER touches the semantics of a (its row/column index semantics are
-!   method knowledge, E11/E12 route; rho is the observable face of the electronic state,
-!   refreshed to the method's declared deliverable state by sync_proc). The occupation / hop
-!   columns read the elec_facade statistics holder occ_get / n_hop_get (E16: the classical-
-!   side statistical constructs relocated out of state_t - sampled constructs have no
-!   thing-in-itself status; occ(k) = state of electron k - a hop = one component change
-!   of the occupation vector; n_hop is a recorder-only read)
-!
-! -- C4.5 implementation notes (the landed semantics; criteria: scripts/check_recorder.f90) --
-!   Column set, first version (plan D3): framework-preregistered columns = the energy three
-!   (t_kin/v_pot/e_tot) + the structural flattened sections sec_qp (q/p six-tuple rows,
-!   per atom) / sec_frc (per-atom force rows) + the frame header (trajectory/step/time).
-!   pop_i / coh_ij electronic columns are NOT registered yet: their index range arrives
-!   with the class-B method declaration (a row/column count is member knowledge, E11/E12);
-!   the two index-free electronic constructs land now as the occ / n_hop placeholder
-!   columns (E16/E19). Member/analysis-quantity columns (e_rel, z_min, n_bnc, site ...) are
-!   registered by their own members and analysis - C8 wiring.
-!   N3.1 four-level preset map (DATA, not branches - the GWRITE_LEVEL semantics of
-!   GWRITE.f90:11-15): every registry row carries lvl_min, the minimum preset level that
-!   includes the column; rec_sel_lvl selects by a single scan over that field, and the two
-!   section gates open at the lvl_qp / lvl_frc parameters. Landed map:
-!     levels 0 / 1 -> the energy three (minimal frame: header + energy line; the old
-!                     level-1 diagnostic block was excised system knowledge, warnings (3)(4)
-!                     - no generic level-1 columns exist)
-!     level  2     -> + sec_qp (old :106-117; the INPUT DEFAULT - user ruling
-!                     2026-09-16 / E26: the bare-input default is 2, old-library
-!                     compatible; the C4.4/C7 input-vs-recorder default mismatch
-!                     is closed, energy-only 0/1 is the explicit opt-in)
-!     level  5     -> + sec_frc (old :122-127)
-!   The level domain is the closed set {0,1,2,5} (the C4.4 GWRITE_LEVEL input domain);
-!   anything else loud-stops. occ / n_hop carry lvl_min = huge (no preset group - they are
-!   obs_list-only until their group membership is legislated).
-!   Coexistence semantics of the two selection entries (plan N3 wording "coexisting",
-!   realized as UNION): the level entry SETS the selection - it replaces any previous
-!   selection with the preset column group and sets both section gates by its level; the
-!   list entry APPENDS its named columns to the current selection (registry duplicates are
-!   not re-listed; lookup is case-insensitive) and opens the reserved section gates
-!   'all_qp' / 'all_frc'. Driver pattern: rec_select(observables%rec_level) first, then
-!   rec_select(observables%obs_list) when the list key is non-empty - the recorded set is
-!   the union of the preset group and the named list, the gates the union of both entries.
-!   Units (the unit contract): the energy columns report kcal/mol - t_kin =
-!   sum p^2/(2*roster%mass)/e_conv (old ENERGY.f:58-66 convention), v_pot / e_tot via
-!   force_eval (the kcal/mol e_tot of the force_facade N1 contract; v_pot = e_tot - t_kin).
-!   v_pot / e_tot call force_eval on a private COPY of the snapshot (force_eval takes an
-!   inout state; the recorded snapshot itself stays read-only).
-!   E16/E19 occupation columns - REAL: the extractors read the elec_facade statistics
-!   holder through the getter pair (occ_get / n_hop_get), seeded at the method bind
-!   (occ = [1], n_hop = 0 under the degenerate adiabatic row; a hopping method's live
-!   values flow through the same channel). The occ column carries the ACTIVE-STATE
-!   INDEX - the scalar face of the occupation set; the full multi-electron vector has
-!   no scalar summary face yet (registered, not guessed).
-!   Frame-index channel: the signature froze two dummies (sta, unit), so the trajectory /
-!   step counters live as module-private state (the "closure host" of the skeleton note):
-!   step_i advances per rec_frame call, traj_i advances per rec_final call (which also
-!   resets step_i - one trajectory of frames then one final row, the driver loop shape).
-!   rec_final writes the GENERIC final-state row (traj, t, selected column values; the
-!   name header once, at traj_i = 1 - old HIST.f90:18 shape). The member columns of the
-!   old record_all (e_rel/z_min/site ...) are C8 wiring through final_state/fin_t.
-!   Assembly-order guards (loud-stop, formal): recording before any rec_select; recording
-!   with an unassembled roster (mass/symb unallocated) or a state whose size is not an
-!   EXACT fit to the roster (both directions - col_tkin walks roster%mass up to
-!   size(sta%p)/3, so an oversized state would otherwise read mass out of bounds) - the
-!   two checks cover every extractor / section read the frame path makes.
-!   Input-key consumption note: the E_KIN / E_POT / E_TOT input keys land in
-!   observables%e_kin / e_pot / e_tot (C4.4 map_slots) and no code reads them yet - the
-!   energy columns here register at lvl_min >= 0 regardless of those flags; their
-!   consumption destination is the C8 / run-statistics wiring (routed keys, not dead).
+! recorder.f90 - column-style recorder of trajectory frames and final-state rows
+! Design:
+!   A column is a registry row (name + extractor); selection is preset level (the
+!   base) plus an appended name list (union). Levels: 0/1 = frame header + energy
+!   line; 2 = + all-atom Q/P section (the bare-input default); 5 = + per-atom
+!   force section. Energy columns report kcal/mol; electronic columns read the
+!   elec_facade statistics getters only.
 !=====================================================================
 module recorder
    use state,         only: state_t
@@ -119,16 +17,11 @@ module recorder
    implicit none
    private
    public :: col_val_i, rec_reg_col, rec_select, rec_frame, rec_final, rec_n_sel
-   public :: rec_fin_val                                            ! the final-row value getter
-                                                                    ! (statistics-phase read: the
-                                                                    ! driver's conservation-drift
-                                                                    ! datum - one named column of
-                                                                    ! the LAST written final row)
+   public :: rec_fin_val                                            ! final-row value getter
+                                                                    ! (one named column of the
+                                                                    ! last written final row)
 
-   ! Column-extractor interface: extract one scalar observable from the physical state
-   ! (the measurement class consuming evolution services - energy columns obtain the potential
-   ! energy internally via force_eval, a legal direction; spec §2.2 measurement-class
-   ! definition)
+   ! Column-extractor interface: one scalar observable from a physical-state snapshot
    abstract interface
       real(8) function col_val_i(sta)
          import :: state_t
@@ -136,12 +29,12 @@ module recorder
       end function col_val_i
    end interface
 
-   ! Column registry (column = name + extractor; registered at assembly time, read-only
-   ! during recording)
+   ! Column registry (column = name + extractor; filled at assembly, read-only while
+   ! recording)
    integer, parameter :: max_col = 64        ! registry capacity [column]
    type :: col_entry_t
       character(len=16) :: name = ''         ! column name (obs_list list key; 1-16 characters)
-      integer :: lvl_min = huge(1)           ! N3.1 preset map: minimum preset level including
+      integer :: lvl_min = huge(1)           ! minimum preset level including
                                              ! this column (huge = no preset group - obs_list-only)
       procedure(col_val_i), pointer, nopass :: val => null() ! extractor
    end type col_entry_t
@@ -156,41 +49,29 @@ module recorder
    logical :: fw_done = .false.              ! framework preregistration flag (lazy, first use)
    integer :: traj_i = 1                     ! trajectory counter [-] (frame header / final row)
    integer :: step_i = 0                     ! per-trajectory frame counter [-]
-   real(8) :: fin_val(max_col) = 0.0d0       ! the LAST written final row's column values
-                                             ! (the statistics-phase read-back stash; overwritten
-                                             ! by every rec_final, consumed by rec_fin_val
-                                             ! before the next rec_final)
+   real(8) :: fin_val(max_col) = 0.0d0       ! last written final row's column values
+                                             ! (the rec_fin_val read-back stash)
    integer :: fin_n = 0                      ! the stashed row's column count [column]
    logical :: fin_done = .false.             ! a final row has been written (the getter's
                                              ! assembly-order guard)
 
-   ! N3.1 section-gate levels (data companions of the lvl_min field; rec_sel_lvl derives
-   ! both gates from these constants - no branch table)
+   ! Section-gate levels: rec_sel_lvl derives both gates from these constants
    integer, parameter :: lvl_qp  = 2         ! sec_qp opens at this preset level
    integer, parameter :: lvl_frc = 5         ! sec_frc opens at this preset level
-   ! the closed preset-level domain (the C4.4 GWRITE_LEVEL input set)
+   ! the closed preset-level domain
    integer, parameter :: lvl_domain(4) = [ 0, 1, 2, 5 ]
 
-   ! Two entries of the column-selection generic: preset level or list (the four-level
-   ! GWRITE_LEVEL semantics of GWRITE.f90:11-15
-   ! paired with the config%observables%rec_level/obs_list keys - the K1 §1.4 observable
-   ! settings slot)
+   ! Column-selection generic: preset level (rec_level key) or name list (obs_list key)
    interface rec_select
       module procedure rec_sel_lvl   ! by preset level (the rec_level key)
       module procedure rec_sel_lst   ! by list (the obs_list key - comma-separated column names)
    end interface rec_select
 contains
    !------------------------------------------------------------------
-   ! rec_reg_col(name, proc) - register an observable column (one row each of name + extractor)
-   ! Reference: docs/final_completion_plan.md §5 (the column-registration mechanism - C4
-   ! recorder);
-   !       interface_TEST.f90:18-30 (energy-column convention - reference for the
-   !       framework-preregistered columns)
-   ! Implemented: the framework columns preregister themselves lazily on first use (fw_reg
-   ! below - registration at assembly precedes selection because every public entry calls
-   ! fw_reg first); an external row enters with lvl_min = huge (no preset group - external
-   ! columns are obs_list-only; preset membership is framework legislation, N3.1). Duplicate
-   ! name or full table loud-stops naming the column
+   ! rec_reg_col(name, proc) - register an external observable column (enters with
+   ! lvl_min = huge, i.e. obs_list-only; duplicate name / full table / overlong name
+   ! loud-stops)
+   !------------------------------------------------------------------
    subroutine rec_reg_col(name, proc)
       character(len=*), intent(in) :: name  ! column name (obs_list list key)
       procedure(col_val_i) :: proc          ! column extractor
@@ -199,34 +80,26 @@ contains
    end subroutine rec_reg_col
 
    !------------------------------------------------------------------
-   ! rec_select(level / list) - column-selection generic (two entries in the interface block
-   ! of the module declaration part)
-   !
-   ! rec_level preset column-group data table (the config%observables%rec_level key - the
-   ! parameterized restatement of the GWRITE_LEVEL semantics, GWRITE.f90:11-15):
-   !   Level 0 / 1 = minimal: frame header (trajectory/step/time) + t_kin/v_pot/e_tot energy
-   !   line (old :28/:31; no generic level-1 diagnostic columns exist - that old block was
-   !   excised system knowledge, excision warnings (3)(4))
-   !   Level 2 = + the all-atom Q/P flattened section sec_qp (the INPUT DEFAULT, E26 -
-   !          old :106-117, the backward-compatible level; labels from roster%symb -
-   !          excision warning (2))
-   !   Level 5 = + the per-atom force section sec_frc (old :122-127)
-   !
-   ! Coexistence: see the C4.5 implementation notes in the module header (union semantics).
+   ! rec_select(level / list) - column-selection generic: the preset-level entry SETS the
+   ! selection and both section gates (base); the list entry APPENDS named columns and may
+   ! open 'all_qp'/'all_frc' - the recorded set is the union of both entries
+   !------------------------------------------------------------------
 
    !------------------------------------------------------------------
-   ! rec_sel_lvl(level) - select columns by preset level (sets sel_idx and the two section
-   ! gates; replaces any previous selection - the level entry is the base of the union)
-   ! Reference: GWRITE.f90:11-15 (four-level semantics)
+   ! rec_sel_lvl(level) - select columns by preset level (single scan over lvl_min;
+   ! replaces any previous selection, sets both section gates)
+   !------------------------------------------------------------------
    subroutine rec_sel_lvl(level)
       integer, intent(in) :: level   ! preset level [-] (0/1/2/5; the default call passes
                                      ! observables%rec_level)
       integer :: j
+      ! 1. lazy framework preregistration + closed level-domain validation
       call fw_reg()
       if (all(level /= lvl_domain)) then
          call stop_rec('rec_sel_lvl', 'unknown preset level - the recording-level set is '// &
                        '0/1/2/5 (GWRITE_LEVEL semantics, N3.1)')
       end if
+      ! 2. single scan over lvl_min collects the preset group (replaces any selection)
       n_sel = 0
       do j = 1, n_col
          if (col_tbl(j)%lvl_min <= level) then
@@ -234,16 +107,16 @@ contains
             sel_idx(n_sel) = j
          end if
       end do
+      ! 3. set both section gates by the level
       sec_qp  = (level >= lvl_qp)
       sec_frc = (level >= lvl_frc)
       sel_done = .true.
    end subroutine rec_sel_lvl
 
    !------------------------------------------------------------------
-   ! rec_sel_lst(list) - select columns by list (comma-separated column names looked up in
-   ! the registry one by one; appends to the current selection - the list entry is the
-   ! additive half of the union)
-   ! Reference: config%observables%obs_list (K1 §1.4 - the list key)
+   ! rec_sel_lst(list) - append comma-separated column names to the current selection
+   ! (case-insensitive lookup; the reserved names 'all_qp'/'all_frc' open the sections)
+   !------------------------------------------------------------------
    subroutine rec_sel_lst(list)
       character(len=*), intent(in) :: list  ! column-name list (comma-separated;
                                             ! the reserved section names 'all_qp'/'all_frc'
@@ -256,6 +129,7 @@ contains
          sel_done = .true.                   ! empty list key = no columns to add (legal no-op)
          return
       end if
+      ! 1. one loop pass per comma-separated token
       rest = adjustl(list)
       do while (len_trim(rest) > 0)
          ic = index(trim(rest), ',')
@@ -270,6 +144,7 @@ contains
             call stop_rec('rec_sel_lst', 'empty item in the column list (obs_list grammar: '// &
                           'comma-separated names, no empty items)')
          end if
+         ! 2. dispatch: reserved section gates vs registry lookup, append if absent
          if (to_upper(trim(tok)) == 'ALL_QP') then
             sec_qp = .true.
          else if (to_upper(trim(tok)) == 'ALL_FRC') then
@@ -294,32 +169,24 @@ contains
    end subroutine rec_sel_lst
 
    !------------------------------------------------------------------
-   ! rec_frame(sta, unit) - write one checkpoint frame (per selected column values + gated
-   ! flattened sections)
-   ! Reference: GWRITE.f90:25-31 (frame header / energy line), :49-60 (molecule-file step
-   ! sections),
-   !       :106-127 (the two flattened sections), :145 (flush)
-   ! Implemented frame layout (generic quantities only - zero system knowledge):
-   !   '# frame traj=<t> step=<s> t=<time>'          frame header (old :27-28, one line)
-   !   '<name>=<val> <name>=<val> ...'               selected column values, selection order
-   !   '# sec_qp begin' / per-atom rows / end        gated at rec_level>=2 (old :106-117)
-   !   '# sec_frc begin' / per-atom rows / end       gated at rec_level>=5 (old :122-127)
-   ! atom row = '<index> <symb> <3 reals> [<3 reals>]' (labels from roster%symb - excision
-   ! fix (2); no designated atom, excision fix (1)); flush(unit) at the end (old :145).
-   ! Units: t = sta%t [10 fs] as held; energies [kcal/mol] per the unit contract above
+   ! rec_frame(sta, unit) - write one checkpoint frame: selected column values plus the
+   ! gated flattened sections
+   ! Frame layout: '# frame traj= step= t=' header; then one 'name=value' line (selection
+   ! order); '# sec_qp begin'/per-atom q,p rows/'# sec_qp end' gated at level>=2;
+   ! '# sec_frc begin'/per-atom force rows/'# sec_frc end' gated at level>=5. Atom row =
+   ! '<index> <symb> <3 reals> [<3 reals>]'; t = sta%t [10 fs] as held, energies
+   ! [kcal/mol]; flush(unit) at the end
+   !------------------------------------------------------------------
    subroutine rec_frame(sta, unit)
-      type(state_t), intent(in) :: sta   ! physical state (read-only snapshot - the post-mqc
-      ! self-consistent state: the driver four-phase loop calls rec_frame AFTER
-      ! mqc_statistic (spec §8 ordering - the held occupation set already updated for the
-      ! step (E16 statistics holder) and rho refreshed to the declared deliverable state,
-      ! repairing the one-step occupation lag of the old checkpoint-timed frames)
-      integer, intent(in) :: unit        ! output unit number [-] (driver orchestration - unit
-      ! assignment / opening / closing belongs to the driver, this routine only writes)
+      type(state_t), intent(in) :: sta   ! physical state (read-only post-statistics snapshot)
+      integer, intent(in) :: unit        ! output unit number [-] (driver owns open/close)
       integer :: j, k, nat
+      ! 1. guards + frame counters
       call fw_reg()
       call check_ready(sta, 'rec_frame')
       nat = size(roster%mass)
       step_i = step_i + 1
+      ! 2. frame header + one name=value line of selected column values
       write (unit, '(a,i0,a,i0,a,es24.16)') '# frame traj=', traj_i, ' step=', step_i, ' t=', sta%t
       if (n_sel > 0) then
          do j = 1, n_sel
@@ -333,6 +200,7 @@ contains
          end do
          write (unit, '(a)') ''
       end if
+      ! 3. all-atom Q/P flattened section (gate: preset level >= 2)
       if (sec_qp) then
          write (unit, '(a)') '# sec_qp begin'
          do k = 1, nat
@@ -341,6 +209,7 @@ contains
          end do
          write (unit, '(a)') '# sec_qp end'
       end if
+      ! 4. per-atom force section (gate: preset level >= 5)
       if (sec_frc) then
          write (unit, '(a)') '# sec_frc begin'
          do k = 1, nat
@@ -348,33 +217,28 @@ contains
          end do
          write (unit, '(a)') '# sec_frc end'
       end if
+      ! 5. flush the checkpoint
       flush (unit)
    end subroutine rec_frame
 
    !------------------------------------------------------------------
-   ! rec_final(sta, unit) - write the trajectory final-state row (the record_all column group
-   ! - the per-trajectory record consumed by the statistics phase)
-   ! Reference: HIST.f90:8-24 (record_all: final-state row columns + first-line header), :18
-   !       (header column-name order)
-   ! Implemented (the GENERIC row): '# final: traj t <column names>' written once
-   ! (traj_i = 1), then one row per trajectory = traj_i, sta%t, the selected column
-   ! values at the final state; afterwards traj_i advances and step_i resets (the
-   ! frame/final counters of the closure host). The column values are computed ONCE
-   ! into the fin_val stash - both the written row and the rec_fin_val read-back
-   ! consume that single evaluation (no extractor runs twice on one snapshot).
-   ! The member columns of the old record_all (e_rel/thta/z_min/v_fin/n_bnc/x0/y0/site
-   ! via final_state fin_t + the plot_hist site tool, lattice parameterized) land with
-   ! their own wiring - any per-trajectory file's close-out belongs to the driver in
-   ! any case
+   ! rec_final(sta, unit) - write the trajectory final-state row: '# final: traj t
+   ! <column names>' header once (first trajectory), then one row per trajectory =
+   ! traj, t, selected column values. Values are computed ONCE into the fin_val stash
+   ! shared with rec_fin_val; afterwards traj_i advances and step_i resets
+   !------------------------------------------------------------------
    subroutine rec_final(sta, unit)
       type(state_t), intent(in) :: sta   ! physical state (final-state snapshot - read-only)
       integer, intent(in) :: unit        ! output unit number [-]
       integer :: j
+      ! 1. guards
       call fw_reg()
       call check_ready(sta, 'rec_final')
+      ! 2. evaluate the selected columns once into the stash
       do j = 1, n_sel
          fin_val(j) = col_tbl(sel_idx(j))%val(sta)
       end do
+      ! 3. one-time name header, then the data row
       if (traj_i == 1) then
          write (unit, '(a)', advance='no') '# final: traj t'
          do j = 1, n_sel
@@ -388,6 +252,7 @@ contains
       end do
       write (unit, '(a)') ''
       flush (unit)
+      ! 4. publish the stash and advance the frame/final counters
       fin_n = n_sel
       fin_done = .true.
       traj_i = traj_i + 1
@@ -395,12 +260,10 @@ contains
    end subroutine rec_final
 
    !------------------------------------------------------------------
-   ! rec_fin_val(name) - read ONE named column's value back out of the LAST written
-   !                 final-state row (the statistics phase's per-trajectory read-back:
-   !                 the driver's conservation-drift datum - the row's e_tot is a
-   !                 force_eval reading at the final geometry). Call between a
-   !                 rec_final and the next rec_final - the stash holds exactly the
-   !                 last row
+   ! rec_fin_val(name) - read one named column's value back out of the LAST written
+   ! final-state row (call between a rec_final and the next; the name must be among
+   ! the selected columns)
+   !------------------------------------------------------------------
    function rec_fin_val(name) result(v)
       character(len=*), intent(in) :: name  ! column name (must be among the SELECTED
                                             ! columns - the row carries those only)
@@ -425,10 +288,8 @@ contains
    ! private helpers
    !------------------------------------------------------------------
 
-   ! fw_reg() - lazy framework preregistration (runs once, before any registry use; the
-   ! assembly-time "called first" of the skeleton note realized as first-use initialization)
-   ! Framework columns (D3 first version): the energy three at preset level 0 (minimal
-   ! frame) + the occ/n_hop placeholders (lvl_min = huge - obs_list-only)
+   ! fw_reg() - lazy framework preregistration (runs once, on first registry use): the
+   ! energy three at preset level 0 + the occ/n_hop placeholders (lvl_min = huge)
    subroutine fw_reg()
       if (fw_done) return
       fw_done = .true.
@@ -476,11 +337,9 @@ contains
       end do
    end function col_lookup
 
-   ! check_ready(sta, who) - the two formal assembly-order guards of the write path:
-   ! selection made, roster assembled and size-EXACTLY-matched to the state (equality,
-   ! not a one-way lower bound: col_tkin walks roster%mass(k) for k = 1..size(sta%p)/3,
-   ! so a state LARGER than the roster would read mass out of bounds - the guard must
-   ! fire by name ahead of that, in both directions; exact fit stays legal)
+   ! check_ready(sta, who) - write-path guards: selection made, roster assembled, and the
+   ! state an EXACT size fit to the roster in both directions (an oversized state would
+   ! read roster%mass out of bounds in col_tkin)
    subroutine check_ready(sta, who)
       type(state_t), intent(in) :: sta
       character(len=*), intent(in) :: who
@@ -516,9 +375,8 @@ contains
       stop 1
    end subroutine stop_rec
 
-   ! num_str(v) - a real rendered as a blank-free ES string (the column line's
-   ! name=value tokens stay single-space-separated: an unadjusted ES field would leave
-   ! the format's leading blank inside the token)
+   ! num_str(v) - a real rendered as a blank-free ES string (keeps the column line's
+   ! name=value tokens single-space-separated)
    pure function num_str(v) result(s)
       real(8), intent(in) :: v
       character(len=32) :: s
@@ -526,8 +384,8 @@ contains
       s = trim(adjustl(s))
    end function num_str
 
-   ! to_upper(s) - ASCII uppercase of a trimmed string (the obs_list lookup is
-   ! case-insensitive; input.f90 stores the list raw)
+   ! to_upper(s) - ASCII uppercase of a string (the column-name lookup is
+   ! case-insensitive)
    pure function to_upper(s)
       character(len=*), intent(in) :: s
       character(len=len(s)) :: to_upper
@@ -546,8 +404,7 @@ contains
    ! framework column extractors (the preregistered set)
    !------------------------------------------------------------------
 
-   ! t_kin - kinetic energy T = sum_atoms p.p/(2 m) / e_conv [kcal/mol] (old ENERGY.f:58-66
-   ! convention; masses from the roster - read-only)
+   ! t_kin - kinetic energy T = sum_atoms p.p/(2 m) / e_conv [kcal/mol] (roster masses)
    real(8) function col_tkin(sta) result(v)
       type(state_t), intent(in) :: sta
       integer :: k
@@ -558,9 +415,8 @@ contains
       v = v/e_conv
    end function col_tkin
 
-   ! v_pot - potential energy via force_eval [kcal/mol]: V = H - T on a private copy of the
-   ! snapshot (force_eval takes inout state; C4: the facade is a no-op skeleton, so the
-   ! value stays at its initialized 0 until C2(interface) - a phase-V numeric posterior)
+   ! v_pot - potential energy via force_eval [kcal/mol]: V = H - T on a private copy of
+   ! the snapshot (force_eval takes an inout state; the snapshot stays read-only)
    real(8) function col_vpot(sta) result(v)
       type(state_t), intent(in) :: sta
       type(state_t) :: wrk
@@ -571,8 +427,8 @@ contains
       v = e - col_tkin(sta)
    end function col_vpot
 
-   ! e_tot - total energy H = T(P) + V via force_eval [kcal/mol] (the facade N1 contract;
-   ! same copy / no-op-skeleton note as col_vpot)
+   ! e_tot - total energy H = T(P) + V via force_eval [kcal/mol] (same private-copy
+   ! pattern as col_vpot)
    real(8) function col_etot(sta) result(v)
       type(state_t), intent(in) :: sta
       type(state_t) :: wrk
@@ -581,11 +437,9 @@ contains
       call force_eval(wrk, v)
    end function col_etot
 
-   ! occ - E16/E19 occupation column: the ACTIVE-STATE INDEX of the held occupation set
-   ! (the scalar face of the set - frame/final-row columns are one real each), read from
-   ! the elec_facade statistics holder through occ_get; seeded [1] at the method bind, so
-   ! the degenerate adiabatic row records 1.0 on every line. The whole-vector summary for
-   ! a multi-electron method has no scalar face yet - registered, not guessed
+   ! occ - occupation column: the ACTIVE-STATE INDEX of the held occupation set, read via
+   ! occ_get (seeded [1] at the method bind, so the adiabatic row records 1.0 on every
+   ! line; no whole-vector scalar summary exists yet)
    real(8) function col_occ(sta) result(v)
       type(state_t), intent(in) :: sta
       integer, allocatable :: occ(:)
@@ -594,17 +448,17 @@ contains
       deallocate (occ)
    end function col_occ
 
-   ! n_hop - E16/E19 hop-count column: the held hop counter through n_hop_get (a pure
-   ! observable per the holder statute - the recorder only reads); 0 under the adiabatic
-   ! row (no hops exist), incremented at hop detection inside the match member
+   ! n_hop - hop-count column: the held hop counter via n_hop_get (a pure observable -
+   ! the recorder only reads; 0 under the adiabatic row, incremented at hop detection
+   ! inside the hopping member)
    real(8) function col_nhop(sta) result(v)
       type(state_t), intent(in) :: sta
       v = dble(n_hop_get())
    end function col_nhop
 
    !------------------------------------------------------------------
-   ! rec_n_sel() - selected column count (read-only public probe; the
-   !               assembly-complete summary's 'colgroups=' witness)
+   ! rec_n_sel() - selected column count (read-only public probe)
+   !------------------------------------------------------------------
    pure integer function rec_n_sel()
       rec_n_sel = n_sel
    end function rec_n_sel

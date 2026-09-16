@@ -1,28 +1,14 @@
 !=====================================================================
-! reg_dist_glo_target.f90 - registration module (methods/): ONE samp_reg
-!                          call registers the 'glo_target' distribution
-!                          member row - the reg file is the atomic
-!                          registration unit (a new member = its method
-!                          file + this one thin file; zero edits to
-!                          existing files)
-! Contract:
-!   reg_dist_glo_target_all() - register the glo-target member's sampling
-!     routine under its scheme word 'glo_target' (the word the input
-!     grammar accepts for DIST_SCHEME and the per-fragment dispatch
-!     resolves). Passing glo_target_sample as samp_reg's procedure dummy
-!     checks its conformance to the dist_proc_i interface at compile
-!     time. Executed once in the assembly phase, before any samp_run.
-!   reg_dist_glo_target_init() - the ASSEMBLY SEAM entry: load this
-!     member's staged input parameters (the input framework's public
-!     staging rows) into the member's params receiver - absent keys keep
-!     the field defaults - then run the member's own init (validation +
-!     carrier binding). Guard: an UNSELECTED member skips (no
-!     dist_scheme row carries its word - member init's carrier battery
-!     would otherwise loud-stop 'zero carriers' on every run that does
-!     not use the member). Three-party zero knowledge: the driver knows
-!     no member (it calls the registry aggregate), the input knows no
-!     member (keys stage raw), the member never touches the driver.
-! Units: none (registration carries names and code references only).
+! reg_dist_glo_target.f90 - register the 'glo_target' distribution member
+! Design:
+!   One samp_reg call fills the member-table row under the scheme word
+!   the input grammar accepts for DIST_SCHEME; the reg file is the
+!   atomic registration unit (a new member = its method file + one thin
+!   reg file; zero edits to existing files).
+!   _init is the assembly seam: staged input keys -> params receiver
+!   (absent keys keep field defaults) -> the member's own init (the
+!   driver, input and member know nothing of each other); an
+!   unselected member skips.
 !=====================================================================
 module reg_dist_glo_target
    use sampler,         only: samp_reg, samp_code
@@ -42,8 +28,8 @@ contains
    end subroutine reg_dist_glo_target_all
 
    !------------------------------------------------------------------
-   ! reg_dist_glo_target_init() - the assembly seam: staged member keys ->
-   !                              params receiver -> the member's own init
+   ! reg_dist_glo_target_init() - assembly seam: staged keys -> receiver ->
+   !                              member init
    subroutine reg_dist_glo_target_init()
       type(glo_target_params_t) :: p     ! member-parameter receiver (field defaults)
       character(len=512) :: sval         ! one staged raw value

@@ -1,50 +1,14 @@
 !=====================================================================
-! sampler.f90 - initial-state distribution sampling framework (facade):
-!               distribution-member registration + per-trajectory
-!               orchestration - the per-fragment members write the
-!               initial-state components they own, the incident-channel
-!               member assembles the collision after them
-! Contract:
-!   samp_reg(name, proc) - register one distribution member row (assembly
-!     phase; a member = one methods/ file + one registration line).
-!     Duplicate name or full table -> loud-stop naming it.
-!   samp_run(scheme, sta) - prepare one trajectory's initial state in one
-!     call, in this order:
-!     1. assembly guards: the roster fragment table must be assembled
-!        (roster_load runs first) and the state sized to the roster
-!        (size(q) = size(p) = 3*size(roster%mass)); violation -> loud-stop
-!        naming the mismatch.
-!     2. count reconcile BEFORE any dispatch: the per-fragment scheme array
-!        reactants%dist_scheme must cover the roster exactly (its length
-!        equals the roster fragment count) - mismatch -> loud-stop naming
-!        BOTH values.
-!     3. scheme lookup: the scheme argument names the incident-channel
-!        member - the one orchestration member NOT selected by a
-!        dist_scheme row (the collision-assembly channel has no config
-!        field of its own, so the driver passes its member name, today
-!        'incident'); unregistered -> loud-stop naming it.
-!     4. per-fragment dispatch in roster fragment order: fragment i's member
-!        name comes from the scheme-code table below (the integer codes of
-!        reactants%dist_scheme denote member names - the same words the
-!        input grammar accepts for DIST_SCHEME); an out-of-range code or an
-!        unregistered name -> loud-stop naming it. Only sta is passed: the
-!        fragment index and the distribution parameters are member-init
-!        knowledge (member = code + its own data; sta is the one runtime
-!        channel), and each member writes only the q/p/s components it
-!        owns.
-!   samp_code(name) - the scheme-code table row of a member word (0 =
-!     absent); the single source a member init consults for its fragment
-!     binding (which dist_scheme rows select it).
-!     5. incident channel ONCE, AFTER all fragment members - dispatched
-!        unless the system is single-fragment gas-phase (one fragment and
-!        surface_model = 0: a lone gas-phase molecule has no collision
-!        assembly, the relative-motion constructs would degenerate).
-!   Layering statute: the sampler family carries no use of sysdef_facade -
-!   the roster is the one and only geometry/composition channel into this
-!   family (this module reads roster%frag / roster%mass and nothing else of
-!   the system's composition).
-! Units: none internal (distribution shapes and their units are member-side
-! knowledge); table sizes in rows (capacity max_dist = 16).
+! sampler.f90 - initial-state distribution sampling facade:
+!   distribution-member registration + per-trajectory dispatch
+! Design:
+!   samp_reg(name, proc) registers a member row (a new member = a new
+!   methods/ file + one registration line). samp_run(scheme, sta)
+!   prepares one trajectory's initial state - the per-fragment members
+!   named by reactants%dist_scheme (roster order) write the components
+!   they own, then the incident member (the scheme argument) assembles
+!   the collision (skipped for single-fragment gas phase). The roster is
+!   the only composition channel into this family; units are member-side.
 !=====================================================================
 module sampler
    use state, only: state_t

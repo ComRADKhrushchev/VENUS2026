@@ -1,57 +1,14 @@
 !=====================================================================
-! dist_ebk.f90 - distribution member (methods/ library): EBK semiclassical
-!                state distribution - a fixed-(n,J) diatomic initial state
-!                from Morse spectroscopic constants
-! Contract:
-!   ebk_init(p) - validate the member parameters, derive the Morse curve
-!     from the spectroscopic constants, locate the (n,J) energy level by
-!     WKB action quantization, and bind the served fragment. Loud-stops
-!     name the offending field/value: n_vib < 0; j_rot < 0; w_e <= 0;
-!     w_ex_e <= 0; b_rot < 0; ai_rot <= 0 (retained for the orientation
-!     members, validated on arrival); a carrier fragment that is not a
-!     two-atom roster row; a degenerate equilibrium geometry (zero bond
-!     length); a level that admits no classical region (at/above the
-!     dissociation asymptote or below the effective-potential minimum);
-!     a fixed-point iteration that fails to converge within its cap.
-!     Binding: the served fragment is the roster fragment whose
-!     dist_scheme row selects THIS member (exactly one carrier required).
-!   ebk_sample(sta) - one draw: internuclear distance r with WKB
-!     probability density prop. to 1/|pr| on the inset turning-point
-!     interval (exact rejection: envelope constant = the smaller endpoint
-!     momentum, positive on the inset interval), radial momentum pr with a
-!     random sign, then the diatomic assembly writes the carrier
-!     fragment's q/p components: COM at the origin, zero total momentum,
-!     bond along the equilibrium axis direction, |L| = sqrt(J(J+1))*hbar
-!     perpendicular to the bond with a random azimuth. Translation (where
-!     the fragment sits, how fast it flies) belongs to the incident
-!     channel - this member owns the internal degrees of freedom only.
-!   Getters (copies): ebk_e_level (converged level energy [internal]),
-!     ebk_r_turn (the sampled interval [Angstrom]), ebk_morse (the derived
-!     curve parameters a [1/Angstrom], D_e [internal], reduced mass
-!     [amu], equilibrium bond length [Angstrom], rotational moment
-!     [internal angular momentum unit]), ebk_last (the last draw's r and
-!     signed pr).
-! Physics of the derivation (assembly-time mechanism note): the Morse
-!   curve is DERIVED from the spectroscopic constants of the parameter
-!   type - D_e = w_e^2/(4*w_ex_e) [cm^-1], and the range parameter from
-!   the requirement that the WKB spectrum reproduce the constants:
-!   a = sqrt(2*mu*e_conv*wvn2e*w_ex_e)/hbar [1/Angstrom]. With this
-!   construction the Bohr-Sommerfeld action of the pure Morse is exactly
-!   quantized (the J = 0 levels are EXACTLY w_e*(n+1/2) - w_ex_e*(n+1/2)^2
-!   - the anchor the member's criteria program rides). The rotational
-!   term b_rot*J*(J+1) enters the level seed; the level is then re-located
-!   by fixed-point quantization of the full effective potential (Morse
-!   plus centrifugal al^2/(2*mu*r^2)) - e <- e + (x - action/pi*hbar)*hnu,
-!   hnu = e_seed/x, tolerance 1e-6, cap 1000 iterations. Frequencies may
-!   equivalently arrive from the Hessian eigenvalue chain at assembly
-!   time; through a no-op chain nothing arrives and the parameter
-!   validation is the loud-stop (fail-loud degradation posture).
-! Units: w_e/w_ex_e/b_rot [cm^-1], n_vib/j_rot [-], ai_rot [amu*Ang^2];
-!   energies internal (= e_conv*wvn2e*[cm^-1]); coordinates [Angstrom];
-!   momenta [amu*Ang/(10 fs)]; hbar = hbar_code [internal angular
-!   momentum unit]. Turning-point inset 0.001 [Angstrom] (both the
-!   quantization integral and the sampling interval use it - one
-!   consistent convention).
+! dist_ebk.f90 - distribution member: EBK semiclassical fixed-(n,J)
+!   diatomic initial state from Morse spectroscopic constants
+! Design:
+!   The Morse curve is derived so the pure-Morse WKB spectrum is exactly
+!   quantized; the level is re-located by fixed-point quantization of
+!   the full effective potential. Sample draws r with density prop. to
+!   1/|pr| and writes the carrier's internal q/p only - translation is
+!   the incident channel's business.
+!   Units: w_e/w_ex_e/b_rot [cm^-1]; energies internal; q [Angstrom];
+!   p [amu*Ang/(10 fs)]; hbar = hbar_code.
 !=====================================================================
 module dist_ebk
    use consts,        only: pi, two_pi, hbar_code, e_conv, wvn2e

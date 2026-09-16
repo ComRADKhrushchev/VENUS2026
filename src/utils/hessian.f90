@@ -1,38 +1,12 @@
 !=====================================================================
-! hessian.f90 - L5 instrument: symmetric Hessian of a potential assembled
-!               from a force procedure by second-order central differences
-! Responsibility: given a position vector q and a procedure that returns
-!   forces at displaced positions, build the symmetric second-derivative
-!   matrix of the underlying potential. Pure form: no system knowledge, no
-!   facade, no state - the module owns no units of its own; q, f, h and
-!   hess all carry the caller's units (h is an increment in the units of
-!   q; hess carries [force unit]/[length unit]).
-! Contract:
-!   force      - procedure conforming to the force_proc interface returning
-!                f = -dV/dq at q (force is the NEGATIVE gradient). The
-!                output satisfies H(i,j) = d2V/dq_i dq_j = -dF_i/dq_j,
-!                assembled column-wise as the central difference
-!                    H_raw(:,j) = -( F(q + h e_j) - F(q - h e_j) ) / (2h)
-!                (2n force calls: coordinates ascending, the plus probe
-!                then the minus probe per coordinate; no call at the bare
-!                base point).
-!   step       - ONE uniform scalar step for every coordinate (not
-!                per-coordinate). Default 1e-4 in the units of q - the
-!                double-precision balance for O(1) coordinates (truncation
-!                O(h^2) ~ 1e-8 against subtractive roundoff O(eps/h) ~
-!                1e-12); the optional h argument overrides it for other
-!                coordinate scales. h must be positive and finite.
-!   output     - hess is n x n with n = size(q) (3N x 3N for N atoms in
-!                the downstream Cartesian use), fully defined on exit,
-!                and SYMMETRIZED: H = (H_raw + H_raw^T)/2 - the raw
-!                central difference of an exact force is symmetric only
-!                up to rounding; the average is exactly symmetric by
-!                construction.
-! Error posture (the sibling L5 instrument precedent, geometry): an
-!   invalid condition writes a naming message to stderr (unit 0) and
-!   stops with exit code 1 - hess not n x n (both sizes named), step h
-!   non-positive or non-finite, or a NaN/Inf force component at a probe
-!   (component, probe sign and coordinate named).
+! hessian.f90 - symmetric Hessian of a potential by second-order central
+!               differences over a force procedure
+! Design:
+!   Pure form - no system knowledge, no state; q, f, h and hess carry the
+!   caller's units. force conforms to force_proc, returns f = -dV/dq;
+!   H_raw(:,j) = -(F(q+h e_j)-F(q-h e_j))/(2h) over 2n calls, then
+!   symmetrized H = (H_raw + H_raw^T)/2. ONE uniform scalar step for every
+!   coordinate (default 1e-4); invalid conditions loud-stop (stderr, exit 1).
 !=====================================================================
 module hessian
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite

@@ -1,17 +1,11 @@
 !=====================================================================
-! linalg.f90 - L5 instrument: symmetric-matrix eigendecomposition (eigenvalues ascending +
-!              eigenvectors by column)
-! Reference: src_VENUS/EIGN.f:1-248 (EIGN - Givens-Householder tridiagonalization + shifted QL)
-!       consumers: inertia-tensor diagonalization venus_input.f90:553/:814; force-constant
-!       matrix FGMTRX.f:35/:60
-! Port notes (C1): the algorithm, its constants and its control flow are carried over
-!       VERBATIM from EIGN.f, adapted to the frozen skeleton signature eig_sym(a, d) - the
-!       old separate VEC output is written back into a BY COLUMN (transpose at the tail),
-!       the old venus_data global EIG is a local array, the arrays are sized n (no NDA3
-!       capacity). ONE old defect corrected (the audit's do-not-carry-over spirit): the
-!       S=0 bypass branch never wrote BETA(NR) (an uninitialized read downstream) - the
-!       assignment now sits outside the branch where BETASQ already sat. The convergence
-!       threshold (old dummy RHO) is an internal default, promotable to a dummy in phase C.
+! linalg.f90 - symmetric-matrix eigendecomposition (Givens-Householder +
+!              shifted QL)
+! Design:
+!   eig_sym(a, d) reads a by the lower triangle, destroys it, and returns
+!   the eigenvalues algebraically ascending in d with the eigenvectors
+!   written back into a BY COLUMN. The convergence threshold is an
+!   internal default (rho = 1e-13).
 !=====================================================================
 module linalg
    implicit none
@@ -19,18 +13,15 @@ module linalg
    public :: eig_sym
 contains
    !------------------------------------------------------------------
-   ! eig_sym(a, d) - symmetric-matrix eigenvalues/vectors (a read by lower triangle and destroyed;
-   ! eigenvalues ascending)
-   ! Reference: src_VENUS/EIGN.f:27-99 (tridiagonalization); :103-186 (adjoint identity + shifted QL
-   ! iteration);
-   !       :192-229 (transposed sort + vector reordering); :231-247 (back-substitution
-   !       accumulating transforms)
+   ! eig_sym(a, d) - symmetric-matrix eigenvalues (ascending) and eigenvectors
+   !                 (a destroyed, vectors written back by column)
+   !------------------------------------------------------------------
    subroutine eig_sym(a, d)
       real(8), intent(inout) :: a(:,:)  ! symmetric matrix n x n (lower triangle on input,
                                         ! destroyed; on exit eigenvectors BY COLUMN,
                                         ! ascending to match d)
       real(8), intent(out)   :: d(:)    ! eigenvalues (n of them, algebraically ascending)
-      real(8), parameter :: rho = 1.0d-13    ! convergence threshold (old dummy RHO)
+      real(8), parameter :: rho = 1.0d-13    ! convergence threshold
       integer :: n, n1, n2, nr, i, j, k, m, npas, il, nv, np, lv, nt, itemp, i1
       logical :: entry_400
       integer, allocatable :: iposv(:), ivpos(:), iord(:)
@@ -52,7 +43,7 @@ contains
       n1 = n - 1
       n2 = n - 2
       gam(1) = a(1,1)
-      ! ---- Givens-Householder tridiagonalization (old :27-99) ----
+      ! ---- Givens-Householder tridiagonalization ----
       if (n2 > 0) then
          do nr = 1, n2
             b = a(nr+1,nr)
@@ -107,8 +98,7 @@ contains
                   end do
                end do
             end if
-            beta(nr) = b          ! [C1 fix] outside the S>0 branch (the old S=0 bypass left
-                                  ! BETA(NR) unset - an uninitialized read downstream)
+            beta(nr) = b          ! written also on the S=0 bypass path
             betasq(nr) = b*b
             gam(nr+1) = a(nr+1,nr+1)
          end do
@@ -118,7 +108,7 @@ contains
       betasq(n-1) = b*b
       gam(n) = a(n,n)
       betasq(n) = 0.0d0
-      ! ---- adjoint an identity matrix; shifted QL iteration (old :103-186) ----
+      ! ---- adjoint an identity matrix; shifted QL iteration ----
       do i = 1, n
          do j = 1, n
             vec(i,j) = 0.0d0
@@ -128,34 +118,32 @@ contains
       m = n
       sum = 0.0d0
       npas = 1
-      ! Control-flow note: the old code enters at label 400 FIRST (m=n deflated without a
-      ! value taken - eig(n+1) does not exist), and the 390/400/410/310/340 labels form a
-      ! cycle: 340-tail -> (converged) 390 -> 400 -> (next converged) 390 ... -> 410 -> 310;
-      ! the structured form below reproduces the label graph exactly (entry_400 = arrived
-      ! at the 400 block; .false. = arrived at the 340 tail of a sweep)
+      ! Control-flow note: the loop is entered at the deflate block FIRST (m = n deflated
+      ! without a value taken - eig(n+1) does not exist); entry_400 = .true. means arrived
+      ! at the deflate block, .false. means arrived at the convergence tail of a sweep
       entry_400 = .true.
       ql_outer: do
          if (entry_400) then
-            ! ---- old label 400: deflate one position ----
+            ! ---- deflate one position ----
             beta(m) = 0.0d0
             betasq(m) = 0.0d0
             m = m - 1
             if (m == 0) exit ql_outer
             if (betasq(m) <= rhosq) then
-               eig(m+1) = gam(m+1) + sum          ! old 390
+               eig(m+1) = gam(m+1) + sum          ! converged
                entry_400 = .true.
                cycle ql_outer
             end if
          else
-            ! ---- old label 340 tail: convergence test after a sweep ----
+            ! ---- convergence test after a sweep ----
             npas = npas + 1
             if (betasq(m) <= rhosq) then
-               eig(m+1) = gam(m+1) + sum          ! old 390 (fall-through)
+               eig(m+1) = gam(m+1) + sum          ! converged (fall-through)
                entry_400 = .true.
                cycle ql_outer
             end if
          end if
-         ! ---- old label 410: shift = the corner-2x2 root nearest gam(m+1) ----
+         ! ---- shift = the corner-2x2 root nearest gam(m+1) ----
          a2 = gam(m+1)
          r2 = 0.5d0*a2
          r1 = 0.5d0*gam(m)
@@ -170,7 +158,7 @@ contains
          else
             shift = r1
          end if
-         ! ---- old label 310: one shifted QL sweep over j = 1..m ----
+         ! ---- one shifted QL sweep over j = 1..m ----
          sum = sum + shift
          cosa = 1.0d0
          g = gam(1) - shift
@@ -211,12 +199,12 @@ contains
             beta(j) = sina*ppbr
             betasq(j) = sina2*ppbs
          end do
-         gam(m+1) = g                                ! old 340
+         gam(m+1) = g                                ! sweep tail
          entry_400 = .false.
          cycle ql_outer
       end do ql_outer
       eig(1) = gam(1) + sum
-      ! ---- transposition sort of the eigenvalues + vector reordering (old :192-229) ----
+      ! ---- transposition sort of the eigenvalues + vector reordering ----
       do j = 1, n
          iposv(j) = j
          ivpos(j) = j
@@ -253,7 +241,7 @@ contains
             end if
          end do
       end if
-      ! ---- back-transform: accumulate the Householder transforms (old :231-247) ----
+      ! ---- back-transform: accumulate the Householder transforms ----
       do i = 1, n
          k = n1
          do

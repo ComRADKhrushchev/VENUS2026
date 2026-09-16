@@ -1,77 +1,14 @@
 !=====================================================================
-! dist_glo_target.f90 - distribution member (methods/ library): ghost
-!              Langevin-oscillator target selection and bath-coupling
-!              parameter loading - the member picks the ghost targets
-!              (one ghost oscillator per atom of the bound carrier,
-!              isotropic three components each), loads the
-!              fluctuation-dissipation noise strength and the stationary
-!              ghost widths, and draws the ghost stationary state as its
-!              product.
-! Conservation algebra (the declaration this member carries):
-!   fluctuation-dissipation relation: sigma_noise(i)^2 =
-!     2*gamma_glo*m_i*kb*t_glo/dt - the random-force amplitude whose
-!     dt-scaled kick over one step dt reproduces the Ornstein-Uhlenbeck
-!     stationary variance m_i*kb*t_glo (matching the bath loading
-!     convention the dynamics side consumes);
-!   stationary widths: sigma_p(i)^2 = m_i*kb*t_glo and
-!     sigma_q(i)^2 = kb*t_glo/(m_i*w_ghost^2) - the stationary state of
-!     the damped oscillator at the bath temperature.
-! Division of labor (the ruling this member shares with the dynamics
-!   side): the member owns TARGET SELECTION and PARAMETER LOADING plus
-!   the stationary draw; the Langevin INTEGRATION of the ghosts belongs
-!   to the force-chain/propagator side and is deliberately not here
-!   (mechanism member - the integration consumes the loaded strengths).
-!   Ghosts are not roster atoms (the roster is the sole composition
-!   channel): the ghost state lives in the member and is exposed through
-!   the last_q/last_p getters for the dynamics side to read.
-! Contract:
-!   glo_target_init(p) - validate the member parameters (bath
-!     temperature, damping, ghost frequency), read and validate the
-!     propagator step from the configuration (the dt the noise strength
-!     is calibrated against), bind the served fragment (exactly one
-!     carrier of the glo_target scheme), precompute the per-atom noise
-!     strengths and stationary widths. Loud-stops name the offending
-!     field and value:
-!       t_glo <= 0 (bath temperature [K]); gamma_glo <= 0 (damping);
-!       w_ghost <= 0 (ghost frequency); a non-positive propagator step
-!       dt; no roster fragment table (assembly order); no per-fragment
-!       scheme array; length mismatch against the roster; the member
-!       word absent from the scheme-code table (a library-assembly
-!       failure); zero or multiple carrier fragments.
-!   glo_target_sample(sta) - draw the ghost stationary state: one fresh
-!     Gaussian per ghost component at the stationary widths. sta is the
-!     sampler runtime channel; this member writes NO q/p/f components
-!     (the product is the member-held ghost state, a fresh draw per
-!     call).
-!   glo_target_t_glo() / glo_target_gamma() / glo_target_w() - the bath
-!     parameters init received.
-!   glo_target_dt_loaded() - the propagator step the member read at init
-!     (the calibration the noise strength carries).
-!   glo_target_frag() / glo_target_nat() / glo_target_ghost_size() - the
-!     bound carrier fragment, its atom count, and the ghost-state size
-!     (3 per target atom - the selection rule).
-!   glo_target_last_q(k) / glo_target_last_p(k) - the last drawn ghost
-!     stationary components [Ang] / [amu*Ang/(10 fs)].
-!   glo_target_sigma_noise(i) / glo_target_sigma_p(i) /
-!     glo_target_sigma_q(i) - the loaded per-atom bath strengths
-!     (exposed for criteria anchoring of the fluctuation-dissipation and
-!     stationary-width algebra).
-! Variant inventory against the old defect register (semantics only, no
-!   citations): the appended-ghost-array placement into the global state
-!   is NOT carried (ghosts are not roster atoms - composition stays
-!   with the roster; the ghost state is member product); the
-!   ghost-pair effective-frequency algebra is NOT carried (a direct
-!   ghost frequency parameter replaces the pair construction); the
-!   Langevin integration coefficients are NOT carried (force-chain side
-!   - this member loads sigma_noise, the integration consumes it);
-!   in-member equilibration of the ghosts is NOT carried (the
-!   stationary draw is exact, no burn-in loop); the old
-!   physical-constant chain is NOT carried (kb_code is the single
-!   internal constant).
-! Units: t_glo [K]; gamma_glo, w_ghost [1/(10 fs)]; dt [10 fs] (from the
-!   propagator configuration); masses [amu] (roster); sigma_p
-!   [amu*Ang/(10 fs)]; sigma_q [Ang]; sigma_noise [amu*Ang/(10 fs)^2]
-!   (random-force amplitude, dt-scaled kick).
+! dist_glo_target.f90 - distribution member: ghost Langevin-oscillator
+!   target selection, bath-coupling loading (one ghost per carrier
+!   atom), and the stationary ghost draw
+! Design:
+!   Loads strengths by the fluctuation-dissipation algebra
+!   (sigma_noise^2 = 2*gamma*m*kb*t/dt; sigma_p^2 = m*kb*t;
+!   sigma_q^2 = kb*t/(m*w^2)) and draws the exact stationary ghost
+!   state (member product via getters; Langevin is dynamics-side).
+!   Units: t_glo [K]; gamma_glo, w_ghost, dt as declared; sigma_p
+!   [amu*Ang/(10 fs)]; sigma_q [Ang]; sigma_noise [amu*Ang/(10 fs)^2].
 !=====================================================================
 module dist_glo_target
    use consts,        only: kb_code

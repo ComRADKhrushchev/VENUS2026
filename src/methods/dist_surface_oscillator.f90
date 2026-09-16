@@ -1,69 +1,14 @@
 !=====================================================================
-! dist_surface_oscillator.f90 - distribution member (methods/ library):
-!                     surface-oscillator harmonic sampling - the stretch
-!                     vibration of a two-atom atom-anchor carrier (the
-!                     anchor standing in for a surface atom), realized
-!                     analytically (no force chain needed): one harmonic
-!                     energy E is drawn (thermal exponential law or a
-!                     fixed quantum level), then the classical phase-
-!                     space point on the E-shell is placed with a uniform
-!                     phase - displacement delta = A*cos(phi) along the
-!                     bond, relative velocity v = -omega*A*sin(phi), with
-!                     the carrier's center of mass held fixed and zero
-!                     total momentum.
-! Contract:
-!   surface_oscillator_init(p) - validate the member parameters and bind
-!     the served fragment. Loud-stops name the offending field and value:
-!       n_osc not 0 or 1 (energy-law selector); mode 0 with t_osc <= 0
-!       (temperature); mode 1 with n_level < 0 (quantum number);
-!       k_osc <= 0 (force constant); the binding battery (no roster
-!       fragment table / no scheme array / length mismatch / the member
-!       word absent from the scheme-code table / zero or multiple
-!       carriers); a carrier that is not exactly a two-atom atom-anchor
-!       pair (the construction needs one bond); a degenerate bond
-!       (zero length).
-!     Precompute: masses, reduced mass mu, the equilibrium bond vector
-!     and unit direction, k_int = k_osc*e_conv, omega = sqrt(k_int/mu),
-!     the COM partition fractions m_a/m_tot and m_b/m_tot, and the
-!     fixed quantum energy (mode 1).
-!   surface_oscillator_sample(sta) - one realization:
-!     1. energy: mode 0 draws E = -kb_code*t_osc*ln(u) (u a fresh
-!        uniform, clamped away from zero); mode 1 takes the constant
-!        E = (n_level + 1/2)*hbar_code*omega
-!     2. amplitude A = sqrt(2E/k_int); phase phi uniform in [0, 2pi)
-!     3. delta = A*cos(phi), v = -omega*A*sin(phi)
-!     4. positions about the fixed COM: r_a = qz_a - (m_b/m_tot)*delta*u,
-!        r_b = qz_b + (m_a/m_tot)*delta*u (the bond stretches by delta,
-!        the COM does not move); momenta p_a = -mu*v*u, p_b = +mu*v*u
-!        (total momentum zero, both along the bond)
-!     Identities exact by construction: the back-projected energy
-!     0.5*k_int*delta^2 + 0.5*mu*v^2 = E; the bond direction is the
-!     equilibrium direction; time averages <KE> = <PE> = E/2 (uniform
-!     phase).
-!     Translation of the carrier (where the fragment sits, how fast it
-!     flies) belongs to the incident channel - this member owns the
-!     internal stretch only.
-!   surface_oscillator_last_e() - the energy of the most recent
-!     realization [internal energy units].
-! Variant inventory against the old defect register (semantics only, no
-!   citations): the old sampler's silent fallback that substituted an
-!   arbitrary force constant when the projected one was non-positive is
-!   NOT carried (a non-positive k_osc loud-stops instead); the old
-!   entry-state-dependent additive momenta (P written on top of whatever
-!   P held) are NOT carried (this member overwrites the owned q/p
-!   components of its carrier - the per-trajectory fresh state zeroes
-!   q/p, and members compose by ownership, not by addition); the old
-!   anisotropic three-component surface force constant projected onto
-!   the bond is NOT carried (this member takes a single scalar force
-!   constant along the bond; the anisotropic surface model is surface
-!   knowledge that belongs to a later container phase); the old
-!   thermal-only energy law is extended by the quantum-level law the
-!   member's criteria program pins (the fixed-level face is part of the
-!   member contract, not an addition to it).
-! Units: n_osc/n_level [-]; t_osc [K]; k_osc [kcal/mol/Ang^2] (input,
-!   converted with e_conv); E [internal] (= kcal/mol * e_conv);
-!   omega [rad/(10 fs)]; coordinates [Angstrom]; momenta
-!   [amu*Ang/(10 fs)]; masses [amu].
+! dist_surface_oscillator.f90 - distribution member: analytic harmonic
+!   stretch sampling of a two-atom atom-anchor carrier - one energy
+!   draw (thermal or quantum level) on the E-shell with a uniform
+!   phase, COM fixed, zero total momentum
+! Design:
+!   delta = A*cos(phi) along the equilibrium bond, v = -omega*A*sin(phi);
+!   positions partition by mass fractions so the COM does not move.
+!   One scalar force constant; the member overwrites (never adds to)
+!   its carrier's q/p components.
+!   Units: k_osc [kcal/mol/Ang^2] via e_conv; E [internal]; omega [rad/(10 fs)]; q [Ang]; p [amu*Ang/(10 fs)].
 !=====================================================================
 module dist_surface_oscillator
    use consts,        only: hbar_code, kb_code, e_conv, two_pi

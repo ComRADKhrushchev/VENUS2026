@@ -1,77 +1,14 @@
 !=====================================================================
-! sysdef_facade.f90 - L2 system-definition facade (E14 spec §6): one assembly-phase entry,
-!                    sysdef_load(scan_dir) — folder discovery, parser dispatch, mass
-!                    lookup, staging fill, paradigm derivation
-! Reference: docs/superpowers/specs/2026-09-08-facade-e14-design.md §6 (granularity: one
-!       file per reactant, file base name = reactant name; discovery: assembly-phase scan
-!       of the container folder for known extensions, no manifest layer; formats: POSCAR
-!       (with cell) / .xyz (no cell) initially, a new format = a new parser member,
-!       grammar versioning; derivation rule: cell present -> surface, absent -> molecular
-!       - a generic formal rule lawfully in generic code; data flow: scan -> generic
-!       parser (utils) -> element symbols against the generic mass table -> staging fill
-!       -> derive paradigm; ownership: file contents = container material, parsers /
-!       mass table / derivation rule = generic code), §3 (assembly-phase entries:
-!       sysdef_load is consumed by the driver assembly phase - no evolution-loop
-!       presence), §9 (affected-files rows: config surface_model derived-not-input;
-!       config_roster roster_load data source = sysdef facade products);
-!       src/utils/specio.f90 (the readers + mass table dispatched into);
-!       src/globals/config_roster.f90 (roster_t - the transfer-assembly target, NOT
-!       used here - see the S2 ruling below);
-!       venus2026/src_VENUS/SELECT.f90:1300-1334 setup_surface_collision / :1337-1404
-!       setup_gas_collision (citation anchor: the two routes the derived paradigm selects
-!       - the old paradigm fork was code, the new one is data)
-!
-! -- Data-material contract, not a fifth entry (spec §3/§6) --
-!   The evolution loop's four entries (force_eval / elec_prop / mqc_statistic / predicate)
-!   run per step; sysdef_load runs ONCE in the assembly phase and produces DATA (staged
-!   system products + the derived paradigm code), not callable physics. The geometric
-!   definition of the reactants is system knowledge - container material in the E11/E12
-!   sense: drag in a folder and the system is fully defined (no manifest to edit, no
-!   registration lines).
-!
-! -- Ownership split (spec §6 ownership row; E12/E13 audit line) --
-!   Generic here (zero system knowledge): the extension scan, per-extension dispatch,
-!   symbol->mass lookup, the staging mechanics, the cell-presence paradigm rule. The
-!   system author owns only the file CONTENTS (geometries, cells, elements). Nothing in
-!   this module branches on system identity; the paradigm code it writes is a formal fact
-!   of the files (cell present/absent), not a physics judgment.
-!
-! -- S2 staging-transfer ruling (plan C4.md S2; E14/T11 open point closed) --
-!   sysdef_load's parse products are stored in MODULE-PRIVATE staging below; this module
-!   NEVER uses config_roster (the inter-facade zero-dependency statute reads "no reverse
-!   reach" - the transfer is one-way: config_roster pulls, ruling A). Staging usage for
-!   roster_load (C4.3):
-!     guard      if (.not. staging_loaded()) -> loud-stop (assembly-order error)
-!     fragments  n = staging_frag_count(); per row staging_frag_name(i) /
-!                staging_frag_nat(i) (rows in case-insensitive reactant-name order)
-!     per-atom   staging_atom_symbols() / staging_atom_masses() / staging_atom_geometry()
-!                (files concatenated in the same order; geometry 3 x n_atoms columns [A])
-!     unit cell  staging_cell_present() / staging_unit_cell() (at most ONE cell-carrying
-!                file per system - the unit cell is a single system-level fact)
-!   Every getter returns a fresh copy - staging itself stays intact for further readers.
-!   reactants%n_frag (file count, D1) and reactants%surface_model (D2) are written here
-!   directly into config - representation-layer data, not roster.
-!
-! -- Discovery rule (D1; generic formal logic) --
-!   Scan the container folder for FILES (subdirectories are not part of the drag-in
-!   contract): extension .xyz (case-folded) -> cell-less xyz format; extension .poscar
-!   or a base name starting POSCAR* (case-folded, e.g. a bare "POSCAR" or "POSCAR.au")
-!   -> cell-carrying POSCAR format; a recognized extension wins over the prefix rule.
-!   File base name (extension stripped) = reactant name; n_frag = file count (NOT an
-!   input key - E14 "one reactant one file"). An empty folder, an unknown-extension
-!   file, an extension-only (empty-reactant-name) file, a duplicate reactant name
-!   (fold-case - the comparison matches the sort key), a reader soft failure, or more
-!   than one cell-carrying file is an ASSEMBLY ERROR -> loud-stop (the ok/errmsg channel belongs
-!   to the specio readers; this facade converts a bad return into a hard stop).
-!
-! -- Field notes (grammar lands C4; the field statutes are Task 11's) --
-!   scan_dir is a character dummy of this entry; the config-side path field (system_dir -
-!   the container folder path as config data) reaches this dummy at the driver wiring.
-!   The paradigm field reactants%surface_model is an integer code (config.f90: 0 = gas
-!   phase, 1/2 = the two surface paradigms): the molecular/surface fork is derivable
-!   from file shape and is written here (derived, not input - D2 lands "any file carries
-!   a cell -> 1; none -> 0"); the 1-vs-2 surface-paradigm selection is NOT derivable
-!   from cell presence alone and arrives with the C5 surface-member window.
+! sysdef_facade.f90 - system-definition facade: the assembly-phase entry
+!   sysdef_load(scan_dir) - discovery, parse, mass lookup, staging, paradigm
+! Design:
+!   One file per reactant in the container folder (base name = reactant
+!   name; .xyz = no cell, .poscar or POSCAR* = cell-carrying); drag in a
+!   folder and the system is fully defined. Generic code owns scan /
+!   dispatch / mass lookup / staging / the cell-presence paradigm rule
+!   (any cell -> surface, none -> molecular); the author owns only the
+!   file contents. Products sit in module-private staging behind
+!   fresh-copy getters; config_roster is never used here (roster_load pulls).
 !=====================================================================
 module sysdef_facade
    use config, only: reactants
@@ -87,7 +24,7 @@ module sysdef_facade
    integer, parameter :: path_len  = 512   ! path/error-message capacity [character]
    integer, parameter :: entry_cap = 256   ! container-folder file capacity [file]
 
-   ! staging (module-private, S2): the sysdef_load products roster_load transfers from.
+   ! staging (module-private): the sysdef_load products roster_load transfers from.
    ! Filled fresh by every sysdef_load call (reset first - no cross-load leakage);
    ! read out only through the public getters above.
    logical                              :: stg_loaded = .false.
@@ -113,15 +50,13 @@ module sysdef_facade
    end type
 contains
    !------------------------------------------------------------------
-   ! sysdef_load(scan_dir) - assembly-phase materialization of the system definition (the
-   !              spec §6 data flow end to end; consumed once by the driver assembly phase)
-   ! Reference: spec §6 (data flow row); §3 (assembly-phase entries); §9 (config_roster
-   !       data source = sysdef facade products); implemented steps mirror collect_system
+   ! sysdef_load(scan_dir) - assembly-phase materialization of the system
+   !              definition (consumed once by the driver assembly phase)
+   !------------------------------------------------------------------
    subroutine sysdef_load(scan_dir)
-      character(len=*), intent(in) :: scan_dir  ! system-definition folder (the container
-                                                ! folder; the config-side path field
-                                                ! system_dir reaches this dummy at the
-                                                ! driver wiring)
+      character(len=*), intent(in) :: scan_dir  ! system-definition folder (the config-side
+                                                ! path field system_dir reaches this
+                                                ! dummy at the driver wiring)
       logical :: ok
       character(len=path_len) :: errmsg
       call collect_system(scan_dir, ok, errmsg)
@@ -133,8 +68,8 @@ contains
    end subroutine sysdef_load
 
    !------------------------------------------------------------------
-   ! staging accessors (public; the C4.3 roster_load consumption interface - see the
-   !                    S2 header block; all getters return fresh copies)
+   ! staging accessors (public; the roster_load consumption interface;
+   !                    all getters return fresh copies)
    !------------------------------------------------------------------
    logical pure function staging_loaded()
       staging_loaded = stg_loaded
@@ -189,13 +124,13 @@ contains
    end function staging_unit_cell
 
    !------------------------------------------------------------------
-   ! collect_system(scan_dir, ok, errmsg) - the whole assembly flow on the soft
-   !              ok/errmsg channel (detection layer; sysdef_load converts a bad
-   !              return into the loud-stop): reset staging -> folder existence ->
-   !              listing -> classify -> name sort -> duplicate check -> per-file
-   !              parse (specio readers, unit-number contract) -> single-cell check
-   !              -> concatenate + elem_mass -> paradigm write into config
-   ! Reference: spec §6 data flow; D1/D2 (plan C4.md)
+   ! collect_system(scan_dir, ok, errmsg) - the whole assembly flow on the
+   !              soft ok/errmsg channel: reset staging -> folder existence
+   !              -> listing -> classify -> name sort -> duplicate check ->
+   !              per-file parse -> single-cell check -> concatenate +
+   !              elem_mass -> paradigm write into config (sysdef_load
+   !              converts a bad return into the loud-stop)
+   !------------------------------------------------------------------
    subroutine collect_system(scan_dir, ok, errmsg)
       character(len=*), intent(in) :: scan_dir
       logical, intent(out) :: ok
@@ -218,7 +153,7 @@ contains
          return
       end if
 
-      ! 2. listing (D1 scan; files only, no manifest layer)
+      ! 2. listing (files only, no manifest layer)
       call list_folder(scan_dir, entries, n_entry, ok_sub, emsg_sub)
       if (.not. ok_sub) then
          errmsg = emsg_sub
@@ -319,8 +254,9 @@ contains
       end do
       stg_has_cell = any_cell
 
-      ! 8. paradigm derivation (D2) + fragment count (D1): any file carries a cell ->
-      !    surface class (=1; the 1-vs-2 split is the C5 window); none -> molecular (=0)
+      ! 8. paradigm derivation + fragment count: any file carries a cell ->
+      !    surface class (=1; the 1-vs-2 split arrives with the surface-member
+      !    window); none -> molecular (=0)
       reactants%n_frag = n_entry
       reactants%surface_model = merge(1, 0, any_cell)
 
@@ -427,7 +363,7 @@ contains
 
    ! classify_entry(entry, fmt, rname, err) - one folder entry -> format code +
    !              reactant name; err non-blank = unclassifiable (assembly error)
-   ! Rule (D1): recognized extension first (.xyz / .poscar, case-folded), then the
+   ! Rule: recognized extension first (.xyz / .poscar, case-folded), then the
    ! bare-name POSCAR* prefix (POSCAR, POSCAR.au, poscar_au111, ...); base name with
    ! the extension stripped = reactant name
    subroutine classify_entry(entry, fmt, rname, err)

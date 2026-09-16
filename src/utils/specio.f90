@@ -1,37 +1,25 @@
 !=====================================================================
-! specio.f90 - L5 instrument: system-definition file readers (POSCAR / .xyz) + the element
-!              mass table (E14 spec §6: parsers / mass table / derivation rule are generic
-!              code with zero system knowledge; the file CONTENTS are container material)
-! Reference: docs/superpowers/specs/2026-09-08-facade-e14-design.md §6 (formats: POSCAR
-!       (with cell) and .xyz (no cell) initially; a new format = a new parser member,
-!       grammar versioning; data flow: scan -> generic parser (utils) -> element symbols
-!       against the generic mass table -> fill roster);
-!       POSCAR public format definition (comment line / universal scaling factor / three
-!       lattice vectors / element-symbols line / per-species counts line / Direct|
-!       Cartesian tag / coordinate rows; the scaling factor applies to the cell AND, in
-!       Cartesian mode, to the coordinates; an optional velocity block - one row per
-!       atom after the coordinates - is read past, never interpreted);
-!       .xyz public format definition (atom-count line / comment line / "Symbol x y z"
-!       rows; no cell by definition);
-!       element mass table: IUPAC standard atomic weights (public physical-constant data;
-!       no legacy citation - the old library holds no element-mass table, masses were
-!       input data there, venus2026/venus_data.f90 carries no symbol/mass array)
-! Ownership note (E12/E13 audit line): this module knows FORMATS and ELEMENTS, not systems
-! or methods - nothing here branches on system identity; a new format extends the reader
-! member set (grammar versioning), never the existing signatures
+! specio.f90 - system-definition file readers (POSCAR / .xyz) + the element
+!              mass table
+! Design:
+!   Parsers, mass table and derivation rule are generic code with zero system
+!   knowledge - the file CONTENTS are container material. This module knows
+!   FORMATS and ELEMENTS, not systems: nothing branches on system identity;
+!   a new format extends the reader member set, never the existing
+!   signatures. Readers are pure unit consumers (the caller opens/positions/
+!   closes); malformed input is data - the soft ok/errmsg channel, never a
+!   loud-stop in a reader.
 !=====================================================================
 module specio
    implicit none
    private
    public :: read_poscar, read_xyz, elem_mass
 
-   ! Element mass table (module-private paired arrays; pure physical-constant data, zero
-   ! system knowledge): symbol + standard atomic weight per row, H..Og. Values are the
-   ! IUPAC standard atomic weights, current values incl. CIAAW revisions (not the frozen
-   ! 2013 list - e.g. Yb/Hg) [amu]; elements without a stable isotope carry the
-   ! mass number of the recognized isotope (the bracketed entries of the source table).
-   ! DATA-initialized constant table: written once at program start, never mutated (not
-   ! module state in the E12 sense)
+   ! Element mass table (module-private paired arrays; pure physical-constant data):
+   ! symbol + standard atomic weight per row, H..Og. Values are the IUPAC standard
+   ! atomic weights, current values incl. CIAAW revisions (not the frozen 2013 list,
+   ! e.g. Yb/Hg) [amu]; elements without a stable isotope carry the mass number of
+   ! the recognized isotope. DATA-initialized constant table, never mutated
    integer, parameter :: n_elem = 118              ! periodic-table row count [row]
    integer, parameter :: max_sp = 64               ! POSCAR species-line capacity [species]
    character(len=2) :: tbl_symb(n_elem)            ! element symbols, normalized case [-]
@@ -77,9 +65,9 @@ contains
    ! read_poscar(u, title, cell, names, xyz, ok [, errmsg]) - parse one POSCAR: comment
    !              line, universal scaling factor, three lattice vectors, element-symbols
    !              line, per-species counts line, Direct/Cartesian tag, coordinate rows;
-   !              a velocity block following the coordinates (one row per atom) is
-   !              READ PAST without interpretation (step 7)
-   ! Reference: POSCAR public format definition (VASP wiki); E14 spec §6 (formats row)
+   !              a velocity block following the coordinates is read past, never
+   !              interpreted (step 7)
+   !------------------------------------------------------------------
    subroutine read_poscar(u, title, cell, names, xyz, ok, errmsg)
       integer, intent(in) :: u    ! unit number (the caller opens/positions and closes the
                                    ! file - this reader is a pure unit consumer, no file
@@ -103,8 +91,6 @@ contains
       character(len=16) :: toks(max_sp)
       character(len=4) :: symb(max_sp)
       character(len=96) :: emsg_row   ! wide enough for the longest missing-row message
-                                      ! (a too-short buffer crashed the soft-error
-                                      ! channel with End-of-record instead of returning)
       integer :: cnt(max_sp)
       integer :: ios, i, k, nat, nsp, ntok, iat
       real(8) :: s, s_eff, vec(3,3), fr(3), det0
@@ -304,7 +290,7 @@ contains
    !------------------------------------------------------------------
    ! read_xyz(u, names, xyz, ok [, errmsg]) - parse one .xyz frame: atom-count line,
    !              comment line, "Symbol x y z" rows (no cell - by format definition)
-   ! Reference: .xyz public format definition; E14 spec §6 (formats row)
+   !------------------------------------------------------------------
    subroutine read_xyz(u, names, xyz, ok, errmsg)
       integer, intent(in) :: u    ! unit number (the caller opens/positions and closes the
                                    ! file - pure unit consumer, no file names)
@@ -343,8 +329,8 @@ contains
       end if
       allocate (names(n), xyz(3,n))
 
-      ! 2. comment line (discarded - free text by definition; the format carries no cell,
-      !    hence cell-less systems only, spec §6)
+      ! 2. comment line (discarded - free text; the format carries no cell, hence
+      !    cell-less systems only)
       read (u, '(a)', iostat=ios) line
       if (ios /= 0) then
          call fail(errmsg, 'xyz: comment line missing')
@@ -381,9 +367,8 @@ contains
 
    !------------------------------------------------------------------
    ! elem_mass(symbol) - element-symbol -> atomic mass lookup [amu] (generic
-   !              physical-constant table)
-   ! Reference: IUPAC standard atomic weights (public physical-constant data; no legacy
-   !       citation - the old library holds no element-mass table, masses were input data)
+   !                     physical-constant table)
+   !------------------------------------------------------------------
    function elem_mass(symbol) result(m)
       character(len=*), intent(in) :: symbol  ! element symbol (any case, e.g. 'AU'/'Au')
       real(8) :: m                            ! standard atomic mass [amu]

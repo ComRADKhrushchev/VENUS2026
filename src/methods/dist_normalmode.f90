@@ -1,72 +1,14 @@
 !=====================================================================
-! dist_normalmode.f90 - distribution member (methods/ library): the
-!                     microcanonical normal-mode sampling of a fragment
-!                     - a fixed total vibrational energy e_vib is split
-!                     over a GIVEN orthonormal mass-weighted mode table
-!                     (frequencies + eigenvector columns) by a uniform
-!                     point on the unit sphere in mode space
-!                     (E_i = e_vib*u_i^2, u = g/|g| with g gaussian -
-!                     the sphere-uniform generator), each mode then
-!                     placed at a uniform phase on its own ellipse:
-!                     Q_i = A_i*cos(phi_i), P_i = -w_i*A_i*sin(phi_i)
-!                     with A_i = sqrt(2*E_i)/w_i. Coordinates and
-!                     momenta are written about the carrier's
-!                     center-of-mass origin (the family posture):
-!                     q = qz_com + (C*Q)/sqrt(m), p = sqrt(m)*(C*P).
-! Contract:
-!   normalmode_init(p) - validate the member parameters and bind the
-!     served fragment. Loud-stops name the offending field and value:
-!       e_vib <= 0 (total vibrational energy); the binding battery (no
-!       roster fragment table / no scheme array / length mismatch / the
-!       member word absent from the scheme-code table / zero or multiple
-!       carriers); an unallocated mode table (either half); a frequency
-!       table and an eigenvector table of different column counts; an
-!       eigenvector table whose row count is not 3*(carrier atom count);
-!       an empty mode table (no vibrational support to distribute over);
-!       a mode count that leaves no room for the three translations
-!       (n_mode > 3*nat - 3); a non-positive frequency; a table that is
-!       not orthonormal to 1e-8; a table column not orthogonal to the
-!       mass-weighted translations to 1e-8 (such a column would give the
-!       fragment a net momentum).
-!     Precompute: the COM-shifted seed coordinates, the replicated
-!       sqrt(mass) vector, and e_tot = e_vib*e_conv.
-!   normalmode_sample(sta) - one realization: gaussian vector g (one per
-!     mode), u = g/|g| (degenerate-draw guard idles in practice), the
-!     energy split, per-mode amplitudes and uniform phases, then the
-!     back-transformation onto the carrier's q/p components.
-!     Identities exact by construction: sum_i 0.5*(P_i^2 + w_i^2*Q_i^2)
-!     = e_tot; total momentum = sqrt(m)*(C*P) summed over atoms = 0
-!     (translation-orthogonality); the COM of the written q is the
-!     origin; the written state lies in span(C).
-!     The frequencies and the mode table ARRIVE as assembly data - the
-!     derivation of a physical table from a Hessian is assembly-phase
-!     mechanism (the hessian instrument exists for it); this member
-!     consumes any table meeting the contract above (its criteria
-!     program drives a synthetic table).
-! Rulings carried in the member's design (variant inventory against the
-!   old defect register, semantics only, no citations): the LOCAL-MODE
-!   variant is NOT implemented (its parameters had no source - the old
-!   path produced NaN; deleted per the pre-deletion rule); the collinear
-!   FIXED-ENERGY trigger variants are NOT implemented (the collinear
-!   pseudo-mode overflowed its step bound and stopped the run; deleted
-!   per the pre-deletion rule) - the legal microcanonical body is
-!   retained; the vibrational angular-momentum stripping of the old
-!   initializer is NOT carried (it distorted the microcanonical energy
-!   split - the sphere split here carries the full energy; angular
-!   momentum is the rotation member's channel, not subtracted here); the
-!   orientation randomization after assembly is NOT carried (the mode
-!   table is expressed in the roster equilibrium frame; orientation is
-!   the rotation member's business); the energy-scale resampling loop of
-!   the old initializer is NOT carried (the microcanonical total is the
-!   parameter and is placed exactly once); the orthant-restriction face
-!   (mode signs confined to one orthant to direct the flow) is NOT
-!   carried (it biases the microcanonical measure and its trigger
-!   semantics were unclear - dubious-variant deletion).
-! Units: e_vib [kcal/mol] (input, converted with e_conv); E [internal]
-!   (= kcal/mol * e_conv); w_mode [rad/(10 fs)] (so 0.5*hbar*w is
-!   internal); c_mode columns orthonormal in mass-weighted coordinates
-!   (components [1/sqrt(amu)]-scaled cartesian directions); q
-!   [Angstrom]; p [amu*Ang/(10 fs)]; masses [amu].
+! dist_normalmode.f90 - distribution member: microcanonical normal-mode
+!   sampling - fixed e_vib split over a given orthonormal mass-weighted
+!   mode table (uniform sphere point, uniform phase), COM-origin output
+! Design:
+!   The mode table arrives as assembly data; init validates shape and
+!   orthonormality loudly. Sample places the full energy exactly once -
+!   no angular-momentum stripping or orientation randomization (the
+!   rotation member's channel).
+!   Units: e_vib [kcal/mol] via e_conv; E [internal]; w_mode
+!   [rad/(10 fs)]; q [Angstrom]; p [amu*Ang/(10 fs)]; m [amu].
 !=====================================================================
 module dist_normalmode
    use consts,        only: e_conv, two_pi

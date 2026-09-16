@@ -1,30 +1,14 @@
 !=====================================================================
-! reg_dist_incident.f90 - registration module (methods/): ONE samp_reg
-!                          call registers the 'incident' distribution
-!                          member row - the reg file is the atomic
-!                          registration unit (a new member = its method
-!                          file + this one thin file; zero edits to
-!                          existing files)
-! Contract:
-!   reg_dist_incident_all() - register the incident member's sampling
-!     routine under its scheme word 'incident' (the word the per-
-!     fragment dispatch never resolves - the incident member runs once
-!     after the per-fragment loop, selected by the dispatch rule, not by
-!     a dist_scheme row). Passing inc_sample as samp_reg's procedure
-!     dummy checks its conformance to the dist_proc_i interface at
-!     compile time. Executed once in the assembly phase, before any
-!     samp_run.
-!   reg_dist_incident_init() - the ASSEMBLY SEAM entry: load this
-!     member's staged input parameters (the input framework's public
-!     staging rows) into the member's params receiver - absent keys keep
-!     the field defaults - then run the member's own init (validation).
-!     Guard mirrors the dispatch rule (not the scheme table): a run with
-!     a single fragment and no surface model never dispatches incident,
-!     so the member skips (its init would otherwise demand collision
-!     parameters on every such run). Three-party zero knowledge: the
-!     driver knows no member, the input knows no member, the member
-!     never touches the driver.
-! Units: none (registration carries names and code references only).
+! reg_dist_incident.f90 - register the 'incident' distribution member
+! Design:
+!   One samp_reg call fills the row; incident runs once after the
+!   per-fragment loop (dispatch rule, not a dist_scheme row); the reg
+!   file is the atomic registration unit (new member = method file +
+!   one thin reg file; zero edits to existing files).
+!   _init is the assembly seam: staged input keys -> params receiver
+!   (absent keys keep defaults) -> the member's own init; the guard
+!   mirrors the dispatch rule - a single-fragment run with no surface
+!   model never dispatches incident, so the member skips.
 !=====================================================================
 module reg_dist_incident
    use sampler,        only: samp_reg
@@ -45,13 +29,14 @@ contains
    end subroutine reg_dist_incident_all
 
    !------------------------------------------------------------------
-   ! reg_dist_incident_init() - the assembly seam: staged member keys ->
-   !                             params receiver -> the member's own init
+   ! reg_dist_incident_init() - assembly seam: staged keys -> receiver ->
+   !                             member init
    subroutine reg_dist_incident_init()
       type(inc_params_t) :: p           ! member-parameter receiver (field defaults)
       character(len=512) :: sval        ! one staged raw value
       integer :: i
       integer :: nf                     ! roster fragment count (the dispatch-rule mirror)
+      ! 1. dispatch-rule guard: single fragment + no surface model -> member skips
       if (.not. allocated(roster%frag)) return
       nf = size(roster%frag)
       if (nf <= 1 .and. reactants%surface_model == 0) return
