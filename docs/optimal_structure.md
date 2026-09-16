@@ -1,6 +1,6 @@
 # VENUS2026 Optimal Program Structure and Material Mapping
 
-Status: design draft (derived from the completeness specification, unconstrained by the existing code organization)
+Status: implemented (new program src/; 2026-09-16 S-phase closing. Layer drift vs this design per the adjudication chain: predicate grammar withdrawn E18 (termination = the container-side slot); post-processing lives in output/ (C8); L3 members split methods/ + systems/ (E12/E14); the ws interchange retired by the composition-root ruling E27 - force delivery is the composed kernel, system-specific method packages live in the system folder)
 Date: 2026-09-05
 Basis: design_spec_completeness.md (the specification), completeness_audit.md (the material inventory, 99 entries)
 Method: first derive the target structure from the standard, then place the existing subroutines as material. Placement outcomes fall into four categories: placeable (as-is or with light modification), placeable after refactoring, no slot (eliminated), structure lacking material (must be newly written).

@@ -1,29 +1,45 @@
 # VENUS2026 Project
 
-An independent working project for streamlining and refactoring the VENUS program.
+An independent working project for streamlining and refactoring the VENUS program
+(classical adiabatic QCT; the nonadiabatic electronic axis is contract-first scaffolding —
+the first container-composed method package lands per the E27 composition-root ruling).
 
 ## Layout
 
 ```
-venus2026/    program sources (moved out of C@Au_TDHF/venus2026_stage; 223 git-managed
-              files, work products fort.*/stdout* not migrated; the original repository
-              carries .git history, remote github.com/ComRADKhrushchev/VENUS2026.git)
-docs/         design documents
-  design_spec_completeness.md   program-completeness design spec (derivation document)
+src/           the NEW PROGRAM (completion rewrite, L0-L5 layering; sole execution
+               authority docs/final_completion_plan.md). Build: cd src && make [FC=ifx];
+               guidance src/CLAUDE.md, extension points src/EXTENDING.md, layer map
+               src/README.md. Verification: cases/ (five-case formal set, per-case
+               results.txt) + scripts/check_* criteria programs.
+systems/       per-system container material (the composition root, E27: H definition
+               + system-specific method packages live here, one folder per system;
+               reference/ = the pure-math harmonic-well container driving the case set)
+venus2026/     the OLD minimal form — READ-ONLY reference (provenance of algorithms
+               and formulas); neither migrated nor modified (its CLAUDE.md describes
+               the reference tree itself)
+docs/          design documents: design_spec_completeness.md (the specification, §4.2
+               backfilled with the landed interfaces), final_completion_plan.md
+               (execution authority), optimal_structure.md (implemented),
+               completeness_audit_src.{md,json} (S-phase new-tree audit),
+               completeness_audit.{md,json} (old-tree audit, historical),
+               plans/ (per-phase records P0..V, S incl. the E27 ruling)
+cases/         the five-case verification set (harmonic_scatter / radau_conservation /
+               surface_window / b_layer / chain_frequencies)
+scripts/       check_* criteria programs + probe drivers + prebuild.sh
 ```
 
-## Current-phase task
+## Status
 
-Streamline VENUS2026: cut redundant functionality. The architectural adjudication basis is
-docs/design_spec_completeness.md — the decomposition into four classes of pure subroutines plus the
-control kernel; the irreducible interfaces A (the force-contribution facade, internally a dual
-registration axis) and B′ (the initial-state distribution family); and the closed selection families
-(nuclear propagators, the termination-predicate grammar, outcome-classification data).
+Phases P0 → K1-K3 → C1-C8 → V complete; S (closing: re-audit + document wrap-up)
+executed 2026-09-16 with the mid-phase E27 architecture ruling (container composition
+root; ws interchange retired). The five-case set is green and reproducible
+(same-ISEED byte-identical); the old chain cross-check holds bitwise
+(max|dF| = max|dE| = 0, dual compiler).
 
 ## Notes
 
-- venus2026/ currently has no .git (only the managed files were copied during migration); when
-  history is needed, go back to C@Au_TDHF/venus2026_stage, or continue working with git in the
-  original repository and then sync
-- Build and run conventions are in venus2026/CLAUDE.md (Makefile single entry, ifx, internal units
-  Å/amu/10 fs, KEYWORD=VALUE input)
+- Build and run conventions: src/CLAUDE.md (single-entry Makefile, wildcard drag-in
+  + prebuild registration, per-compiler build trees, cases run from their folders).
+- The original repository carries .git history for the legacy tree: it remains the
+  provenance record; the workspace root is the active repository.

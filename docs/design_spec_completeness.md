@@ -229,13 +229,60 @@ Corollary 1 (decomposition of the method concept): Ehrenfest and FSSH share all 
 
 **Benchmarking feedback**: the three Tully 1990 models (R8-5) degrade nuclear propagation to the trivial (one-dimensional translation) and isolate electronic propagation and matching for testing — model 1 tests the asymptotic correctness of matching (the LZ limit); model 2 tests the time-step coupling of the two layers. The acceptance targets of R8-5 are stated per layer.
 
-### 4.2 Formal Signatures (Remainder Left Blank)
+### 4.2 Formal Signatures (Backfilled 2026-09-16 at S/T7; E27 composition-root contract)
 
-To be filled in after a draft of the Fortran-side abstract interfaces (derived types + procedure components) is in place. Each interface must be accompanied by:
+[E27 revision 2026-09-16 — the ws interchange and the h_form/h_deliver matchmaking are RETIRED
+(superseding the relevant parts of E10/E13/E14): the container is the composition root. It delivers
+the COMPOSED active force kernel directly; system-specific method packages may live in their
+systems/ folder and share private modules with the H definition — no lingua franca. The entries
+below are the landed forms (src/facade/), verified by the S-phase audit
+(docs/completeness_audit_src.md) and the V/S case set.]
 
-- a formal signature (the types and semantics of inputs and outputs, stratified by capability level);
-- a well-definedness check at degenerate points (the adiabatic case, the rigid-surface case);
-- dual-implementation verification records (Interface A: RST analytic potential + NN potential + GLO random-force member; Interface B′: Boltzmann + EBK (+ adiabatic switching, material already in stock at id=366/367); configuration level: the two stipulation paradigms of molecular scattering and surface scattering; electronic axis: adiabatic + TDHF-FSSH) — dual implementation is the falsification procedure for the correctness of signature partitioning: if two implementations are forced to share information on some quantity that they should not share, the slot was cut wrongly.
+**Interface A (the force boundary, force_facade.f90)**:
+
+- `container_pes_i(q, mass, g, v)` — q [Å, all dof flattened], mass [amu] in;
+  `g = dV/dq` of the composed ACTIVE configuration [eV/Å] and `v` [eV] out, BOTH fully assigned
+  by the container (the active-surface fold, the member sum, and stochastic laws are
+  container-side; rng single-stream inside; an H-shaped container folds its own eigenproblem).
+- `force_eval(sta, e_tot)` — the one evolution-phase force entry: container call → the unique
+  unit conversion `f = -g*ev_kcal*e_conv` (23.0605 × C1 lives only here, T4) → E = T(P)+V.
+- Assembly: `container_bind_pes(proc)` (single slot, one container per run),
+  `container_bind_term(proc)` (optional termination judgment, read-only sta),
+  `container_init()` (method name lookup + idle-chain posture; purely formal, E13).
+
+**Interface B (the electronic axis, elec_facade.f90)**:
+
+- `elec_prop_i(sta, dt)` / `mqc_match_i(sta)` / `sync_proc_i(s)` — method-package members;
+  data reach is the member's own channels (its folder's private modules / level-2 components);
+  the match member is the sole evolution-phase rng point and writes back through
+  `occ_set(occ)` / `n_hop_set(n)` (run-lifetime holders; getters for the recorder).
+- Registration: `method_reg(name, prop, match [, sync])` from methods/ (generic) or a
+  systems/ folder (container-composed) alike; `method_bind(name)` a pure name lookup
+  (ELEC_METHOD key; the degenerate 'adiabatic' row is the default — an adiabatic reference
+  run of ANY system stays expressible).
+
+**Interface B′ (initial-state sampling, sampler.f90)**: `dist_proc_i(sta)` members registered by
+`samp_reg(name, proc)`, selected per fragment by DIST_SCHEME codes; `samp_run(scheme, sta)`
+dispatches fragment members in roster order, then the ONE orchestration member (incident)
+once — skipped for single-fragment gas phase.
+
+**Well-definedness at degenerate points (verified)**: (i) the adiabatic degenerate package —
+all-no-op members, occ seeded [1], zero rng consumption (check_facade (h)/(j)); (ii) the
+single-fragment surface paradigm — incident skipped, degenerate histogram channels pinned
+(case_surface_window A4, dual to the gas-phase thta degeneracy); (iii) the idle chain — no
+container dragged in assembles and loud-stops only at force_eval's first call (check_facade
+posture notes).
+
+**Dual-implementation verification records (this repository's carriers; the master plan's
+RST/EMT-NN/GLO-stochastic names are full-form assets outside this repo, kept as historical
+targets)**: Interface A — three analytic potentials (harmonic/morse/leps: gradient
+self-consistency vs central difference, plus the OLD-CHAIN BIT-LEVEL comparison
+max|dF| = max|dE| = 0 per potential and geometry, re-verified green AFTER E27); Interface
+B′ — eleven dist_* members covered by the five-case set and eleven check_dist_* criteria
+programs (mechanism level) + on-chain numeric posteriors (b_layer χ² exact bands, chain_freq
+spectra bitwise to 1e-13); configuration level — the two paradigms (gas-phase four cases,
+surface POSCAR-cell case); electronic axis — the adiabatic degenerate point (the nonadiabatic
+axis lands with the first container-composed package, per E27).
 
 ---
 

@@ -25,19 +25,22 @@ src/
                                                   composed force kernel, the ws interchange retired) + system-definition
                                                   contract (discovery / parsing dispatch / roster fill / paradigm
                                                   derivation / sampler hand-off) + sampling framework
-  dynamics/    predicate  propagator             closed families (predicate grammar - four built-in leaves +
-                                                  the open registered primitive set, three integrators; fixed membership)
+  dynamics/    propagator                    closed family (three integrators; fixed membership -
+                                                  E18: the predicate grammar interpreter withdrawn,
+                                                  termination is the container-side container_term slot)
   methods/     elec_adiabatic  reg_adiabatic  dist_boltzmann  dist_ebk  dist_incident  README.md
                                                   flat built-in method library (rebuilt from the former
                                                   interface_electronic/ + interface_distributions/, E14):
                                                   elec_* method packages (one method_reg row each, filled by a
                                                   thin reg_*.f90) + dist_* initial-state distribution members;
-                                                  README.md = the library charter
+                                                  README.md = the library charter (E27: system-specific
+                                                  method packages live in their systems/ folder)
   output/      recorder  final_state  density  plot_hist
                                                   online recording (column registry) + offline post-processing
-  utils/       rng  linalg  geometry  specio     instruments (single random stream, diagonalization, rotations,
-                                                  POSCAR/.xyz system-definition readers)
-  Makefile  README.md
+  utils/       rng  linalg  geometry  specio  hessian
+                                                  instruments (single random stream, diagonalization, rotations,
+                                                  POSCAR/.xyz system-definition readers, central-difference Hessian)
+  Makefile  README.md  CLAUDE.md  EXTENDING.md
 ```
 
 | Layer | Directory | Responsibility |
@@ -65,21 +68,25 @@ prop_step -> elec_prop -> mqc_statistic -> rec_frame -> container_term
 inside mqc_statistic as an intra-box force refresh; the container composes its own active force - the E27
 delivery contract, no interchange workspace).
 
-## Build (P0 skeleton)
+## Build (K3 final form)
 
 ```bash
-make            # one ifx invocation compiles + links, producing venus.e (effective once SRC is filled in)
-make clean      # remove venus.e and .mod/.obj/.pdb/.ilk
+make              # gfortran (default) -> build/gfortran/venus.e
+make FC=ifx       # ifx (the project's conventional flags) -> build/ifx/venus.e
+make clean        # remove the whole build/ tree (both compiler subtrees)
 ```
 
-- Compiler: Intel `ifx` (validated on oneAPI 2025.2); flags `-r8 -double-size=64 -i8 -O2 -w`.
-- `SRC` is an empty list for now; phase K3 (independent build of the new tree) fills in the fixed
-  skeleton list in dependency order (utils -> globals -> facade -> dynamics -> methods -> output ->
-  input -> driver) plus a wildcard pickup of systems/ (E11 "drag-in" ruling: each system container sits
-  in its own folder with its self-contained members + a reg_<system>_all module - E12; a prebuild
-  step aggregates every reg_*.f90 under systems/ and methods/ into registry_gen.f90 (E11 generalized
-  by E14), so dragging a folder in is enough - zero edits to
-  Makefile or driver).
-- The new program has no MKL dependency; the Windows linker-shadowing handling (`-Qlocation,link`, `LIB` export,
-  `MSVC_BASE`/`WINKIT_LIB`/`INTEL_BASE` override mechanism) is ported from the old library's Makefile platform block,
-  see the Build section of venus2026/CLAUDE.md for usage.
+- Single-entry Makefile: wildcard source pickup (src/*.f90, src/*/*.f90, systems/*/*.f90) +
+  a prebuild step (`scripts/prebuild.sh`, runs on every make) that regenerates
+  `build/<FC>/registry_gen.f90` (the aggregate registration module — registration is a BUILD
+  ARTIFACT, the driver carries zero hand-written registration lines) and `depend.mk`
+  (object-level use-dependencies). Dragging a new methods/ or systems/ file in is the whole
+  installation act; the Makefile never changes. Known residual: a tree-structure change
+  (new reg file) needs a SECOND make (depend.mk is one run stale).
+- Artifacts land only in per-compiler `build/<FC>/` subtrees (.mod formats are mutually
+  incompatible); a stale cwd-level .mod/obj in the source tree shadows the build dir and kills
+  downstream compiles — never compile ad hoc into src/.
+- The Windows ifx section (MSVC link.exe PATH shadowing, `-module:` colon form, LIB export) is
+  built in; per-machine overrides: `make FC=ifx MSVC_BASE=... WINKIT_LIB=... INTEL_BASE=...`.
+- Working guidance (cases, criteria programs, contracts): [CLAUDE.md](CLAUDE.md);
+  extension points: [EXTENDING.md](EXTENDING.md).

@@ -1,6 +1,6 @@
 # S - 收尾相(新程序完成度复审 + 文档收尾)
 
-状态: **执行中**(用户确认 2026-09-16 开工;同日 S 相执行中落裁 E27,见下节)
+状态: **已完成**(2026-09-16;执行中落裁 E27 并当日落地,见下节)
 日期: 2026-09-16
 依据: docs/final_completion_plan.md §8(Closing S)+ §1 T1-T7 + §9(S 行判据);
 V.md →S 移交区(2026-09-16,能力面→证据对照表 + 停放项终局四条 + 既有登记)。
@@ -83,12 +83,15 @@ S2 审计审 E27 后树、S3 文档批书写新契约、停放项表 P-6 的 wra
 
 ### S3 文档收尾(总案 §8 S3)
 
-- [ ] S3.1 新树指导文件:src/CLAUDE.md。
-- [ ] S3.2 src/EXTENDING.md(扩展点按 E27 后契约)。
-- [ ] S3.3 src/README.md 收尾态更新(Build 区仍为 P0 骨架文案,需按 K3 现实重写)。
-- [ ] S3.4 design_spec_completeness.md §4.2 回填(E27 后契约)。
-- [ ] S3.5 optimal_structure.md 状态行 + 根 README.md layout 更新。
-- [ ] S3.6 提交文档批。
+- [x] S3.1 src/CLAUDE.md(新树构建/运行/判据/契约要点,承接旧树 CLAUDE.md 角色)。
+- [x] S3.2 src/EXTENDING.md(五类扩展点按 E27 组合根契约 + 落地演练清单)。
+- [x] S3.3 src/README.md 收尾态(Build 区重写为 K3 现实;utils 补 hessian;dynamics 行
+  predicate 残留修正;挂 CLAUDE/EXTENDING 衔接)。
+- [x] S3.4 design_spec_completeness.md §4.2 回填(接口 A/B/B′ 落地签名 + 退化点良定
+  三条 + 双实现记录按本仓库现实载体,RST/EMT-NN 字面名历史目标注记)。
+- [x] S3.5 optimal_structure.md 状态行 → implemented(含裁决链漂移注记);根 README.md
+  全文重写(src/ 新程序 + systems/ 组合根 + venus2026/ 只读参考 + 状态段)。
+- [x] S3.6 提交文档批(含 AGENTS.md 的 E27 段落微调)。
 
 ### S4 外部对账(总案 §8 S4)
 
@@ -146,3 +149,28 @@ S2 审计审 E27 后树、S3 文档批书写新契约、停放项表 P-6 的 wra
 - 统计 case 终跑时长(S1.1 已备降级路径,覆盖方式如实标注)。
 - S2 复审若发现红项(体系知识漏入等)——如实入审计报告并单独立案,本相不改源码。
 - 总案字面判据与现实漂移(T1/T3)——以裁决链(E12/E14/E18/E19)为依据注记,不擅自改总案原文。
+
+
+## 验收证据(S 收口,2026-09-16)
+
+1. **双编译器**:make clean 后 gfortran + ifx 全量重建绿(卫生项 + E27 后复建共两轮)。
+2. **五 case 回归**:E27 前后各一轮终跑,均与 V 相入库 results.txt 逐字节/空白归一
+   一致(E27 轮见 S1.1 证据行)——算术路径未变的直接证据。
+3. **判据程序**:六个受 E27 影响件重编重跑全绿(check_facade 0 失败、(s) 三势位级
+   max|dF|=max|dE|=0、(p) 折叠等价 1e-12;driver/final_state ALL PASS;
+   thermalize/recorder/propagator 0 失败);未受影响件不涉改动面。
+4. **T1-T7**:逐项 PASS(T3 电子轴为绝热退化点,完整形态非绝热轴不在本仓库——判据
+   本意与现实载体注记在案);T2 演练两度执行(ws 时代 + E27 新签名),零触碰结论同。
+5. **S2/T7**:docs/completeness_audit_src.{md,json}——50 文件 234 例程,零红项,
+   零未分类;旧审计保留历史参考。
+6. **停放项终局表**:P-1..P-7 逐条裁决(关闭四:wrapper 终形、(r) 性状、(g)/(r) 红腿
+   两条目——皆随 E27 消解;维持七;P-1 升格候选后续件且 E27 后形态明确)。
+7. **S4(用户侧)**:Notion "VENUS-TDHF 泛化"(Phase P1)勾选态待用户同步——本件提醒。
+
+## 交付物清单
+
+- docs/completeness_audit_src.{md,json}(S2/T7)
+- src/CLAUDE.md、src/EXTENDING.md、src/README.md(收尾态)
+- docs/design_spec_completeness.md §4.2 回填、docs/optimal_structure.md 状态、README.md
+- docs/plans/S.md(本件:E27 裁决记录 + T/S 证据 + 停放项终局表)
+- AGENTS.md(工作区指导,会话 /init 产物 + E27 微调)

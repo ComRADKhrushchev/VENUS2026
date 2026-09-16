@@ -39,6 +39,11 @@ make clean        # removes the whole build/ tree (both compiler subtrees)
 - Layers L0–L5 depend only downward (see `src/README.md`). The control kernel (`driver.f90`)
   sees physics only through `facade/` (E14 four-entry contract: force_eval / elec_prop /
   mqc_statistic; termination via the container_term slot).
+- **E27 composition root (2026-09-16)**: the container (`systems/<sys>/`) delivers the
+  composed active force kernel (`container_pes_i(q, mass, g, v)` in eV, fully assigned);
+  the former ws interchange and the h_form/h_deliver matchmaking are retired. System-specific
+  electronic method packages live in the system folder and register from there
+  (`method_reg(name, prop, match [, sync])`); statistics write-back via `occ_set`/`n_hop_set`.
 - Registry-family members (methods/, systems/) never depend on each other; they may use utils/.
 - Unit conversion happens only at the force_facade boundary; internal units Å/amu/10 fs.
 - One single random stream for the whole library (`utils/rng.f90`) — never add another RNG.
