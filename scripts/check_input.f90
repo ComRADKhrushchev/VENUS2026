@@ -35,7 +35,8 @@
 !       INTEGRATOR=VERLET, ORDER=1, DT_MIN=0.0/DT_MAX=0.0 (unclamped - the
 !       adaptive bounds' legal <=0 default, the reason both keys are kind_real
 !       not kind_posreal), ELEC_METHOD='adiabatic', N_SURF=0,
-!       PES_MAIN='1', GWRITE_LEVEL=1 -> rec_level, OBSERVABLES='' and
+!       PES_MAIN='1', GWRITE_LEVEL=2 -> rec_level (E26 legislated default -
+!       old-library compatible, sec_qp on), OBSERVABLES='' and
 !       E_KIN/E_POT/E_TOT off); staging holds 23 rows (6 user + 17 injected)
 !   (d) defaults never override (set_default semantics): minimal + explicit
 !       N_TRAJ/INTEGRATOR/ORDER/ISEED -> the user values win, untouched defaults
@@ -436,7 +437,7 @@ program check_input
        propagator%id /= 1 .or. propagator%order /= 1 .or. propagator%dt /= 0.01d0 .or. &
        propagator%dt_min /= 0.0d0 .or. propagator%dt_max /= 0.0d0 .or. &
        trim(electronic%method) /= 'adiabatic' .or. electronic%n_surf /= 0 .or. &
-       trim(electronic%pes_main) /= '1' .or. observables%rec_level /= 1 .or. &
+       trim(electronic%pes_main) /= '1' .or. observables%rec_level /= 2 .or. &
        len_trim(observables%obs_list) /= 0 .or. observables%e_kin .or. &
        observables%e_pot .or. observables%e_tot .or. .not. ok_arr .or. &
        staging_n_rows() /= 23) then
@@ -456,7 +457,7 @@ program check_input
        i_seed(1) /= 42 .or. propagator%dt /= 0.02d0 .or. &
        propagator%dt_min /= 0.002d0 .or. propagator%dt_max /= 0.2d0 .or. .not. ok_arr .or. &
        task /= 1 .or. max_steps /= 100000 .or. &
-       trim(electronic%method) /= 'adiabatic' .or. observables%rec_level /= 1) then
+       trim(electronic%method) /= 'adiabatic' .or. observables%rec_level /= 2) then
       print '(a)', 'FAIL (d) no-override: user values lost or defaults clobbered them'
       nfail = nfail + 1
    else

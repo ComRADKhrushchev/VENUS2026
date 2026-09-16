@@ -147,7 +147,7 @@ module input
       key_spec_t('ELEC_METHOD',  blk_flow,   kind_char,  enum_none,  .false., 'ADIABATIC', slotw=32), &
       key_spec_t('N_SURF',       blk_flow,   kind_int,   enum_none,  .false., '0'), &
       key_spec_t('PES_MAIN',     blk_flow,   kind_char,  enum_none,  .false., '1', slotw=32), &
-      key_spec_t('GWRITE_LEVEL', blk_flow,   kind_level, enum_none,  .false., '1'), &
+      key_spec_t('GWRITE_LEVEL', blk_flow,   kind_level, enum_none,  .false., '2'), &
       key_spec_t('OBSERVABLES',  blk_flow,   kind_char,  enum_none,  .false., '', slotw=256), &
       key_spec_t('E_KIN',        blk_flow,   kind_log,   enum_none,  .false., 'F'), &
       key_spec_t('E_POT',        blk_flow,   kind_log,   enum_none,  .false., 'F'), &

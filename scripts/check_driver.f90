@@ -117,8 +117,8 @@
 !       on fragment 2 - both on the real force chain) and the incident channel
 !       for the two-fragment gas pair; observable: the FIRST frame's sec_qp
 !       section carries non-zero momenta (the sampling really happened; the
-!       case input sets GWRITE_LEVEL=2 to open the section - the input
-!       per-key default is the minimal level 1)
+!       case input's GWRITE_LEVEL=2 row is retained as documentation - it now
+!       restates the E26 bare-input default, not a departure from level 1)
 !   (det) DETERMINISM: the same input run twice -> trajectories.txt
 !       byte-identical (the rng single stream + the fixed arithmetic; compared
 !       with fc /b on Windows, cmp -s elsewhere)
@@ -1097,13 +1097,17 @@ contains
 
    !------------------------------------------------------------------
    ! crit_n() - (n): occ/n_hop through the real driver, every frame line and
-   !             final row (the degenerate adiabatic values end to end)
+   !             final row (the degenerate adiabatic values end to end).
+   !             The case input omits GWRITE_LEVEL, so under the E26 default
+   !             (level 2) every frame also carries a sec_qp section - the
+   !             scan skips the section bodies (atom rows share the final
+   !             row's no-# no-= shape but not its column count/semantics)
    subroutine crit_n()
       character(len=2048) :: obuf, ebuf
       character(len=512) :: line
       integer :: stat, v, ios, nfr, nfin, bad, tj
       real(8) :: tt, w1, w2, w3, vo, vn
-      logical :: want_col
+      logical :: want_col, in_sec
       call run_driver('drv_case_o', obuf, ebuf, stat)
       if (stat /= 0) then
          call fail('(n): the driver child exited nonzero - stderr: '//trim(ebuf))
@@ -1118,6 +1122,7 @@ contains
       nfin = 0
       bad = 0
       want_col = .false.
+      in_sec = .false.
       open (newunit=v, file='build/drv_case_o/trajectories.txt', status='old', &
             action='read', iostat=ios)
       if (ios /= 0) then
@@ -1127,7 +1132,13 @@ contains
       do
          read (v, '(a)', iostat=ios) line
          if (ios /= 0) exit
-         if (want_col) then
+         if (index(line, '# sec_qp begin') == 1) then
+            in_sec = .true.
+         else if (index(line, '# sec_qp end') == 1) then
+            in_sec = .false.
+         else if (in_sec) then
+            cycle
+         else if (want_col) then
             ! the frame's column line: occ/n_hop by name token
             want_col = .false.
             nfr = nfr + 1
@@ -1268,8 +1279,8 @@ contains
                'H -0.45 -0.7794228634059948 0.0' ]
       ! (a): the end-to-end case - two-fragment gas-phase system, thermalize on
       ! fragment 1, rotation on fragment 2, the incident channel for the pair;
-      ! GWRITE_LEVEL=2 opens the sec_qp flattened section (the input per-key
-      ! default is the minimal level 1 - the momenta criterion reads the
+      ! GWRITE_LEVEL=2 opens the sec_qp flattened section (the E26 legislated
+      ! bare-input default - the momenta criterion reads the
       ! section); NO container parameter file -> termination and
       ! classification unbound
       la = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 1.0', 'B_MAX = 2.0', &

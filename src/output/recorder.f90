@@ -65,7 +65,10 @@
 !     levels 0 / 1 -> the energy three (minimal frame: header + energy line; the old
 !                     level-1 diagnostic block was excised system knowledge, warnings (3)(4)
 !                     - no generic level-1 columns exist)
-!     level  2     -> + sec_qp (old :106-117; the backward-compatible default)
+!     level  2     -> + sec_qp (old :106-117; the INPUT DEFAULT - user ruling
+!                     2026-09-16 / E26: the bare-input default is 2, old-library
+!                     compatible; the C4.4/C7 input-vs-recorder default mismatch
+!                     is closed, energy-only 0/1 is the explicit opt-in)
 !     level  5     -> + sec_frc (old :122-127)
 !   The level domain is the closed set {0,1,2,5} (the C4.4 GWRITE_LEVEL input domain);
 !   anything else loud-stops. occ / n_hop carry lvl_min = huge (no preset group - they are
@@ -204,8 +207,9 @@ contains
    !   Level 0 / 1 = minimal: frame header (trajectory/step/time) + t_kin/v_pot/e_tot energy
    !   line (old :28/:31; no generic level-1 diagnostic columns exist - that old block was
    !   excised system knowledge, excision warnings (3)(4))
-   !   Level 2 = + the all-atom Q/P flattened section sec_qp (default - old :106-117, the
-   !          backward-compatible level; labels from roster%symb - excision warning (2))
+   !   Level 2 = + the all-atom Q/P flattened section sec_qp (the INPUT DEFAULT, E26 -
+   !          old :106-117, the backward-compatible level; labels from roster%symb -
+   !          excision warning (2))
    !   Level 5 = + the per-atom force section sec_frc (old :122-127)
    !
    ! Coexistence: see the C4.5 implementation notes in the module header (union semantics).
