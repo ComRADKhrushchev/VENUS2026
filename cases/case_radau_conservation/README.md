@@ -62,6 +62,10 @@ no debug prints live in the stepping path），但帧头时刻 t 是步长信息
 （a priori 版本曾误判帧时刻按固定 DT 推进而省略本通道——跑后修正，见
 第 4 节；R1/R2 数值锚不受影响。）
 
+**R4 确定性**：同输入双跑 trajectories.txt 逐字节一致（rng 单流 + 固定
+算术，双跑差异即缺陷——harmonic A2 同法；双跑证据 V.1 在案，计入 V.5
+"全 case ×8"总账）。
+
 ## 4. 结果对照（跑后入档，2026-09-15，gfortran 树 venus.e）
 
 stdout 摘录（全文见 results.txt）：
@@ -79,6 +83,7 @@ histograms: rows=8 files=hist_e_rel.dat hist_thta.dat
 | R1 帧级自适应守恒 ≤ 1.0e-6 | 8 轨迹最坏帧偏移 1.1369e-13 kcal/mol（打印行 e_fin 口径 5.6843E-14，traj 1；帧级最坏在 traj 8）；e0 范围 184.7–275.7 kcal/mol | 绿（低于锚约 7 个量级——自适应控制在谐振链上近机器精度） |
 | R2 完成面与分类 | 退出码 0；assembly 行逐字命中；trajectories=8 valid=8；scattering=8；每轨迹帧数 12–13（< 401）、末帧 t 4.94–6.96（< 20，Q_TERM 中途终止） | 绿 |
 | R3 步长通道 | 通道确认存在：帧 t 差序列 0.0500, 0.0700, 0.0980, 0.1372, …, 2.0248（traj 1）——首差恰为 DT 种子，此后每序列 ×1.4 几何增长，12 序列到达 t=6.96；步径路径无打印（立法不变） | 绿（通道写明） |
+| R4 确定性 | 同输入双跑 trajectories.txt 逐字节一致（cmp；timing 行随机型而异非锚对象）——V.1 双跑在案，计入 V.5 全 case ×8 | 绿 |
 
 跑后修正记录（a priori 描述错、锚判定不受影响的两处，诚实入档）：
 1. 第 2 节原声称两 case 初态逐位一致——错。thermalize 平衡走注册传播器

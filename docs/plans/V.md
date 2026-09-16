@@ -68,8 +68,9 @@ README/input/expected）；守恒判据家族全链全跑。
 
 **验收证据（V.5 收口，2026-09-16）：**
 
-五 case 全绿（判据先行：README §3 锚先写后跑、§4 对照入档）+ B 层三员
-数值后验关闭 + 链级频率真值关闭（C5-R1 两半齐）——**主体缺陷 0**。
+五 case 收口（b_layer 一条红腿经 AR(1) 链代数定性为标定失误非主体缺陷
+——V-1；其余锚全绿；判据先行：README §3 锚先写后跑、§4 对照入档）+
+B 层三员数值后验关闭 + 链级频率真值关闭（C5-R1 两半齐）——**主体缺陷 0**。
 
 守恒家族汇总表（能量 = 帧级守恒锚 vs 实测；动量 = 既有零总动量类/
 动量面判据援引；全 case 确定性判据双跑逐字节一致）：
@@ -101,7 +102,9 @@ gfortran 的 dot_product 恰好吸收之），-O0 复跑仍在（非优化序）
 （1e-12）与全部结构/生命周期事实（(e)/(p)/(h)/(i)/(j)、(g) 孪生位级、
 (r) 1x1 位级）ifx 全绿。(r) 2x2 肢 = C2 停放区既有永久性状（eig_sym
 折叠算术序），ifx 下力偏差 1.2854e-15（刚过 1e-15 门槛）、e_tot 逐位 0
-——同族非缺陷。
+——同族非缺陷。判据行摘录入档：docs/plans/results_check_facade_ifx.txt
+（两条 FAIL + (s) 位级块及孪生/同族行 + 汇总行，字面未改；build/ 原件
+不入库）。
 
 **终跑核验（抽验两 case）**：case_harmonic_scatter 与 case_surface_window
 各复跑一次（gfortran 树 venus.e，2026-09-16）——stdout 五证据行
@@ -138,10 +141,15 @@ gfortran 的 dot_product 恰好吸收之），-O0 复跑仍在（非优化序）
 | 换算常数立法（force_facade 唯一换算点） | chain_freq 常数注（立法对 0.96485132 实证）+ 各 case e0 复算 |
 | 旧链位级等价（参考同量对照，非门） | check_facade (s) 双编译器（gfortran C2 + ifx V.5 四配置） |
 
-- **停放项终局**：V 相新增/确认两条——① 装配期频率导出通道未接线
+- **停放项终局**：V 相新增/确认四条——① 装配期频率导出通道未接线
   （V-5，候选后续件，chain_freq §2 四证据）；② ifx 下 check_facade 两
   红腿均为判据脆性/既有停放族（(g) 严格 == 的 1 ulp 构造性不等价；
-  (r) 2x2 eig_sym 算术序 1.29e-15——C2 停放区既有条目的 ifx 量值）。
+  (r) 2x2 eig_sym 算术序 1.29e-15——C2 停放区既有条目的 ifx 量值）；
+  ③ C8→V 第 5 条采样器→统计相初值快照通道（初值参考量 VI/OAMI/AMAI/
+  AMBI 与转动能重采样均值 SDA/SDB 的生产者；落地即解锁 fin%ang(4..18)）
+  V 期未落地——后验无可行使面，随其 C8 触发条件继续停放，→S 可见；
+  ④ scripts/ 改进注记：check_facade (g) FAIL 行不打印 got-vs-expected
+  （其余容差判据均打印）——候选后续件，暂不改代码。
   既有登记不动：C8 终审停放区（hist_thta 气相门控候选/col_occ 守卫/
   fin_t 初值参考量/SDA/SDB/plot_hist allocated 守卫/lattice%q_ref）、
   C2 停放区（(r) 1e-15 性状/fssh/iesh 后窗件/r_adiab 构造通道/有状态
