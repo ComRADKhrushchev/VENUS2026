@@ -1,0 +1,100 @@
+      SUBROUTINE THERMO(IPR)
+      IMPLICIT DOUBLE PRECISION (A-H,O-Z)
+      INCLUDE 'SIZES'
+      COMMON/SELTB/QZ(NDA3),NSELT,NSFLAG,NACTA,NACTB,NLINA,NLINB,NSURF
+      COMMON/TRANSB/TRANS,NREL
+      COMMON/TESTB/RMAX(NDP),RBAR(NDP),NTEST,NPATHS,NABJ(NDP),NABK(NDP),
+     *NABL(NDP),NABM(NDP),NPATH,NAST
+      COMMON/CONSTN/C1,C2,C3,C4,C5,C6,C7,PI,HALFPI,TWOPI
+      COMMON/WASTE/QQ(NDA3),PP(NDA3),WX,WY,WZ,L(NDA),NAM
+      COMMON/QPDOT/Q(NDA3),PDOT(NDA3),FCOEF(NDA3,NDA3)
+      COMMON/PQDOT/P(NDA3),QDOT(NDA3),W(NDA)
+      COMMON/FRAGB/WTA(NDP),WTB(NDP),LA(NDP,NDA),LB(NDP,NDA),
+     *QZA(NDP,3*NDA),QZB(NDP,3*NDA),NATOMA(NDP),NATOMB(NDP)
+      COMMON/PRLIST/T,V,H,TIME,NTZ,NT,ISEED0(8),NC,NX
+C  KYOYEON 11/25/09
+C      COMMON/VRSCAL/NSEL,NSCALE,NEQUAL,THERMOTEMP,NRGD
+      COMMON/VRSCAL/THERMOTEMP,NSEL,NSCALE,NEQUAL,NRGD
+C
+      SVELSQ=0.00D0
+C
+C    MAKE SURE THAT THE COORDINATES ARE NOT WRITTEN DURING MINIZATION
+C
+      N=NATOMB(1)-NRGD
+C	
+C    CALCULATE VELSQ.  RECALL VNEW = VOLD *SQRT(AHEAT/VELSQ)
+C
+	DO I=1,N
+	  J3 = 3 * LB(1,I)
+	  J2 = J3 - 1
+	  J1 = J2 - 1
+          J = LB(1,I)
+          SVELSQ =SVELSQ+(P(J1)**2+P(J2)**2+P(J3)**2)/W(J)
+	END DO
+C
+C   REFERENCE:  "MOLECULAR DYNAMICS SIMULATION" BY JIM HAILE  P.458
+C   K = 1.38066 * 10(-23) J/K = 0.00198624 KCAL/MOL K
+C   FACTEMP IS AHEAT ABOVE
+C
+        FACTEMP =3.0D0*DBLE(N)*0.00198717D0*THERMOTEMP*C1
+        FACTOR = SQRT( FACTEMP / SVELSQ )
+        TEMPINITS=SVELSQ/(3.0 * DBLE(N) * 0.00198717D0 * C1)
+        IF (MOD(IPR,100).EQ.0.AND.NSEL.EQ.1) THEN
+           WRITE(6,'(1X,A,F12.6)')'SYSTEM TEMP',
+     *             TEMPINITS
+        ENDIF
+        DO I=1,N
+          J3 = 3 * LB(1,I)
+          J2 = J3 - 1
+          J1 = J2 - 1
+          P( J1 ) = P( J1 ) * FACTOR
+          P( J2 ) = P( J2 ) * FACTOR
+          P( J3 ) = P( J3 ) * FACTOR
+        END DO
+C
+C    MAKE SURE THAT THE TOTAL LINEAR MOMENTUM EQUALS ZERO
+C
+        SUMX = 0.00
+        SUMY = 0.00
+        SUMZ = 0.00
+        DO I=1,N
+          J3 = 3 * LB(1,I)
+          J2 = J3 - 1
+          J1 = J2 - 1
+          SUMX = SUMX + P( J1 )
+          SUMY = SUMY + P( J2 )
+          SUMZ = SUMZ + P( J3 )
+        END DO
+        SUMX = SUMX / REAL( N )
+        SUMY = SUMY / REAL( N )
+        SUMZ = SUMZ / REAL( N )
+        DO I=1,N
+          J3 = 3 * LB(1,I)
+          J2 = J3 - 1
+          J1 = J2 - 1
+          P(J1) = P(J1) - SUMX
+          P(J2) = P(J2) - SUMY
+          P(J3) = P(J3) - SUMZ
+        END DO
+C
+C     CALCULATE THE TEMPERATURE
+C
+      SVELSQ=0.00
+      DO I=1,N
+         J3 = 3 * LB(1,I)
+         J2 = J3 - 1
+         J1 = J2 - 1                                                    
+         J = LB(1,I)
+         SVELSQ = SVELSQ+(P(J1)**2+P(J2)**2+P(J3)**2)/W(J)
+      END DO
+C
+C  COMPUT THE TEMPERATURE AFTER THE RESCALING. 
+C
+      TEMPINITS=SVELSQ/(3.0 * DBLE(N) * 0.00198717D0 * C1)
+      IF (MOD(IPR,100).EQ.0.AND.NSEL.EQ.1) THEN
+         WRITE(6,'(1X,A,F12.6)')'SYSTEM TEMP AFTER RESCALING',
+     *        TEMPINITS
+      ENDIF
+ 999  RETURN
+      END
+
