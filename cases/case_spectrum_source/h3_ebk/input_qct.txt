@@ -1,0 +1,20 @@
+# case_spectrum_source/h3_ebk —— 谱来源立法基线：H+H2 BKMP2，EBK 消费双原子常数通道
+# 判据先行：docs/plans/2026-10-05-spectrum-source.md §6.1
+# 改动前 AUTO（容器导出 Herzberg 4401.21/121.33/60.853 cm^-1）= 改动后 MANUAL（DIAT 记录同常数），逐位
+SYSTEM_DIR = system
+TITLE = spectrum source baseline - H+H2 BKMP2 ebk, verlet
+E_REL = 200.0
+B_MAX = 2.0
+R_SEP = 8.0
+DT = 0.05
+DIST_SCHEME = BOLTZMANN,EBK
+PROJECTILE = H
+TARGET = H2
+N_VIB = 1
+N_ROT = 2
+T_VIB_A = 300.0
+N_B = 1
+N_TRAJ = 4
+MAX_STEPS = 300
+ISEED = 20261007
+GWRITE_LEVEL = 2

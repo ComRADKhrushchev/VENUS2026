@@ -2,18 +2,21 @@
 ! final_state.f90 - final-state analysis quantities of one trajectory's end state
 ! Design:
 !   Computes fragment internal energies / angular momenta, generalized COM relative
-!   quantities, and the scattering-angle family, all driven by the roster fragment
-!   table (gas/surface unified, no system branches). Angular momenta in hbar,
-!   energies in kcal/mol, angles in degrees. Also hosts the container's single
-!   outcome-classification slot (bind + statistics-phase call + bound query).
+!   quantities, and the scattering-angle family, all driven by the atom list fragment
+!   table (gas/surface unified, no system branches). Surface-specific quantities
+!   (the surface mu and the ang(19)/ang(20) pair) follow the resolved projectile
+!   role list_atoms%i_proj; the A/B channel bookkeeping stays positional. Angular
+!   momenta in hbar, energies in kcal/mol, angles in degrees. Also hosts the
+!   container's single outcome-classification slot (bind + statistics-phase call +
+!   bound query).
 !=====================================================================
 module final_state
    use consts,        only: hbar_code, e_conv, dtor, two_pi
    use state,         only: state_t
    use config,        only: reactants
-   use config_roster, only: roster
+   use config_atoms, only: list_atoms
    use geometry,      only: cenmas, amom, angvel
-   use force_facade,  only: force_eval
+   use force_interface,  only: force_eval
    implicit none
    private
    public :: fin_t, fin_eval
@@ -24,8 +27,9 @@ module final_state
 
    ! Final-state quantity receiver type (fin_eval output)
    type :: fin_t
-      real(8) :: e_int_a(3) = 0.0d0   ! fragment-A internal energy [kcal/mol]: (1) internal kinetic (2) internal potential - reference (3) total
-      real(8) :: e_int_b(3) = 0.0d0   ! fragment-B internal energy [kcal/mol] (same layout; the roster%frag(2) row)
+      real(8) :: e_int_a(3) = 0.0d0   ! fragment-A internal energy [kcal/mol]: (1) internal kinetic
+                                      ! (2) internal potential - reference (3) total
+      real(8) :: e_int_b(3) = 0.0d0   ! fragment-B internal energy [kcal/mol] (same layout; the atom list%frag(2) row)
       real(8) :: j_a(3)     = 0.0d0   ! fragment-A angular momentum vector [hbar]
       real(8) :: j_mag_a    = 0.0d0   ! fragment-A angular momentum magnitude [hbar]
       real(8) :: e_rot_a    = 0.0d0   ! fragment-A rotational energy [kcal/mol]
@@ -38,20 +42,28 @@ module final_state
       real(8) :: oam_mag    = 0.0d0   ! orbital angular momentum magnitude [hbar]
       real(8) :: b_fin      = 0.0d0   ! final impact parameter [Å] (= oam_mag/mu/|v_rel|)
       real(8) :: e_cm       = 0.0d0   ! whole-system center-of-mass translational energy [kcal/mol]
-      real(8) :: ang(20)    = 0.0d0   ! scattering-angle family [deg] (1-3 final-value angle pairs, 4-16 initial-value-dependent combinations, 17-18 surface incident, 19-20 surface scattering)
+      real(8) :: ang(20)    = 0.0d0   ! scattering-angle family [deg] (1-3 final-value pairs,
+                                      ! 4-16 initial-value-dependent combinations, 17-18 surface
+                                      ! incident, 19-20 surface scattering)
       real(8) :: t_life     = 0.0d0   ! trajectory lifetime [fs] (= sta%t*10)
       real(8), allocatable :: q_fin(:) ! final COM-frame coordinate archive [Å] (for normal-mode analysis)
       real(8), allocatable :: p_fin(:) ! final COM-frame momentum archive [amu·Å/(10 fs)]
+      real(8), allocatable :: q_raw(:) ! final raw system-frame coordinates [Å] (all atoms,
+                                      ! as the trajectory left them - the channel-classification
+                                      ! and any inter-fragment distance consumer reads THIS,
+                                      ! not q_fin which is per-fragment COM-relative)
       ! Left blank: diatomic n/j inversion (finalized with the ebk member); initial-value
       ! reference quantities and rotational-energy sampling fluctuations (deferred: no
       ! producer exists yet; ang(4..18) all consume an initial value, so they stay
       ! unreachable until a sampler->statistics initial-value snapshot channel exists)
    end type fin_t
 
-   ! The outcome-classification slot - the container's own classification judgment
-   ! (problem knowledge). Contract: read-only fin in, the outcome name out; hosted
-   ! here as the home of fin_t (hosting it in force_facade would close a use cycle).
-   ! Unbound slot + a call = loud-stop (the legal no-classification run never calls)
+   ! The outcome-classification slot: an optional module-private procedure
+   ! pointer holding the container's own classification judgment (problem
+   ! knowledge). Contract: read-only fin in, the outcome name out; hosted
+   ! here as the home of fin_t (hosting it in force_interface would close a
+   ! use cycle). Left null and called = named abort (the legal
+   ! no-classification run never calls)
    abstract interface
       function classify_i(fin) result(name)
          import :: fin_t
@@ -65,18 +77,18 @@ contains
    !------------------------------------------------------------------
    ! fin_eval(sta, fin) - compute all final-state quantities: fragment internal
    ! energies / angular momenta, generalized COM relative quantities, and the
-   ! scattering-angle family (roster fragment-table driven, no system branches)
+   ! scattering-angle family (list_atoms fragment-table driven, no system branches)
    !------------------------------------------------------------------
    subroutine fin_eval(sta, fin)
       type(state_t), intent(in) :: sta    ! physical state (read-only; the rotation subtraction
-      ! and the staged-geometry evaluation ride local copies, never modifying sta)
+      ! and the buffered-geometry evaluation ride local copies, never modifying sta)
       type(fin_t), intent(out) :: fin     ! final-state quantity receiver (the sole output)
-      type(state_t) :: wrk, stg           ! working copy (rotation subtraction) / staged state
+      type(state_t) :: wrk, stg           ! working copy (rotation subtraction) / buffered state
       real(8) :: qcms(2, 3), vcms(2, 3)   ! per-fragment COM position / velocity
       real(8) :: q_cm(3), v_cm(3)         ! one fragment's COM (the cenmas returns)
       real(8) :: ptot(3)                  ! the whole-system linear momentum (per component)
       real(8) :: j_vec(3), e_rot, omg(3)  ! one fragment's angular momentum / energy / omega
-      real(8) :: tkin, e_pot              ! internal kinetic / staged potential [kcal/mol]
+      real(8) :: tkin, e_pot              ! internal kinetic / buffered potential [kcal/mol]
       real(8) :: qr(3), vr(3)             ! relative COM position / velocity
       real(8) :: qr_mag, vr_mag, v_rad    ! their magnitudes + the radial speed
       real(8) :: mu, m_a, m_b             ! reduced / fragment masses [amu]
@@ -86,22 +98,28 @@ contains
       ! 1. guards: the fragment table must be assembled, agree with the state, and fit
       !    the two fragment channels of the receiver (a single fragment is the legal
       !    degenerate run: every pair quantity stays zero)
-      if (.not. allocated(roster%mass) .or. .not. allocated(roster%frag)) then
-         write (0, '(a)') 'fin_eval: the roster was never assembled (no fragment table - '// &
+      if (.not. allocated(list_atoms%mass) .or. .not. allocated(list_atoms%frag)) then
+         write (0, '(a)') 'fin_eval: the atom list was never assembled (no fragment table - '// &
                           'the final-state quantities need the fragment masses and lists)'
-         write (0, '(a)') 'fin_eval: loud-stop (the final-state quantities are not computable)'
+         write (0, '(a)') 'fin_eval: fatal (the final-state quantities are not computable)'
          stop 1
       end if
-      if (size(sta%q) /= 3*size(roster%mass)) then
-         write (0, '(a,i0,a,i0)') 'fin_eval: state/roster size mismatch: size(q) = ', size(sta%q), &
-            ', 3*roster atoms = ', 3*size(roster%mass)
-         write (0, '(a)') 'fin_eval: loud-stop (the state and the fragment table disagree)'
+      if (size(sta%q) /= 3*size(list_atoms%mass)) then
+         write (0, '(a,i0,a,i0)') 'fin_eval: state/list_atoms size mismatch: size(q) = ', size(sta%q), &
+            ', 3*list_atoms atoms = ', 3*size(list_atoms%mass)
+         write (0, '(a)') 'fin_eval: fatal (the state and the fragment table disagree)'
          stop 1
       end if
-      nf = size(roster%frag)
+      nf = size(list_atoms%frag)
       if (nf < 1 .or. nf > 2) then
-         write (0, '(a,i0)') 'fin_eval: illegal fragment count in the roster: ', nf
-         write (0, '(a)') 'fin_eval: loud-stop (the receiver carries two fragment channels)'
+         write (0, '(a,i0)') 'fin_eval: illegal fragment count in the atom list: ', nf
+         write (0, '(a)') 'fin_eval: fatal (the receiver carries two fragment channels)'
+         stop 1
+      end if
+      if (reactants%surface_model /= 0 .and. (list_atoms%i_proj < 1 .or. list_atoms%i_proj > nf)) then
+         write (0, '(a)') 'fin_eval: surface quantities need the resolved projectile role '// &
+                          '(list_atoms%i_proj unset - the list_atoms_load role reconcile must run first)'
+         write (0, '(a)') 'fin_eval: fatal (the final-state quantities are not computable)'
          stop 1
       end if
       ! 2. per-fragment properties + the COM-frame archive
@@ -114,27 +132,29 @@ contains
       allocate (fin%q_fin(size(sta%q)), fin%p_fin(size(sta%q)))
       fin%q_fin = 0.0d0
       fin%p_fin = 0.0d0
+      allocate (fin%q_raw(size(sta%q)))
+      fin%q_raw = sta%q
       do i = 1, nf
-         call cenmas(wrk, roster%mass, roster%frag(i)%list, q_cm, v_cm)
+         call cenmas(wrk, list_atoms%mass, list_atoms%frag(i)%list, q_cm, v_cm)
          qcms(i, :) = q_cm
          vcms(i, :) = v_cm
-         if (roster%frag(i)%nat < 2) cycle
+         if (list_atoms%frag(i)%nat < 2) cycle
          omg = 0.0d0                         ! a linear fragment computes no omega
-         call amom(wrk, roster%mass, roster%frag(i)%list, j_vec, e_rot, omg)
+         call amom(wrk, list_atoms%mass, list_atoms%frag(i)%list, j_vec, e_rot, omg)
          tkin = 0.0d0
-         do k = 1, roster%frag(i)%nat
-            a = roster%frag(i)%list(k)
+         do k = 1, list_atoms%frag(i)%nat
+            a = list_atoms%frag(i)%list(k)
             do d = 1, 3
-               tkin = tkin + (wrk%p(3*(a - 1) + d) - roster%mass(a)*v_cm(d))**2 &
-                              /(2.0d0*roster%mass(a))
+               tkin = tkin + (wrk%p(3*(a - 1) + d) - list_atoms%mass(a)*v_cm(d))**2 &
+                              /(2.0d0*list_atoms%mass(a))
             end do
          end do
-         call angvel(wrk, roster%mass, roster%frag(i)%list, omg)
-         do k = 1, roster%frag(i)%nat
-            a = roster%frag(i)%list(k)
+         call angvel(wrk, list_atoms%mass, list_atoms%frag(i)%list, omg)
+         do k = 1, list_atoms%frag(i)%nat
+            a = list_atoms%frag(i)%list(k)
             do d = 1, 3
                fin%q_fin(3*(a - 1) + d) = wrk%q(3*(a - 1) + d) - q_cm(d)
-               fin%p_fin(3*(a - 1) + d) = wrk%p(3*(a - 1) + d) - roster%mass(a)*v_cm(d)
+               fin%p_fin(3*(a - 1) + d) = wrk%p(3*(a - 1) + d) - list_atoms%mass(a)*v_cm(d)
             end do
          end do
          if (i == 1) then
@@ -149,7 +169,7 @@ contains
             fin%e_rot_b = e_rot
          end if
       end do
-      ! 3. internal potentials: the staged-geometry evaluation
+      ! 3. internal potentials: the buffered-geometry evaluation
       !    Fragment i's internal potential = the potential energy of the FULL
       !    configuration that keeps fragment i at its current geometry and places
       !    every other fragment at its tabulated equilibrium arrangement about its
@@ -159,15 +179,15 @@ contains
       !    (not full separation) is kept, so e_int(2) carries the finite-separation
       !    residual inter-fragment potential.
       do i = 1, nf
-         if (roster%frag(i)%nat < 2) cycle
+         if (list_atoms%frag(i)%nat < 2) cycle
          stg = sta
          stg%p = 0.0d0
          do j = 1, nf
             if (j == i) cycle
-            do k = 1, roster%frag(j)%nat
-               a = roster%frag(j)%list(k)
+            do k = 1, list_atoms%frag(j)%nat
+               a = list_atoms%frag(j)%list(k)
                do d = 1, 3
-                  stg%q(3*(a - 1) + d) = roster%frag(j)%qz(3*(k - 1) + d) + qcms(j, d)
+                  stg%q(3*(a - 1) + d) = list_atoms%frag(j)%qz(3*(k - 1) + d) + qcms(j, d)
                end do
             end do
          end do
@@ -187,15 +207,15 @@ contains
       do d = 1, 3
          ptot(d) = sum(sta%p(d::3))
       end do
-      fin%e_cm = dot_product(ptot, ptot)/(2.0d0*sum(roster%mass))/e_conv
+      fin%e_cm = dot_product(ptot, ptot)/(2.0d0*sum(list_atoms%mass))/e_conv
       ! 5. relative motion of the fragment pair (two fragments only)
       if (nf == 2) then
-         m_a = roster%frag(1)%mass
-         m_b = roster%frag(2)%mass
+         m_a = list_atoms%frag(1)%mass
+         m_b = list_atoms%frag(2)%mass
          if (reactants%surface_model == 0) then
-            mu = m_a*m_b/(m_a + m_b)         ! the gas-phase pair form
+            mu = m_a*m_b/(m_a + m_b)         ! the gas-phase pair form (role-symmetric)
          else
-            mu = m_a                         ! the surface form: the active fragment alone
+            mu = list_atoms%frag(list_atoms%i_proj)%mass   ! the surface form: the projectile fragment alone
          end if
          qr = qcms(1, :) - qcms(2, :)
          vr = vcms(1, :) - vcms(2, :)
@@ -218,7 +238,7 @@ contains
       end if
       ! 6. final-value scattering angles (the family that needs no initial values; the
       !    initial-value channels of the angle family stay at their deferred zero)
-      if (nf == 2 .and. roster%frag(1)%nat /= 1 .and. roster%frag(2)%nat /= 1) then
+      if (nf == 2 .and. list_atoms%frag(1)%nat /= 1 .and. list_atoms%frag(2)%nat /= 1) then
          if (fin%oam_mag >= 1.0d-5 .and. fin%j_mag_a >= 1.0d-5) then
             cs = dot_product(fin%oam, fin%j_a)/(fin%oam_mag*fin%j_mag_a)
             fin%ang(1) = acos(max(-1.0d0, min(1.0d0, cs)))/dtor
@@ -232,19 +252,19 @@ contains
             fin%ang(3) = acos(max(-1.0d0, min(1.0d0, cs)))/dtor
          end if
       end if
-      ! 7. surface scattering pair (the polar/equatorial angles of the active
-      !    fragment's COM velocity; the incident pair needs the initial velocity and
-      !    stays deferred with it)
+      ! 7. surface scattering pair (the polar/equatorial angles of the projectile
+      !    fragment's COM velocity, following the resolved role row; the incident pair
+      !    needs the initial velocity and stays deferred with it)
       if (reactants%surface_model /= 0) then
-         vr_mag = sqrt(dot_product(vcms(1, :), vcms(1, :)))
+         vr_mag = sqrt(dot_product(vcms(list_atoms%i_proj, :), vcms(list_atoms%i_proj, :)))
          if (vr_mag >= 1.0d-12) then
-            cs = vcms(1, 3)/vr_mag
+            cs = vcms(list_atoms%i_proj, 3)/vr_mag
             fin%ang(19) = acos(max(-1.0d0, min(1.0d0, cs)))/dtor
          end if
-         v_xy = sqrt(vcms(1, 1)**2 + vcms(1, 2)**2)
+         v_xy = sqrt(vcms(list_atoms%i_proj, 1)**2 + vcms(list_atoms%i_proj, 2)**2)
          if (v_xy > 1.0d-6) then
-            cs = vcms(1, 1)/v_xy
-            if (vcms(1, 2) >= 0.0d0) then
+            cs = vcms(list_atoms%i_proj, 1)/v_xy
+            if (vcms(list_atoms%i_proj, 2) >= 0.0d0) then
                fin%ang(20) = acos(max(-1.0d0, min(1.0d0, cs)))/dtor
             else
                fin%ang(20) = (two_pi - acos(max(-1.0d0, min(1.0d0, cs))))/dtor
@@ -255,9 +275,15 @@ contains
       fin%t_life = sta%t*10.0d0
    end subroutine fin_eval
    !------------------------------------------------------------------
-   ! container_bind_classify(proc) - bind the container's outcome-classification
-   ! judgment (single-slot assembly injection by the container's reg module; a
-   ! double bind loud-stops)
+   ! container_bind_classify(proc) - fill the classification slot: store
+   !                 the container's outcome-naming judgment proc into the
+   !                 module-private procedure pointer
+   !                 container_classify_proc; the statistics phase then
+   !                 calls it through container_classify. Optional - a run
+   !                 without classification guards with
+   !                 container_classify_bound and never calls. Executed
+   !                 once, at assembly, by the container's reg module; a
+   !                 second call aborts
    !------------------------------------------------------------------
    subroutine container_bind_classify(proc)
       procedure(classify_i) :: proc       ! the container classification judgment
@@ -265,7 +291,7 @@ contains
          write (0, '(a)') 'container_bind_classify: the classification slot is already '// &
                         'bound (container_bind_classify ran twice - an assembly-'// &
                         'choreography error, formal)'
-         write (0, '(a)') 'container_bind_classify: loud-stop (the container is unusable)'
+         write (0, '(a)') 'container_bind_classify: fatal (the container is unusable)'
          stop 1
       end if
       container_classify_proc => proc      ! executed once in the assembly phase
@@ -273,7 +299,7 @@ contains
 
    !------------------------------------------------------------------
    ! container_classify(fin) - statistics-phase entry: the outcome name of one
-   ! trajectory's final state (unbound slot + a call loud-stops; the legal
+   ! trajectory's final state (unbound slot + a call aborts with a named error; the legal
    ! no-classification run guards with container_classify_bound and never calls)
    !------------------------------------------------------------------
    function container_classify(fin) result(name)
@@ -283,7 +309,7 @@ contains
          write (0, '(a)') 'container_classify: the classification slot is not bound '// &
                         '(container_bind_classify never ran - the legal no-classification '// &
                         'run guards with container_classify_bound and never calls here)'
-         write (0, '(a)') 'container_classify: loud-stop (the container is unusable)'
+         write (0, '(a)') 'container_classify: fatal (the container is unusable)'
          stop 1
       end if
       name = container_classify_proc(fin)

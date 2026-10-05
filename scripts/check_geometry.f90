@@ -1,6 +1,6 @@
 !=====================================================================
-! check_geometry.f90 - C1.3 acceptance criteria program (criteria defined FIRST in
-!                      docs/plans/C1.md)
+! check_geometry.f90 - geometry criteria program (criteria defined FIRST in
+!                      this header)
 ! Compile (from the repo root):
 !   gfortran -Jsrc/build/gfortran src/globals/consts.f90 src/globals/state.f90 &
 !            src/utils/rng.f90 src/utils/geometry.f90 scripts/check_geometry.f90 &

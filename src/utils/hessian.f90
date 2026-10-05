@@ -6,7 +6,7 @@
 !   caller's units. force conforms to force_proc, returns f = -dV/dq;
 !   H_raw(:,j) = -(F(q+h e_j)-F(q-h e_j))/(2h) over 2n calls, then
 !   symmetrized H = (H_raw + H_raw^T)/2. ONE uniform scalar step for every
-!   coordinate (default 1e-4); invalid conditions loud-stop (stderr, exit 1).
+!   coordinate (default 1e-4); invalid conditions named abort (stderr, exit 1).
 !=====================================================================
 module hessian
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
@@ -69,7 +69,7 @@ contains
 
    !------------------------------------------------------------------
    ! require_finite(f, j, plus) - probe-result gate: every component finite,
-   ! else loud-stop naming the component, the probe sign and the coordinate
+   ! else named abort naming the component, the probe sign and the coordinate
    subroutine require_finite(f, j, plus)
       real(8), intent(in) :: f(:)     ! force vector returned by one probe
       integer, intent(in) :: j        ! displaced coordinate index

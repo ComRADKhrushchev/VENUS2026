@@ -1,10 +1,18 @@
 !=====================================================================
 ! driver.f90 - program venus: three-phase orchestration (assembly -> evolution -> statistics)
 ! Design:
-!   Assembly order is binding: read_input -> rng_init -> sysdef_load -> roster_load ->
-!   state_create -> registry_gen_all -> registry_gen_init (staged member keys ->
-!   member inits, dt already final) -> container_init -> rec_select -> hand-off
-!   allocation. Evolution: per trajectory samp_run -> force_eval -> first frame, then
+!   Assembly order is binding: registry_gen_keys -> read_input -> rng_init ->
+!   sysdef_load -> list_atoms_load -> state_create -> registry_gen_all ->
+!   registry_gen_init (the container seam FIRST - a load-dependent PES must
+!   be computable before any member seam that probes its force, e.g. the
+!   spectrum derivation; then buffered member keys -> member inits, dt
+!   already final) -> input_audit_declared (every buffered container key was
+!   pulled) -> container_init -> rec_select -> hand-off allocation.
+!   The key-declaration aggregate runs BEFORE the parse so the dragged-in
+!   container's parameter vocabulary precedes the parse admission (a
+!   <module>_keys entry is pure vocabulary data - reads no config, no
+!   list_atoms; _all and _init keep their established timing).
+!   Evolution: per trajectory samp_run -> force_eval -> first frame, then
 !   the step loop prop_step -> elec_prop -> mqc_statistic -> rec_frame ->
 !   container_term, bounded by MAX_STEPS (termination and outcome naming
 !   are the container's judgments). Statistics: one fin_eval pass -> outcome
@@ -15,24 +23,24 @@ program venus
    use config,         only: observables, reactants, electronic, &
                              prop_cfg => propagator  ! alias: the config instance 'propagator'
                              ! clashes with the module name
-   use config_roster,  only: roster, roster_load
+   use config_atoms,  only: list_atoms, list_atoms_load
    use state,          only: state_t, state_create, state_destroy
    use rng,            only: rng_init
    use propagator,     only: prop_step
-   use force_facade,   only: container_init, force_eval, container_term
-   use elec_facade,    only: elec_prop, mqc_statistic
-   use sysdef_facade,  only: sysdef_load
-   use registry_gen,   only: registry_gen_all, registry_gen_init   ! the build-generated
+   use force_interface,   only: container_init, force_eval, container_term
+   use elec_interface,    only: elec_prop, mqc_statistic
+   use sysdef_interface,  only: sysdef_load
+   use registry_gen,   only: registry_gen_all, registry_gen_init, registry_gen_keys   ! the build-generated
                                    ! aggregate (scripts/prebuild.sh emits it from every
                                    ! reg_*.f90 under methods/ and systems/ - zero
                                    ! hand-written registration lines in the driver)
-   use sampler,        only: samp_run, samp_n_dist
+   use sampler,        only: samp_run, samp_n_dist, samp_incident_word
    use recorder,       only: rec_select, rec_frame, rec_final, rec_n_sel, rec_fin_val
    use final_state,    only: fin_t, fin_eval, container_classify, container_classify_bound
    use density,        only: dens_states, eig_out
    use hist,           only: hist_spec_t, hist_data_t, lat_t, plot_hist, &
                              k_e_hist, k_t_hist
-   use input,          only: read_input
+   use input,          only: read_input, input_audit_declared
    implicit none
 
    ! -- orchestration counters and flags (locals) --
@@ -42,7 +50,7 @@ program venus
    logical :: term_flag     ! termination flag for this trajectory (written by the
                             ! container_term call of the step loop - the container's judgment)
    real(8) :: e0            ! total energy of the initial state [kcal/mol] (drift reference)
-   real(8) :: dt_eff        ! effective step length [10 fs] (staged once from prop_cfg%dt;
+   real(8) :: dt_eff        ! effective step length [10 fs] (buffered once from prop_cfg%dt;
                             ! consumed by elec_prop - the hop-probability channel g_ij(dt)
                             ! needs the step's dt)
    real(8) :: t_cpu(2)      ! timing pair [s] (printed in the statistics section)
@@ -79,55 +87,70 @@ program venus
    type(hist_data_t) :: data_hist            ! trajectory row table (aggregated from fin truth +
                                              ! the recorder final-state rows; system-diagnostic
                                              ! columns stay unaggregated - no generic producer)
-   type(lat_t) :: lattice                    ! lattice constants (mapped from the roster unit
+   type(lat_t) :: lattice                    ! lattice constants (mapped from the atom list unit
                                              ! cell; consumed by the lattice-aware histogram kinds)
 
    ! ===== Phase 1: assembly (the order below is binding) =====
-   call read_input('input_qct.txt')                ! 1. input framework (KEYWORD=VALUE ->
-                                                   !    control/config slots; member keys stage
-                                                   !    raw for the seam at step 7)
-   call rng_init(i_seed(1))                        ! 2. random stream (word 1 of i_seed seeds it)
-   call sysdef_load(reactants%system_dir)          ! 3. system definition (folder scan -> parser
+   call registry_gen_keys()                        ! 1. key-declaration aggregate (the
+                                                   !    dragged-in container's parameter
+                                                   !    vocabulary - pure data, the parse
+                                                   !    admits these key names)
+   call read_input('input_qct.txt')                ! 2. input framework (QCT = quasi-classical
+                                                   !    trajectory; KEYWORD=VALUE -> control/config
+                                                   !    slots; member and container keys stage raw
+                                                   !    for the seams at steps 8-9)
+   call rng_init(i_seed(1))                        ! 3. random stream (word 1 of i_seed seeds it)
+   call sysdef_load(reactants%system_dir)          ! 4. system definition (folder scan -> parser
                                                    !    dispatch -> mass table; a bad folder
-                                                   !    loud-stops inside sysdef_load)
-   call roster_load()                              ! 4. roster (fragments / masses / equilibrium
+                                                   !    aborts with a named error inside sysdef_load)
+   call list_atoms_load()                              ! 5. list_atoms (fragments / masses / equilibrium
                                                    !    placement, from the sysdef products)
-   call state_create(sta, size(roster%mass), max(electronic%n_surf, 1))
-                                                   ! 5. physical state (natoms from the roster;
+   call state_create(sta, size(list_atoms%mass), max(electronic%n_surf, 1))
+                                                   ! 6. physical state (natoms from the atom list;
                                                    !    the max() is the N_SURF reconcile - the
                                                    !    input default 0 folds to the adiabatic
                                                    !    one-surface point)
-   if (size(sta%q) /= 3*size(roster%mass)) then    ! size-equality guard (drift backstop; both
+   if (size(sta%q) /= 3*size(list_atoms%mass)) then    ! size-equality guard (drift backstop; both
                                                    ! sides named)
       write (0, '(a,i0,a,i0,a)') 'driver: size guard - the state holds ', size(sta%q), &
-         ' coordinates but the roster mass table holds ', 3*size(roster%mass), &
+         ' coordinates but the atom list mass table holds ', 3*size(list_atoms%mass), &
          ' (assembly-choreography error, formal)'
-      write (0, '(a)') 'driver: loud-stop (the state and the roster disagree)'
+      write (0, '(a)') 'driver: fatal (the state and the atom list disagree)'
       stop 1
    end if
-   call registry_gen_all()                         ! 6. registration aggregate (method packages,
+   call registry_gen_all()                         ! 7. registration aggregate (method packages,
                                                    !    distribution members, container bindings,
                                                    !    and the integrator closed set)
-   call registry_gen_init()                        ! 7. the assembly seam: staged member keys ->
-                                                   !    each member's own init (an unselected
-                                                   !    member skips inside its own guard);
-                                                   !    dt was finalized at step 1, so a member
+   call registry_gen_init()                        ! 8. the assembly: the container seam FIRST
+                                                   !    (parameter load / term / classify / arm /
+                                                   !    columns - a load-dependent PES is
+                                                   !    computable from here on), then buffered
+                                                   !    member keys -> each member's own init (an
+                                                   !    unselected member skips inside its own
+                                                   !    guard); the spectrum seams in here may
+                                                   !    probe the bound force (SPECTRUM_SOURCE
+                                                   !    legislation, 2026-10-05); dt was
+                                                   !    finalized at step 2, so a member
                                                    !    reconciling against dt reads the final
                                                    !    value - the assembly order is the contract
-   call container_init()                           ! 8. container assembly + formal validation
+   call input_audit_declared()                    ! 9. container-key consumption audit (every
+                                                   !    buffered declared key pulled exactly once;
+                                                   !    a stranded row is a configuration or
+                                                   !    authoring error, named here)
+   call container_init()                          ! 10. container assembly + formal validation
                                                    !    (legal with no container dragged in - the
                                                    !    degenerate method row still binds;
-                                                   !    loud-stop authority = force_eval's first
+                                                   !    named-abort authority = force_eval's first
                                                    !    call)
-   call rec_select(observables%rec_level)          ! 9a. recording preset group (level entry)
-   if (len_trim(observables%obs_list) > 0) then    ! 9b. named-column list entry (the recorded
-      call rec_select(trim(observables%obs_list))  !    set is the union of both entries)
+   call rec_select(observables%rec_level)         ! 11a. recording preset group (level entry)
+   if (len_trim(observables%obs_list) > 0) then   ! 11b. named-column list entry (the recorded
+      call rec_select(trim(observables%obs_list)) !    set is the union of both entries)
    end if
    allocate (sta_fin(n_traj), e0_traj(n_traj), e_fin_traj(n_traj), vpot_fin_traj(n_traj))
-                                                   ! 10. inter-phase hand-off structures (the
+                                                   ! 12. inter-phase hand-off structures (the
                                                    !     snapshots + the drift/column pairs the
                                                    !     statistics pass consumes)
-   dt_eff = prop_cfg%dt                            !     staged once (the fixed-step source -
+   dt_eff = prop_cfg%dt                            !     buffered once (the fixed-step source -
                                                    !     see the local's note)
    call cpu_time(t_cpu(1))                         !     timing start
    open (newunit=u_out, file='trajectories.txt', status='replace', action='write', iostat=ios)
@@ -135,16 +158,16 @@ program venus
                                                    !     registered output file 'trajectories.txt'
                                                    !     (cwd-relative); the iostat channel keeps
                                                    !     an unwritable run directory a NAMED
-                                                   !     loud-stop, never a bare runtime open error
+                                                   !     named abort, never a bare runtime open error
    if (ios /= 0) then
       write (0, '(a,i0,a)') 'driver: the registered output file trajectories.txt cannot be'// &
          ' opened for writing in the run directory (iostat ', ios, ')'
-      write (0, '(a)') 'driver: loud-stop (the recording unit cannot go live - no run)'
+      write (0, '(a)') 'driver: fatal (the recording unit cannot go live - no run)'
       stop 1
    end if
    write (*, '(a,i0,a,i0,a,i0,a,i0,a,i0,a,i0)') &
-      'assembly complete: trajectories=', n_traj, ' atoms=', size(roster%mass), &
-      ' fragments=', size(roster%frag), ' paradigm=', reactants%surface_model, &
+      'assembly complete: trajectories=', n_traj, ' atoms=', size(list_atoms%mass), &
+      ' fragments=', size(list_atoms%frag), ' paradigm=', reactants%surface_model, &
       ' members=', samp_n_dist(), ' init=ok columns=', rec_n_sel()
 
    ! ===== Phase 2: evolution (trajectory loop x integration loop) =====
@@ -154,13 +177,19 @@ program venus
    n_valid = 0
    do traj_i = 1, n_traj
       sta%t = 0.0d0                     ! fresh-trajectory reset: the time origin and the
-                                        ! staging boot key (boot tests read t == 0; the
+                                        ! buffer boot key (boot tests read t == 0; the
                                         ! thermalize member saves and restores t around its
                                         ! own equilibration)
-      call samp_run('incident', sta)    ! per-trajectory initial-state preparation (the
-                                        ! per-fragment schemes arrive inside samp_run via
-                                        ! the dist_scheme data; 'incident' is the one
-                                        ! orchestration member not selected per-fragment)
+      call samp_run(samp_incident_word(), sta) ! per-trajectory initial-state preparation (the
+                                        ! per-fragment schemes arrive inside samp_run via the
+                                        ! dist_scheme data; the incident member is
+                                        ! paradigm-resolved - the trivial single-reactant
+                                        ! member is a bitwise no-op)
+      call elec_prop(sta, 0.0d0)        ! trajectory-head rho reseed: the prop member's
+                                        ! t-backwards guard fires on the reset t (dt=0
+                                        ! evolves nothing) - e0 below must reference the
+                                        ! SEEDED state, not the previous trajectory's
+                                        ! leftover rho (stale-e0 artifact, 2026-10-04)
       call force_eval(sta, e0)          ! initial force + the reference energy of the
                                         ! initial state (the pure force entry)
       e0_traj(traj_i) = e0
@@ -221,7 +250,7 @@ program venus
             if (n_outc >= max_outc) then
                write (0, '(a,i0,a)') 'driver: outcome-name table full (', max_outc, &
                   ' distinct names - the statistics capacity is exhausted)'
-               write (0, '(a)') 'driver: loud-stop (the statistics cannot proceed)'
+               write (0, '(a)') 'driver: fatal (the statistics cannot proceed)'
                stop 1
             end if
             n_outc = n_outc + 1
@@ -253,8 +282,8 @@ program venus
       ! (the v_hi > v_lo invariant is owned by the guard inside plot_hist). The
       ! lattice feeds only the lattice-aware kinds - the two plain kinds never
       ! read it
-      lattice%a_lat = roster%a_lat
-      lattice%skew = roster%skew
+      lattice%a_lat = list_atoms%a_lat
+      lattice%skew = list_atoms%skew
       lattice%q_ref = 0.0d0
       spec_hist = hist_spec_t(k_e_hist, 'hist_e_rel.dat', 0.0d0, &
                               maxval(data_hist%e_rel) + 1.0d0, 40, 0, .true.)

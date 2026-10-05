@@ -1,0 +1,23 @@
+(a): PASS - the real driver ran 3 trajectories through the real input, the two-fragment system and the dragged-in container; both summary blocks and trajectories.txt verified
+(b): PASS - e_tot constant across all frames of all 3            trajectories; max deviation from the first frame   3.0489E-04             kcal/mol (tolerance   5.0000E-02            , the stated VV bound ~7e-3)
+(r): PASS - the adaptive member ran the real four-phase loop end to end (boot per trajectory, B-carry across sequences, state guard on every trial); max e_tot deviation   5.6843E-14             kcal/mol (tolerance   1.0000E-06            , the stated RA15 bound; the fixed-step tolerance 5e-2 for contrast)
+(c): PASS - traj/step/t monotone, column order t_kin<v_pot<e_tot, 3 trajectories x 41 frames (MAX_STEPS+1, no termination bound)
+(g): PASS - DIST_SCHEME members ran on the real chain and the incident channel assembled the pair; first-frame |p| sum =   1.7909E+00            
+(d): PASS - stopped exactly at the MAX_STEPS frame count (6), last step 6 t   2.5000E-01            
+(e): PASS - the container termination fired mid-run: 113          frames, last step 113          t   5.6000E+00             (horizon 401 frames)
+(f): PASS - unbound run: skipped line + drift summary; bound run: outcome table scattering=2 (the real fin values: the high-energy pair stays above the split)
+(det): PASS - same input twice, trajectories.txt byte-identical (rng single stream, deterministic end to end)
+(E7): PASS - the integration loop calls exactly the five legislated entries: prop_step, elec_prop, mqc_statistic, rec_frame, container_term
+(h): PASS ( STOP 1 sysdef_load: assembly error: system-definition folder not found: no_such_system sysdef_load: fatal (malformed container material is unusable))
+(j1): PASS - buffered member keys round-trip: t_glo=350 gamma=0.04 w=1.25
+(j1): PASS - the member init snapshotted the finalized dt (0.05)
+(j1): PASS - member table carries 12 rows; selected columns 3
+(j1): PASS - container_term on the unbound slot returns .false.
+(j2): PASS ( STOP 1 glo_target_init: bath temperature t_glo [K] must be positive, got -5.0000E+00 glo_target_init: fatal (the initial state is not sampled))
+(k): PASS ( STOP 1 container_classify: the classification slot is not bound (container_bind_classify never ran - the legal no-classification run guards with container_classify_bound and never calls here) container_classify: fatal (the container is unusable))
+(l): PASS - both histogram files exist with the 40+TOTAL shape; e_rel counts both rows (P=1); theta bin 1 carries all rows (gas-phase angle bitwise 0, spacing exactly 0.025)
+(m): PASS - the histograms summary line present; printed drift   1.1227E-03             = file-derived max|final e_tot - first e_tot|   1.1227E-03            
+(n): PASS - occ=1.0 and n_hop=0.0 on all 12 frame lines and both final rows: input key -> selection -> extractor -> getter -> file
+(phg): PASS ( STOP 1 plot_hist: empty histogram range v_hi <= v_lo (v_lo =   2.0000E+00, v_hi =   1.0000E+00 ) plot_hist: fatal (the bin width would be nonpositive - the range must satisfy v_hi > v_lo))
+(q): PASS - the 3-atom non-collinear fragment: rotation stripped from the archive (p_fin ~ 0), j/e_rot/internal-kinetic cross-identity, buffered well, COM-shifted rows
+check_driver: ALL PASS

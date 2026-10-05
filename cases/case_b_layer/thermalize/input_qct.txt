@@ -1,6 +1,6 @@
 # case_b_layer/thermalize —— B 层 thermalize 数值后验（真力链平衡统计带）
 # 体系：H4 单片段（等质量——单频相干振荡锚的必要条件）；容器：reference 谐振井
-# （reference_pars.txt：仅 K_HARM——安全网式无分类跑，无 Q_TERM 中途终止）
+# （容器键仅 K_HARM——安全网式无分类跑，无 Q_TERM 中途终止）
 # 相位返回设计：N_EQ·theta(DT_EQ) = 320·theta(0.0502) = 3.1432966 = pi+0.0017
 # E_REL/B_MAX/R_SEP 为必键占位（单片段气相 incident 通道不派发，V.2 同姿态）
 # 预期锚见 ../README.md 第 3 节（判据先行：两段式标定——试跑产物不入档）
@@ -18,3 +18,5 @@ N_TRAJ = 32
 MAX_STEPS = 2560
 ISEED = 20260917
 GWRITE_LEVEL = 2
+# ---- 容器键（reference 容器，原 reference_pars.txt 并入程序输入） ----
+K_HARM = 0.04

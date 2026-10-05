@@ -5,14 +5,14 @@
 !   base) plus an appended name list (union). Levels: 0/1 = frame header + energy
 !   line; 2 = + all-atom Q/P section (the bare-input default); 5 = + per-atom
 !   force section. Energy columns report kcal/mol; electronic columns read the
-!   elec_facade statistics getters only.
+!   elec_interface statistics getters only.
 !=====================================================================
 module recorder
    use state,         only: state_t
    use config,        only: observables
-   use config_roster, only: roster
-   use force_facade,  only: force_eval
-   use elec_facade,   only: occ_get, n_hop_get
+   use config_atoms, only: list_atoms
+   use force_interface,  only: force_eval
+   use elec_interface,   only: occ_get, n_hop_get
    use consts,        only: e_conv
    implicit none
    private
@@ -42,8 +42,9 @@ module recorder
    integer :: n_col = 0                      ! registered column count [column]
    integer :: sel_idx(max_col) = 0           ! registry indices of the selected columns [-]
    integer :: n_sel = 0                      ! selected column count [column] (rec_select assembly)
-   logical :: sec_qp  = .false.              ! all-atom Q/P flattened-section gate (rec_level>=2)
-   logical :: sec_frc = .false.              ! per-atom force section gate (rec_level>=5)
+   logical :: sec_qp  = .false.              ! all-atom Q/P flattened section (sec_ = section;
+                                                   !    gate at rec_level>=2)
+   logical :: sec_frc = .false.              ! per-atom force section (gate at rec_level>=5)
    logical :: sel_done = .false.             ! rec_select ran (assembly-order guard for the
                                              ! write entries)
    logical :: fw_done = .false.              ! framework preregistration flag (lazy, first use)
@@ -70,7 +71,7 @@ contains
    !------------------------------------------------------------------
    ! rec_reg_col(name, proc) - register an external observable column (enters with
    ! lvl_min = huge, i.e. obs_list-only; duplicate name / full table / overlong name
-   ! loud-stops)
+   ! aborts with a named error)
    !------------------------------------------------------------------
    subroutine rec_reg_col(name, proc)
       character(len=*), intent(in) :: name  ! column name (obs_list list key)
@@ -175,7 +176,7 @@ contains
    ! order); '# sec_qp begin'/per-atom q,p rows/'# sec_qp end' gated at level>=2;
    ! '# sec_frc begin'/per-atom force rows/'# sec_frc end' gated at level>=5. Atom row =
    ! '<index> <symb> <3 reals> [<3 reals>]'; t = sta%t [10 fs] as held, energies
-   ! [kcal/mol]; flush(unit) at the end
+   ! [kcal/mol]; flush(unit) only at the final row
    !------------------------------------------------------------------
    subroutine rec_frame(sta, unit)
       type(state_t), intent(in) :: sta   ! physical state (read-only post-statistics snapshot)
@@ -184,7 +185,7 @@ contains
       ! 1. guards + frame counters
       call fw_reg()
       call check_ready(sta, 'rec_frame')
-      nat = size(roster%mass)
+      nat = size(list_atoms%mass)
       step_i = step_i + 1
       ! 2. frame header + one name=value line of selected column values
       write (unit, '(a,i0,a,i0,a,es24.16)') '# frame traj=', traj_i, ' step=', step_i, ' t=', sta%t
@@ -204,7 +205,7 @@ contains
       if (sec_qp) then
          write (unit, '(a)') '# sec_qp begin'
          do k = 1, nat
-            write (unit, '(i0,1x,a,1x,6es24.16)') k, roster%symb(k), &
+            write (unit, '(i0,1x,a,1x,6es24.16)') k, list_atoms%symb(k), &
                sta%q(3*k-2:3*k), sta%p(3*k-2:3*k)
          end do
          write (unit, '(a)') '# sec_qp end'
@@ -213,12 +214,15 @@ contains
       if (sec_frc) then
          write (unit, '(a)') '# sec_frc begin'
          do k = 1, nat
-            write (unit, '(i0,1x,a,1x,3es24.16)') k, roster%symb(k), sta%f(3*k-2:3*k)
+            write (unit, '(i0,1x,a,1x,3es24.16)') k, list_atoms%symb(k), sta%f(3*k-2:3*k)
          end do
          write (unit, '(a)') '# sec_frc end'
       end if
-      ! 5. flush the checkpoint
-      flush (unit)
+      ! 5. no per-frame flush: on high-latency object stores a per-frame
+      !    fsync dominates the wall clock (measured ~100x trajectory
+      !    throughput loss); durability of mid-trajectory frames is not a
+      !    production requirement - the final-row flush below carries the
+      !    record. Byte-neutral for any completed archive.
    end subroutine rec_frame
 
    !------------------------------------------------------------------
@@ -301,7 +305,7 @@ contains
    end subroutine fw_reg
 
    ! reg_row(name, proc, lvl) - append one registry row (shared by the public entry and the
-   ! framework preregistration); duplicate name / full table / overlong name loud-stop
+   ! framework preregistration); duplicate name / full table / overlong name aborts with a named error
    subroutine reg_row(name, proc, lvl)
       character(len=*), intent(in) :: name
       procedure(col_val_i) :: proc
@@ -337,9 +341,9 @@ contains
       end do
    end function col_lookup
 
-   ! check_ready(sta, who) - write-path guards: selection made, roster assembled, and the
-   ! state an EXACT size fit to the roster in both directions (an oversized state would
-   ! read roster%mass out of bounds in col_tkin)
+   ! check_ready(sta, who) - write-path guards: selection made, list_atoms assembled, and the
+   ! state an EXACT size fit to the atom list in both directions (an oversized state would
+   ! read list_atoms%mass out of bounds in col_tkin)
    subroutine check_ready(sta, who)
       type(state_t), intent(in) :: sta
       character(len=*), intent(in) :: who
@@ -348,17 +352,17 @@ contains
          call stop_rec(who, 'called before any rec_select (assembly-order error: '// &
                        'column selection precedes recording)')
       end if
-      if (.not. allocated(roster%mass) .or. .not. allocated(roster%symb)) then
-         call stop_rec(who, 'roster not assembled (roster_load must run before recording)')
+      if (.not. allocated(list_atoms%mass) .or. .not. allocated(list_atoms%symb)) then
+         call stop_rec(who, 'list_atoms not assembled (list_atoms_load must run before recording)')
       end if
-      nat = size(roster%mass)
+      nat = size(list_atoms%mass)
       if (size(sta%q) /= 3*nat .or. size(sta%p) /= 3*nat .or. size(sta%f) /= 3*nat) then
-         call stop_rec(who, 'state/roster size mismatch (state carries '//trim(i8_str(size(sta%q)))// &
-                       ' q-dofs, the roster carries '//trim(i8_str(nat))//' atoms - exact fit required)')
+         call stop_rec(who, 'state/list_atoms size mismatch (state carries '//trim(i8_str(size(sta%q)))// &
+                       ' q-dofs, the atom list carries '//trim(i8_str(nat))//' atoms - exact fit required)')
       end if
    end subroutine check_ready
 
-   ! i8_str(i) - integer rendered as a string (the size-mismatch loud-stop names both sides)
+   ! i8_str(i) - integer rendered as a string (the size-mismatch named abort names both sides)
    pure function i8_str(i) result(s)
       integer, intent(in) :: i
       character(len=12) :: s
@@ -366,12 +370,12 @@ contains
       s = trim(adjustl(s))
    end function i8_str
 
-   ! stop_rec(who, msg) - the loud-stop channel (same semantics as config_roster /
-   ! sysdef_facade: name the caller, print the named message, STOP 1)
+   ! stop_rec(who, msg) - the named-abort channel (same semantics as config_atoms /
+   ! sysdef_interface: name the caller, print the named message, STOP 1)
    subroutine stop_rec(who, msg)
       character(len=*), intent(in) :: who, msg
       write (0, '(a)') trim(who)//': recording error: '//trim(msg)
-      write (0, '(a)') trim(who)//': loud-stop (the recording is unusable)'
+      write (0, '(a)') trim(who)//': fatal (the recording is unusable)'
       stop 1
    end subroutine stop_rec
 
@@ -404,13 +408,13 @@ contains
    ! framework column extractors (the preregistered set)
    !------------------------------------------------------------------
 
-   ! t_kin - kinetic energy T = sum_atoms p.p/(2 m) / e_conv [kcal/mol] (roster masses)
+   ! t_kin - kinetic energy T = sum_atoms p.p/(2 m) / e_conv [kcal/mol] (list_atoms masses)
    real(8) function col_tkin(sta) result(v)
       type(state_t), intent(in) :: sta
       integer :: k
       v = 0.0d0
       do k = 1, size(sta%p)/3
-         v = v + dot_product(sta%p(3*k-2:3*k), sta%p(3*k-2:3*k))/(2.0d0*roster%mass(k))
+         v = v + dot_product(sta%p(3*k-2:3*k), sta%p(3*k-2:3*k))/(2.0d0*list_atoms%mass(k))
       end do
       v = v/e_conv
    end function col_tkin

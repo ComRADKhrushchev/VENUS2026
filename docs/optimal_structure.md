@@ -1,6 +1,6 @@
 # VENUS2026 Optimal Program Structure and Material Mapping
 
-Status: implemented (new program src/; 2026-09-16 S-phase closing. Layer drift vs this design per the adjudication chain: predicate grammar withdrawn E18 (termination = the container-side slot); post-processing lives in output/ (C8); L3 members split methods/ + systems/ (E12/E14); the ws interchange retired by the composition-root ruling E27 - force delivery is the composed kernel, system-specific method packages live in the system folder)
+Status: implemented (new program src/; 2026-09-16 S-phase closing. Layer drift vs this design per the adjudication chain: predicate grammar withdrawn E18 (termination = the container-side slot); post-processing lives in output/ (C8); L3 members split methods/ + systems/ (E12/E14); the ws interchange retired by the composition-root ruling E27 - force delivery is the composed kernel, system-specific method packages live in the system folder); 2026-09-22 rename batch: facade/ -> interface/ (force/elec/sysdef_interface), config_roster -> config_atoms (list_atoms), staging -> buffer, spectrum_stage -> spectrum_export, and the container reg three-entry form -> the container_sched nine-slot schedule (reg_<sys>_zones handover; docs/plans/2026-09-22-container-schedule.md)
 Date: 2026-09-05
 Basis: design_spec_completeness.md (the specification), completeness_audit.md (the material inventory, 99 entries)
 Method: first derive the target structure from the standard, then place the existing subroutines as material. Placement outcomes fall into four categories: placeable (as-is or with light modification), placeable after refactoring, no slot (eliminated), structure lacking material (must be newly written).
@@ -38,8 +38,8 @@ Key points:
 | state | thing-in-itself | data | invariant (form) |
 | config | representation | data | invariant (grammar extends monotonically) |
 | force_facade | Interface A facade | (Q,P,s)→(F,E) | invariant (framework code) |
-| pes_* | Interface A class-A members | Q→(V,∇V), additive | registration-open |
-| elec_* | Interface A class-B members | (H,s)→(ds/dt, force rule), single choice | registration-open (adiabatic = degenerate member) |
+| pes_* | Interface A force members | Q→(V,∇V), additive | registration-open |
+| elec_* | Interface A electronic method members | (H,s)→(ds/dt, force rule), single choice | registration-open (adiabatic = degenerate member) |
 | dist_* | Interface B′ members | representation→distribution | registration-open |
 | sampler | operation-class framework | distribution→(Q0,P0) | invariant |
 | propagator | closed family | force functional→step | closed (adding a member = one registration line) |
@@ -98,7 +98,7 @@ Source line numbers omitted; see completeness_audit.md.
 | harmonic_sampling | ◐ | dist_surface_oscillator (alive upon registration, instead of deletion) |
 | ROTEN | ● | dist_rotation (the three NROT laws) |
 | PROBJ + JMAXCALC | ◐ | dist_j; to be merged once the H2/D2 nuclear-spin tables are turned into data |
-| SURF (incident channel) + DENS | ◐ | dist_incident (relative-motion distribution) |
+| SURF (incident channel) + DENS | ◐ | inc_surface/inc_pair/inc_single + beam_laws (paradigm split 2026-09-28; relative-motion/beam distribution) |
 | BAREXC | ● | dist_barrier_excitation |
 | THERMO | ◐ | dist_thermostat (Andersen / velocity-scaling laws; assembly-phase use only) |
 | ROTATE/ROTATENO/ROTATEJKM/ROTATEX/Y/Z | ● | L5 geometry (orientation implementations, called by the various dist_*) |
@@ -154,7 +154,7 @@ Ordered by necessity:
 2. **predicate grammar interpreter** — termination predicates go from hard-coded ifs to data-driven evaluation. Material: TEST:106-146. New code: grammar parsing (predicate expressions in the input file) + evaluator. Roughly 150 lines.
 3. **roster configuration assembler** — the single assembly point for roster / geometry / element tables. The material is scattered across venus_input/SURF/test_potentials. New code: roster data structure + element tables. Roughly 150 lines.
 4. **recorder observable-configuration table** — GWRITE_LEVEL goes from "hard-coded levels" to "user-selectable columns". New code: a column-registration mechanism. Roughly 50-100 lines.
-5. **elec_adiabatic degenerate member** — trivial but must exist explicitly (about 20 lines), reserving the place for TDHF-FSSH's future return as a class-B member.
+5. **elec_adiabatic degenerate member** — trivial but must exist explicitly (about 20 lines), reserving the place for TDHF-FSSH's future return as an electronic method member.
 6. **outcome-classification data** — after the E1 merge, turn the if chain into a table lookup (about 50 lines).
 
 ## 4. Structure Self-Check (Against the Specification)

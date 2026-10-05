@@ -6,13 +6,13 @@
 !   (the null pointer is the legal 'no deliverable cache' form); force
 !   composition reads the single-surface PES directly, so this package
 !   contributes nothing to any entry.
-!   Members conform to the facade's abstract interfaces, checked at
+!   Members conform to the interface's abstract interfaces, checked at
 !   the method_reg call site in reg_adiabatic.f90.
 ! Units: dt in 10 fs internal units.
 !=====================================================================
 module elec_adiabatic
    use state,       only: state_t
-   use elec_facade, only: elec_prop_i, mqc_match_i   ! contract documentation only (the
+   use elec_interface, only: elec_prop_i, mqc_match_i   ! contract documentation only (the
    ! members below conform; conformance is checked at the method_reg call site)
    implicit none
    private

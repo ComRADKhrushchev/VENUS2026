@@ -1,10 +1,11 @@
 !=====================================================================
-! consts.f90 - shared conversion and mathematical constants (legislated values)
+! consts.f90 - shared conversion and mathematical constants (fixed by decision)
 ! Design:
 !   Minimal shared set; structural upper limits travel with the consumers.
-!   e_conv = 0.04184 is the LEGISLATED kcal/mol -> internal-energy conversion
-!   (legislated rounding - analytic anchors must use it, not re-derived CODATA
-!   values); e2wvn/wvn2e convert kcal/mol <-> cm^-1, wvn2e the exact reciprocal.
+!   e_conv = 0.04184 is the by-decision fixed kcal/mol -> internal-energy
+!   conversion (fixed rounding - analytic anchors must use it, not re-derived
+!   CODATA values); e2wvn/wvn2e convert kcal/mol <-> cm^-1 (wvn = wavenumber),
+!   wvn2e the exact reciprocal.
 !=====================================================================
 module consts
   implicit none

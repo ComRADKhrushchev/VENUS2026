@@ -1,30 +1,30 @@
 !=====================================================================
-! check_input.f90 - C4.4 acceptance criteria program (criteria defined FIRST in
-!                    docs/plans/C4.md; this program executes them)
+! check_input.f90 - input-grammar criteria program (criteria defined FIRST in
+!                    this header; this program executes them)
 ! Compile (from src/; modules in use-order first, -Jbuild keeps the .mod files out
-! of the source tree; specio/sysdef_facade/config_roster enter for the (o) window
-! criteria, which drive the real assembly route input -> sysdef -> roster):
+! of the source tree; specio/sysdef_interface/config_atoms enter for the (o) window
+! criteria, which drive the real assembly route input -> sysdef -> list_atoms):
 !   gfortran -Jbuild globals/control.f90 globals/config.f90 utils/specio.f90 &
-!            facade/sysdef_facade.f90 input.f90 globals/config_roster.f90 &
+!            interface/sysdef_interface.f90 input.f90 globals/config_atoms.f90 &
 !            ../scripts/check_input.f90 -o build/check_input.exe
 ! All sample input files are written under build/ - the source tree stays clean.
-! Loud-stop verification approach (same scheme as check_sysdef): the loud-stop
-! criteria (e)/(f)/(g)/(h)/(k)/(l)/(o2)-(o7)/(p) run as CHILD PROCESSES - the
+! Named-abort verification approach (same scheme as check_sysdef): the named abort
+! criteria (e)/(f)/(g)/(h)/(k)/(l)/(o2)-(o4)/(p) run as CHILD PROCESSES - the
 ! check re-spawns itself with a mode argument (execute_command_line); the child
 ! calls the REAL read_input on a prepared bad file (the surface/molecular window
-! children continue into sysdef_load + roster_load - the paradigm condition lives
+! children continue into sysdef_load + list_atoms_load - the paradigm condition lives
 ! at assembly time) and must print a naming message on stderr and
 ! exit nonzero. The parent asserts the exit status and the stderr content (the
 ! print+STOP behavior itself is verified, not a softened internal flag); a child
 ! that returns without stopping exits 0 and fails the criterion.
-! Criteria (C4.md C4.4 step + task-4 brief Ruling D):
+! Criteria:
 !   (a) full key sweep - one good file carrying EVERY key of the first-version
 !       table (both E21 blocks); every value lands in the exact slot:
 !       control%(task/n_traj/title/i_seed/max_steps), propagator%(id/order/dt),
 !       electronic%(method/n_surf/pes_main), observables%(rec_level/obs_list/
 !       e_kin/e_pot/e_tot), reactants%(system_dir/e_rel/b_max/r_sep/dist_scheme(:))
 !       (DIST_SCHEME as a two-word list -> code array); ISEED stored as word 1 of
-!       control%i_seed only (scalar statute - the 8-word conversion is rng-side)
+!       control%i_seed only (scalar rule - the 8-word conversion is rng-side)
 !   (b) syntax mechanics (old input_parser semantics): blank lines and '#','!'
 !       comment lines skipped; lowercase keys accepted (uppercased); trailing-
 !       comma continuation merges the DIST_SCHEME list across lines - a messy
@@ -35,79 +35,113 @@
 !       INTEGRATOR=VERLET, ORDER=1, DT_MIN=0.0/DT_MAX=0.0 (unclamped - the
 !       adaptive bounds' legal <=0 default, the reason both keys are kind_real
 !       not kind_posreal), ELEC_METHOD='adiabatic', N_SURF=0,
-!       PES_MAIN='1', GWRITE_LEVEL=2 -> rec_level (E26 legislated default -
+!       PES_MAIN='1', GWRITE_LEVEL=2 -> rec_level (decision-fixed default -
 !       old-library compatible, sec_qp on), OBSERVABLES='' and
-!       E_KIN/E_POT/E_TOT off); staging holds 23 rows (6 user + 17 injected)
+!       E_KIN/E_POT/E_TOT off; RANDOM_ORIENT off, BATH none); buffer holds 27 rows (6 user + 21 injected)
 !   (d) defaults never override (set_default semantics): minimal + explicit
 !       N_TRAJ/INTEGRATOR/ORDER/ISEED -> the user values win, untouched defaults
 !       still injected
 !   (e) missing required key (Ruling D - system-bound keys have no generic
-!       default): each of SYSTEM_DIR/E_REL/B_MAX/R_SEP/DT/DIST_SCHEME removed in
-!       turn -> loud-stop (child) naming the key
+!       default): each of SYSTEM_DIR/E_REL/R_SEP/DT/DIST_SCHEME removed in
+!       turn -> named abort (child) naming the key. B_MAX left the required
+!       set (2026-09-29): omission injects 0.0 - the surface paradigm's
+!       on-site beam; the pair member enforces a positive radius at assembly
 !   (f) unknown keys - the standalone grammar has NO fallback track (E21/E22):
 !       MODEL (preset key withdrawn), old key names CALTYP/NACTA, withdrawn
 !       event keys TERMINATE/OUTCOME (E18/E19), old member key TRV_A (no dispatch
-!       row carries it - the semantic member keys replace it) -> loud-stop
+!       row carries it - the semantic member keys replace it) -> named abort
 !       (child) naming key + line number
-!   (g) bad values -> loud-stop (child) naming key + line: bad integer N_TRAJ,
+!   (g) bad values -> named abort (child) naming key + line: bad integer N_TRAJ,
 !       illegal enums TASK/INTEGRATOR/DIST_SCHEME, GWRITE_LEVEL outside {0,1,2,5},
 !       bad logical E_KIN, bad real DT, bad real DT_MIN/DT_MAX (the over-width
 !       reading for REAL keys: a scalar real carries no char value slot, so the
 !       width column of criterion (p) has no member - the formal-domain stop a
 !       wide garbage value hits is the bad-real parse itself)
-!   (h) parse errors -> loud-stop (child): a data line without '=' (line number
+!   (h) parse errors -> named abort (child): a data line without '=' (line number
 !       reported; no sequential-grammar fallback), missing input file
-!   (i) E21 two-block partition visible in the parse staging: after the (a) load
-!       every staged row carries its key-table block (18 block-one rows, 5
+!   (i) E21 two-block partition visible in the parse buffer: after the (a) load
+!       every buffered row carries its key-table block (18 block-one rows, 5
 !       block-two rows; line numbers of the source preserved)
 !   (j) member-key admission (the central dispatch table's rows): a file with
 !       all 30 member keys (T_VIB_A/T_VIB_B boltzmann; N_E_REL/T_TRANS/V_WIDTH/
 !       N_THTA/THTA_MAX/N_CHI/CHI/N_B/N_AIM incident; T_ROT j; J_ROT rotation;
 !       N_OSC/T_OSC/N_LEVEL/K_OSC surface_oscillator; E_VIB normalmode;
 !       E_STAB/N_E_BAR/E_BAR/T_BAR barrier_excitation; T_BATH/NU_COLL
-!       thermostat; T_GLO/GAMMA_GLO/W_GHOST glo_target; T_EQ/N_EQ/DT_EQ
+!       bath_andersen; T_GLO/GAMMA_GLO/W_GHOST glo_target; T_EQ/N_EQ/DT_EQ
 !       thermalize) parses WITHOUT a stop - no longer unknown keys - and every
 !       key stages in block two with its value VERBATIM (the raw trimmed
 !       string: '350.0', '2', ...) and the source line number kept
 !   (k) Ruling F (the INCIDENT word withdrawal): DIST_SCHEME = incident ->
-!       illegal-value loud-stop (child) naming DIST_SCHEME (the incident
+!       illegal-value named abort (child) naming DIST_SCHEME (the incident
 !       channel is selected by the samp_run scheme argument, never by a
 !       per-fragment scheme row)
-!   (l) empty member-parameter value loud-stop (child): 'THTA_MAX =' with no
-!       value -> loud-stop naming THTA_MAX + line
+!   (l) empty member-parameter value named abort (child): 'THTA_MAX =' with no
+!       value -> named abort naming THTA_MAX + line
 !   (m) the five new per-fragment scheme words parse to their codes:
 !       DIST_SCHEME = rotation, j, surface_oscillator, normalmode,
 !       barrier_excitation -> reactants%dist_scheme = [3,4,5,6,7] (the same
 !       word/code pairing the sampler scheme-code table carries)
-!   (n) the three bath-member scheme words parse to their codes:
-!       DIST_SCHEME = thermostat, glo_target, thermalize ->
-!       reactants%dist_scheme = [8,9,10] (the word/code pairing shared with
-!       the sampler scheme-code table, now ten words)
-!   (o) surface window keys (paradigm-conditional): A_LAT [A] (positive real,
-!       the surface lattice constant) and BOXPAD [A] (positive, the periodic-box
-!       fill half-width) stage in block two; the paradigm condition executes at
-!       ASSEMBLY time (the sampler count-check precedent - the input layer holds
-!       no system knowledge), so these criteria drive the real chain
-!       read_input -> sysdef_load -> roster_load:
-!       (o1) surface folder + both keys -> the values land in roster%a_lat /
-!            roster%box_pad (the registered slot path: config carries no relay
-!            field, the values stay in the input staging and roster_load pulls
-!            them through the staging accessors - the S2-shaped transfer),
-!            surface_model = 1, the A_LAT row tagged block two
-!       (o2) surface folder + A_LAT removed -> loud-stop (child) naming
-!            roster_load and the missing required key A_LAT
-!       (o3) surface folder + BOXPAD removed -> loud-stop (child) naming
-!            roster_load and BOXPAD
-!       (o4)/(o5) molecular folder + A_LAT / BOXPAD present -> loud-stop
-!            (child) naming roster_load and the paradigm conflict (the
-!            molecular paradigm has no surface window)
-!       (o6)/(o7) non-positive A_LAT / BOXPAD -> loud-stop (child) at
-!            read_input naming key + line (the positive-real value domain)
+!   (n) the two dynamics-family scheme words parse to their codes:
+!       DIST_SCHEME = glo_target, thermalize ->
+!       reactants%dist_scheme = [8,9] (the word/code pairing shared with
+!       the sampler scheme-code table, now ten words - thermostat left the
+!       registry for the BATH provision 2026-09-22)
+!   (o) surface window key (paradigm-conditional): A_LAT [A] (positive real,
+!       the surface lattice constant) stages in block two; the paradigm condition
+!       executes at ASSEMBLY time (the sampler count-check precedent - the input
+!       layer holds no system knowledge), so these criteria drive the real chain
+!       read_input -> sysdef_load -> list_atoms_load:
+!       (o1) surface folder + the key -> the value lands in list_atoms%a_lat
+!            (the registered slot path: config carries no relay field, the value
+!            stays in the input buffer and list_atoms_load pulls it through the
+!            buffer accessors - the S2-shaped transfer), surface_model = 1, the
+!            A_LAT row tagged block two
+!       (o2) surface folder + A_LAT removed -> named abort (child) naming
+!            list_atoms_load and the missing required key A_LAT
+!       (o3) molecular folder + A_LAT present -> named abort (child) naming
+!            list_atoms_load and the paradigm conflict (the molecular paradigm
+!            has no surface window)
+!       (o4) non-positive A_LAT -> named abort (child) at read_input naming
+!            key + line (the positive-real value domain)
+!       [the BOXPAD key and the n_aim = 2 cluster-box drop retired at E29 -
+!       docs/plans/T.md]
 !   (p) slot-width column (every char key registers its value-slot width = the
 !       target field's width): the four families TITLE wider than 80,
 !       ELEC_METHOD wider than 32, SYSTEM_DIR wider than 128, OBSERVABLES wider
-!       than 256 -> loud-stop (child) naming key + line + the actual width
+!       than 256 -> named abort (child) naming key + line + the actual width
 !       (silent truncation closed; PES_MAIN shares the 32 family)
+!   (q) collision-role keys (paradigm-conditional, assembly-side - the same
+!       real-chain route as (o)): PROJECTILE/TARGET name list_atoms fragments by
+!       their system-definition file stems (frag%name, case-insensitive fold):
+!       (q1) gas pair + both keys -> list_atoms%i_proj/i_targ resolve to the named
+!            rows, frag%name carries the stems (TARGET value lowercase - the
+!            fold is case-insensitive)
+!       (q2)/(q3) gas pair with PROJECTILE / TARGET removed -> named abort
+!            (child) naming list_atoms_load, the missing key, and 'missing'
+!       (q4) gas pair + unknown name -> named abort (child) naming list_atoms_load,
+!            the key, and 'no list_atoms fragment named'
+!       (q5) both keys naming the SAME fragment -> named abort (child) with
+!            'distinct'
+!       (q6) single-fragment molecular + PROJECTILE -> named abort (child)
+!            'no collision roles'
+!   (r) declared container keys (the E28 channel: declare -> admit -> pull
+!       -> audit):
+!       (r1) round-trip, in-process: a declared vocabulary (CK_REAL/CK_INT/
+!            CK_CHR/CK_R3/CK_STRAY) admits the keys of a good file; typed
+!            pulls land the values (real / int / char / 3-vector), the found
+!            flag carries presence, a never-buffered key keeps its caller
+!            default with found = F, and input_audit_declared passes clean
+!       (r2) buffered-but-unconsumed: a declared key buffered but never pulled
+!            -> input_audit_declared names the key (child)
+!       (r3) undeclared pull: pulling a name outside the declared vocabulary
+!            -> pull aborts 'not a declared container key' (child)
+!       (r4) double pull: one declared key pulled twice -> pull aborts (child)
+!       (r5) empty container value: 'CK_REAL =' with nothing -> read_input
+!            aborts naming the key (child)
+!       (q7) surface + TARGET -> named abort (child) 'gas-pair' (the surface is
+!            not an atom list fragment)
+!       (q8) surface missing PROJECTILE -> named abort (child) naming
+!            list_atoms_load and 'missing'
 ! Sweep-along note: the map_slots key-kind select's case-default guard
 !       (the stale-ok leak fix, fourth site of the family) is UNREACHABLE
 !       from any input file - every key in the table carries kind 1..7, so
@@ -116,24 +150,29 @@
 !       exercised by a child.
 !=====================================================================
 program check_input
-   use input,   only: read_input, staging_n_rows, staging_key, staging_block, &
-                      staging_line, staging_val
+   use input,   only: read_input, buffer_n_rows, buffer_key, buffer_block, &
+                      buffer_line, buffer_val, input_declare_keys, &
+                      input_audit_declared, pull
    use control, only: task, n_traj, title, i_seed, max_steps
    use config,  only: propagator, electronic, reactants, observables
-   use sysdef_facade, only: sysdef_load
-   use config_roster, only: roster, roster_load
+   use sysdef_interface, only: sysdef_load
+   use config_atoms, only: list_atoms, list_atoms_load
    implicit none
    integer :: nfail = 0, nfail0, i, k, nrows
    character(len=32) :: mode
    character(len=32) :: kname
    logical :: ok_arr, ok_part
-   character(len=16) :: blk1(18), blk2(5)
+   character(len=16) :: blk1(18), blk2(9)
    character(len=16) :: mkey(30), mval(30)
+   real(8) :: ck_r, ck_v3(3), ck_stray = 9.9d0   ! (r) pull targets (the stray
+   integer :: ck_i                                ! default proves the absent-key
+   character(len=32) :: ck_c                      ! posture)
+   logical :: ck_found, ck_stray_found
 
-   ! ---------- child dispatch: one bad case per spawn, must loud-stop ----------
+   ! ---------- child dispatch: one bad case per spawn, must named abort ----------
    ! bad-file naming convention: build/input_case_<mode>.txt (bad-nofile excepted);
    ! the w-surf-/w-mol- prefixed modes drive the full window chain (the paradigm
-   ! condition lives at assembly time, so the child continues into roster_load)
+   ! condition lives at assembly time, so the child continues into list_atoms_load)
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       if (trim(mode) == 'bad-nofile') then
@@ -141,11 +180,17 @@ program check_input
       else if (index(trim(mode), 'w-surf-') == 1) then
          call read_input('build/input_case_'//trim(mode)//'.txt')
          call sysdef_load('build/window_surf')
-         call roster_load()
+         call list_atoms_load()
       else if (index(trim(mode), 'w-mol-') == 1) then
          call read_input('build/input_case_'//trim(mode)//'.txt')
          call sysdef_load('build/window_mol')
-         call roster_load()
+         call list_atoms_load()
+      else if (index(trim(mode), 'w-pr-') == 1) then
+         call read_input('build/input_case_'//trim(mode)//'.txt')
+         call sysdef_load('build/window_pair')
+         call list_atoms_load()
+      else if (index(trim(mode), 'ck-') == 1) then
+         call child_ck(trim(mode))
       else
          call read_input('build/input_case_'//trim(mode)//'.txt')
       end if
@@ -180,7 +225,11 @@ program check_input
       'B_MAX = 3.0', &
       'R_SEP = 9.75', &
       'DIST_SCHEME = ebk,', &
-      '   boltzmann' ])
+      '   boltzmann', &
+      'RANDOM_ORIENT = T', &
+      'BATH = ANDERSEN', &
+      'N_BATH = 5', &
+      'DT_BATH = 0.025' ])
    ! (b) messy rewrite of the same content: block two FIRST, lowercase keys,
    ! comments and blank lines interleaved, continuation kept
    call write_sample('build/input_case_messy.txt', [ character(len=64) :: &
@@ -192,6 +241,10 @@ program check_input
       'r_sep=9.75', &
       'dist_scheme=ebk,', &
       '   boltzmann', &
+      'random_orient=t', &
+      'bath=andersen', &
+      'n_bath=5', &
+      'dt_bath=0.025', &
       'task=trajectory', &
       '! interleaved comment', &
       'n_traj=7', &
@@ -287,11 +340,12 @@ program check_input
       'B_MAX = 3.0', &
       'R_SEP = 8.0', &
       'DT = 0.01', &
-      'DIST_SCHEME = thermostat, glo_target, thermalize' ])
+      'DIST_SCHEME = glo_target, thermalize' ])
    ! (o) window-chain folders (dedicated names - the sysdef_case_* folders belong
    ! to check_sysdef's samples): a molecular window (single .xyz, no cell) and a
    ! surface window (a slab POSCAR carrying the cell) - the paradigm is DERIVED
-   ! from the cell's presence, so the two folders are the two paradigms
+   ! from the cell's presence, so the two folders are the two paradigms; plus a
+   ! gas-PAIR molecular window for the (q) role criteria (two .xyz fragments)
    call make_dir('build/window_mol')
    call write_sample('build/window_mol/probe.xyz', [ character(len=64) :: &
       '1', 'window molecular sample', 'Ar 0.00 0.00 0.00' ])
@@ -300,42 +354,80 @@ program check_input
       'window surface sample', '1.0', &
       '2.9 0.0 0.0', '0.0 2.9 0.0', '0.0 0.0 18.6', &
       'Au', '1', 'Direct', '0.00 0.00 0.10' ])
-   ! (o1) surface window: the six required keys + both window keys
+   call make_dir('build/window_pair')
+   call write_sample('build/window_pair/frag_a.xyz', [ character(len=64) :: &
+      '2', 'pair fragment A', 'H 0.00 0.00 0.00', 'H 0.74 0.00 0.00' ])
+   call write_sample('build/window_pair/frag_b.xyz', [ character(len=64) :: &
+      '2', 'pair fragment B', 'H 0.00 0.00 0.00', 'H 0.74 0.00 0.00' ])
+   ! (o1) surface window: the six required keys + both window keys + the role key
    call write_sample('build/input_case_surfwin.txt', [ character(len=64) :: &
       'SYSTEM_DIR = build/window_surf', &
       'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
       'DIST_SCHEME = boltzmann', &
-      'A_LAT = 3.25', 'BOXPAD = 5.5' ])
-   ! (o2)/(o3) surface window with one window key removed each time
+      'A_LAT = 3.25', 'PROJECTILE = slab' ])
+   ! (o2) surface window with the window key removed
    call write_sample('build/input_case_w-surf-noalat.txt', [ character(len=64) :: &
       'SYSTEM_DIR = build/window_surf', &
       'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
-      'DIST_SCHEME = boltzmann', 'BOXPAD = 5.5' ])
-   call write_sample('build/input_case_w-surf-nopad.txt', [ character(len=64) :: &
-      'SYSTEM_DIR = build/window_surf', &
-      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
-      'DIST_SCHEME = boltzmann', 'A_LAT = 3.25' ])
-   ! (o4)/(o5) molecular window with one window key present each time
+      'DIST_SCHEME = boltzmann' ])
+   ! (o3) molecular window with the window key present
    call write_sample('build/input_case_w-mol-alat.txt', [ character(len=64) :: &
       'SYSTEM_DIR = build/window_mol', &
       'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
       'DIST_SCHEME = boltzmann', 'A_LAT = 3.25' ])
-   call write_sample('build/input_case_w-mol-bpad.txt', [ character(len=64) :: &
+   ! (q) role-key chain materials: gas-pair variants over window_pair, plus the
+   ! surface / single-fragment-molecular negatives (w-surf-noproj reuses the
+   ! full window set; window_reconcile passes, the role reconcile fires)
+   call write_sample('build/input_case_w-pr-good.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/window_pair', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann, ebk', &
+      'PROJECTILE = frag_a', 'TARGET = Frag_B' ])
+   call write_sample('build/input_case_w-pr-noproj.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/window_pair', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann, ebk', &
+      'TARGET = frag_b' ])
+   call write_sample('build/input_case_w-pr-notarg.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/window_pair', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann, ebk', &
+      'PROJECTILE = frag_a' ])
+   call write_sample('build/input_case_w-pr-unknown.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/window_pair', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann, ebk', &
+      'PROJECTILE = frag_x', 'TARGET = frag_b' ])
+   call write_sample('build/input_case_w-pr-same.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/window_pair', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann, ebk', &
+      'PROJECTILE = frag_a', 'TARGET = frag_a' ])
+   call write_sample('build/input_case_w-mol-proj.txt', [ character(len=64) :: &
       'SYSTEM_DIR = build/window_mol', &
       'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
-      'DIST_SCHEME = boltzmann', 'BOXPAD = 5.5' ])
-   ! (o6)/(o7) non-positive window values (value-domain loud-stop at read_input)
+      'DIST_SCHEME = boltzmann', 'PROJECTILE = probe' ])
+   call write_sample('build/input_case_w-surf-targ.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/window_surf', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann', &
+      'A_LAT = 3.25', 'PROJECTILE = slab', 'TARGET = slab' ])
+   call write_sample('build/input_case_w-surf-noproj.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/window_surf', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann', &
+      'A_LAT = 3.25' ])
+   ! (o4) non-positive window value (value-domain named abort at read_input)
    call write_case('v-alat', 'A_LAT = -3.0')
-   call write_case('v-bpad', 'BOXPAD = 0.0')
    ! (p) slot-width families: the offending key at line 1 with a value w
    ! characters wide, its minimal-six row replaced (a duplicate required key
-   ! would loud-stop first and mask the width stop)
+   ! would named abort first and mask the width stop)
    call write_width_case('w-title', 'TITLE',       81)
    call write_width_case('w-meth', 'ELEC_METHOD',  33)
    call write_width_case('w-sysd', 'SYSTEM_DIR',  129)
    call write_width_case('w-obs',  'OBSERVABLES', 257)
 
-   ! ---------- bad sample files (one per child loud-stop case) ----------
+   ! ---------- bad sample files (one per child named abort case) ----------
    ! (e) one required key removed each time
    call write_sample('build/input_case_miss-system_dir.txt', [ character(len=64) :: &
       'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
@@ -369,7 +461,7 @@ program check_input
    call write_case('v-ekin',      'E_KIN = maybe')
    call write_case('p-noeq',      'N_TRAJ 7')
    ! DT / DIST_SCHEME bad values: the offending line REPLACES the minimal copy (those
-   ! keys are part of the minimal six - a duplicate would loud-stop first)
+   ! keys are part of the minimal six - a duplicate would named abort first)
    call write_sample('build/input_case_v-dist.txt', [ character(len=64) :: &
       'DIST_SCHEME = boltzmann, weird', 'SYSTEM_DIR = build/sysdef_case_mol', 'E_REL = 1.0', &
       'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01' ])
@@ -391,34 +483,35 @@ program check_input
    call read_input('build/input_case_full.txt')
    call assert_full('(a) full key sweep')
 
-   ! ---------- (i) E21 two-block partition in the parse staging ----------
-   ! (run on the (a) staging: 23 user rows, no injected defaults among them)
+   ! ---------- (i) E21 two-block partition in the parse buffer ----------
+   ! (run on the (a) buffer: 27 user rows, no injected defaults among them)
    nfail0 = nfail
    blk1 = [ character(len=16) :: 'TASK', 'N_TRAJ', 'TITLE', 'ISEED', 'MAX_STEPS', &
             'INTEGRATOR', 'DT', 'ORDER', 'DT_MIN', 'DT_MAX', 'ELEC_METHOD', 'N_SURF', &
             'PES_MAIN', 'GWRITE_LEVEL', 'OBSERVABLES', 'E_KIN', 'E_POT', 'E_TOT' ]
-   blk2 = [ character(len=16) :: 'SYSTEM_DIR', 'E_REL', 'B_MAX', 'R_SEP', 'DIST_SCHEME' ]
-   nrows = staging_n_rows()
-   ok_part = (nrows == 23)
+   blk2 = [ character(len=16) :: 'SYSTEM_DIR', 'E_REL', 'B_MAX', 'R_SEP', 'DIST_SCHEME', &
+            'RANDOM_ORIENT', 'BATH', 'N_BATH', 'DT_BATH' ]
+   nrows = buffer_n_rows()
+   ok_part = (nrows == 27)
    do i = 1, nrows
-      kname = staging_key(i)
+      kname = buffer_key(i)
       if (any(blk1 == trim(kname))) then
-         if (staging_block(i) /= 1) ok_part = .false.
+         if (buffer_block(i) /= 1) ok_part = .false.
       else if (any(blk2 == trim(kname))) then
-         if (staging_block(i) /= 2) ok_part = .false.
+         if (buffer_block(i) /= 2) ok_part = .false.
       else
          ok_part = .false.
       end if
    end do
-   ! line numbers preserved into staging (SYSTEM_DIR sits on source line 19)
+   ! line numbers preserved into buffer (SYSTEM_DIR sits on source line 19)
    do i = 1, nrows
-      if (trim(staging_key(i)) == 'SYSTEM_DIR') exit
+      if (trim(buffer_key(i)) == 'SYSTEM_DIR') exit
    end do
    if (i > nrows) ok_part = .false.
-   if (ok_part .and. staging_line(i) == 19) then
-      print '(a)', '(i) E21 two-block staging: PASS (18 block-one + 5 block-two rows tagged, line numbers kept)'
+   if (ok_part .and. buffer_line(i) == 19) then
+      print '(a)', '(i) E21 two-block buffer: PASS (18 block-one + 9 block-two rows tagged, line numbers kept)'
    else
-      print '(a)', 'FAIL (i) E21 two-block staging: partition or line numbers wrong'
+      print '(a)', 'FAIL (i) E21 two-block buffer: partition or line numbers wrong'
       nfail = nfail + 1
    end if
 
@@ -440,11 +533,13 @@ program check_input
        trim(electronic%pes_main) /= '1' .or. observables%rec_level /= 2 .or. &
        len_trim(observables%obs_list) /= 0 .or. observables%e_kin .or. &
        observables%e_pot .or. observables%e_tot .or. .not. ok_arr .or. &
-       staging_n_rows() /= 23) then
-      print '(a)', 'FAIL (c) default injection: a default value is wrong (or staging row count off 23)'
+       reactants%random_orient .or. reactants%bath /= 1 .or. reactants%n_bath /= 0 .or. &
+       reactants%dt_bath /= 0.0d0 .or. &
+       buffer_n_rows() /= 27) then
+      print '(a)', 'FAIL (c) default injection: a default value is wrong (or buffer row count off 27)'
       nfail = nfail + 1
    else
-      print '(a)', '(c) default injection: PASS (17 Ruling-D defaults injected, none preset-wide, staging 6+17 rows)'
+      print '(a)', '(c) default injection: PASS (21 Ruling-D defaults injected, none preset-wide, buffer 6+21 rows)'
    end if
 
    ! ---------- (d) defaults never override user-set keys ----------
@@ -468,7 +563,15 @@ program check_input
    ! ---------- (e) missing required keys (children) ----------
    call expect_loudstop('miss-system_dir',   'SYSTEM_DIR',   '', '(e1) missing SYSTEM_DIR loud-stop')
    call expect_loudstop('miss-e_rel',        'E_REL',        '', '(e2) missing E_REL loud-stop')
-   call expect_loudstop('miss-b_max',        'B_MAX',        '', '(e3) missing B_MAX loud-stop')
+   ! (e3) B_MAX omission contract: optional since 2026-09-29 - the injected
+   ! default 0.0 is the surface on-site beam (pair enforces positivity later)
+   call read_input('build/input_case_miss-b_max.txt')
+   if (reactants%b_max == 0.0d0 .and. reactants%e_rel == 1.0d0) then
+      print '(a)', '(e3) B_MAX omission: PASS (default 0.0 injected - the surface on-site beam)'
+   else
+      print '(a)', 'FAIL (e3) B_MAX omission: default 0.0 not injected'
+      nfail = nfail + 1
+   end if
    call expect_loudstop('miss-r_sep',        'R_SEP',        '', '(e4) missing R_SEP loud-stop')
    call expect_loudstop('miss-dt',           'DT',           '', '(e5) missing DT loud-stop')
    call expect_loudstop('miss-dist_scheme',  'DIST_SCHEME',  '', '(e6) missing DIST_SCHEME loud-stop')
@@ -508,25 +611,25 @@ program check_input
             '0', '1.1', '0', '0.9', '0', '0', '300.0', '2', '1', '180.0', &
             '3', '42.0', '12.5', '8.0', '0', '5.0', '900.0', '475.0', '0.137', &
             '550.0', '0.09', '0.0021', '325.0', '250', '0.0413' ]
-   ok_part = (staging_n_rows() == 53)      ! 36 user rows (six registry + 30 member
-                                            ! keys) + the 17 injected per-key defaults
+   ok_part = (buffer_n_rows() == 57)      ! 36 user rows (six registry + 30 member
+                                            ! keys) + the 18 injected per-key defaults
    do i = 1, size(mkey)
       k = staged_row(trim(mkey(i)))
-      if (k == 0 .or. staging_block(k) /= 2 .or. trim(staging_val(k)) /= trim(mval(i))) then
+      if (k == 0 .or. buffer_block(k) /= 2 .or. trim(buffer_val(k)) /= trim(mval(i))) then
          ok_part = .false.
          exit
       end if
    end do
    k = staged_row('T_VIB_A')               ! line numbers preserved (line 7 of the file)
-   if (k == 0 .or. staging_line(k) /= 7) ok_part = .false.
+   if (k == 0 .or. buffer_line(k) /= 7) ok_part = .false.
    if (ok_part) then
-      print '(a)', '(j) member-key admission: PASS (30 dispatch keys staged block two, values verbatim)'
+      print '(a)', '(j) member-key admission: PASS (30 dispatch keys buffered block two, values verbatim)'
    else
       print '(a)', 'FAIL (j) member-key admission: a member key missing, wrong block, or value altered'
       nfail = nfail + 1
    end if
 
-   ! ---------- (k)/(l) member-key loud-stops (children) ----------
+   ! ---------- (k)/(l) member-key aborts with a named error (children) ----------
    call expect_loudstop('v-incid',  'DIST_SCHEME', 'line 1', &
                         '(k) DIST_SCHEME=INCIDENT illegal value (Ruling F word withdrawal)')
    call expect_loudstop('m-empty',  'THTA_MAX',    'line 1', &
@@ -546,46 +649,72 @@ program check_input
       nfail = nfail + 1
    end if
 
-   ! ---------- (n) the three bath-member scheme words parse to codes 8..10 ----------
+   ! ---------- (n) the dynamics-family scheme words parse to codes 8..9 ----------
    nfail0 = nfail
    call read_input('build/input_case_bathdist.txt')
    ok_arr = allocated(reactants%dist_scheme)
-   if (ok_arr) ok_arr = size(reactants%dist_scheme) == 3 .and. &
-                        all(reactants%dist_scheme == [ 8, 9, 10 ])
+   if (ok_arr) ok_arr = size(reactants%dist_scheme) == 2 .and. &
+                        all(reactants%dist_scheme == [ 8, 9 ])
    if (ok_arr) then
-      print '(a)', '(n) bath-member scheme words: PASS (thermostat/glo_target/'// &
-         'thermalize -> codes 8,9,10)'
+      print '(a)', '(n) dynamics-family scheme words: PASS (glo_target/'// &
+         'thermalize -> codes 8,9; thermostat left for the BATH provision)'
    else
-      print '(a)', 'FAIL (n) bath-member scheme words: DIST_SCHEME list did not map to codes 8..10'
+      print '(a)', 'FAIL (n) dynamics-family scheme words: DIST_SCHEME list did not map to codes 8..9'
       nfail = nfail + 1
    end if
 
-   ! ---------- (o1) surface window chain: input -> sysdef -> roster ----------
+   ! ---------- (o1) surface window chain: input -> sysdef -> list_atoms ----------
    nfail0 = nfail
    call read_input('build/input_case_surfwin.txt')
    call sysdef_load('build/window_surf')
-   call roster_load()
+   call list_atoms_load()
    k = staged_row('A_LAT')
-   if (roster%a_lat /= 3.25d0 .or. roster%box_pad /= 5.5d0 .or. &
-       reactants%surface_model /= 1 .or. k == 0 .or. staging_block(k) /= 2) then
-      print '(a)', 'FAIL (o1) surface window chain: the window scalars did not land in the roster'
+   if (list_atoms%a_lat /= 3.25d0 .or. &
+       reactants%surface_model /= 1 .or. k == 0 .or. buffer_block(k) /= 2 .or. &
+       list_atoms%i_proj /= 1 .or. trim(list_atoms%frag(1)%name) /= 'slab') then
+      print '(a)', 'FAIL (o1) surface window chain: the window scalars, role row, or fragment name did not land'
       nfail = nfail + 1
    else
-      print '(a)', '(o1) surface window chain: PASS (A_LAT=3.25/BOXPAD=5.5 pulled by '// &
-         'roster_load from the staging; surface_model=1, rows tagged block two)'
+      print '(a)', '(o1) surface window chain: PASS (A_LAT=3.25 pulled by '// &
+         'list_atoms_load from the buffer; PROJECTILE=slab -> i_proj=1, frag%name=slab;'// &
+         ' surface_model=1, rows tagged block two)'
    end if
 
-   ! ---------- (o2)-(o7) window loud-stops (children) ----------
-   call expect_loudstop_at('roster_load', 'w-surf-noalat', 'A_LAT', 'missing', &
+   ! ---------- (o2)-(o4) window aborts with a named error (children) ----------
+   call expect_loudstop_at('list_atoms_load', 'w-surf-noalat', 'A_LAT', 'missing', &
         '(o2) surface window missing A_LAT loud-stop (required under the surface paradigm)')
-   call expect_loudstop_at('roster_load', 'w-surf-nopad', 'BOXPAD', 'missing', &
-        '(o3) surface window missing BOXPAD loud-stop')
-   call expect_loudstop_at('roster_load', 'w-mol-alat', 'A_LAT', 'molecular paradigm', &
-        '(o4) molecular paradigm + A_LAT loud-stop (the window keys are surface-only)')
-   call expect_loudstop_at('roster_load', 'w-mol-bpad', 'BOXPAD', 'molecular paradigm', &
-        '(o5) molecular paradigm + BOXPAD loud-stop')
-   call expect_loudstop('v-alat', 'A_LAT', 'line 1', '(o6) non-positive A_LAT loud-stop (value domain)')
-   call expect_loudstop('v-bpad', 'BOXPAD', 'line 1', '(o7) non-positive BOXPAD loud-stop (value domain)')
+   call expect_loudstop_at('list_atoms_load', 'w-mol-alat', 'A_LAT', 'molecular paradigm', &
+        '(o3) molecular paradigm + A_LAT loud-stop (the window key is surface-only)')
+   call expect_loudstop('v-alat', 'A_LAT', 'line 1', '(o4) non-positive A_LAT loud-stop (value domain)')
+
+   ! ---------- (q) collision-role keys (one positive chain + children) ----------
+   nfail0 = nfail
+   call read_input('build/input_case_w-pr-good.txt')
+   call sysdef_load('build/window_pair')
+   call list_atoms_load()
+   if (list_atoms%i_proj /= 1 .or. list_atoms%i_targ /= 2 .or. &
+       trim(list_atoms%frag(1)%name) /= 'frag_a' .or. &
+       trim(list_atoms%frag(2)%name) /= 'frag_b') then
+      print '(a)', 'FAIL (q1) role chain: the role rows or fragment names did not resolve'
+      nfail = nfail + 1
+   else
+      print '(a)', '(q1) role chain: PASS (PROJECTILE=frag_a / TARGET=Frag_B folded -> '// &
+         'i_proj=1, i_targ=2; frag%name carries the file stems)'
+   end if
+   call expect_loudstop_at('list_atoms_load', 'w-pr-noproj', 'PROJECTILE', 'missing', &
+        '(q2) gas pair missing PROJECTILE loud-stop (no positional default)')
+   call expect_loudstop_at('list_atoms_load', 'w-pr-notarg', 'TARGET', 'missing', &
+        '(q3) gas pair missing TARGET loud-stop')
+   call expect_loudstop_at('list_atoms_load', 'w-pr-unknown', 'PROJECTILE', 'no list_atoms fragment named', &
+        '(q4) unknown fragment name loud-stop (available names listed)')
+   call expect_loudstop_at('list_atoms_load', 'w-pr-same', 'TARGET', 'distinct', &
+        '(q5) PROJECTILE and TARGET naming the same fragment loud-stop')
+   call expect_loudstop_at('list_atoms_load', 'w-mol-proj', 'collision roles', '', &
+        '(q6) single-fragment molecular + PROJECTILE loud-stop (no collision roles)')
+   call expect_loudstop_at('list_atoms_load', 'w-surf-targ', 'TARGET', 'gas-pair', &
+        '(q7) surface + TARGET loud-stop (the surface is not an atom list fragment)')
+   call expect_loudstop_at('list_atoms_load', 'w-surf-noproj', 'PROJECTILE', 'missing', &
+        '(q8) surface missing PROJECTILE loud-stop')
 
    ! ---------- (p) slot-width families (children) ----------
    call expect_loudstop('w-title', 'TITLE',       'width 81',  '(p1) TITLE over its 80-wide slot loud-stop')
@@ -593,20 +722,66 @@ program check_input
    call expect_loudstop('w-sysd', 'SYSTEM_DIR',   'width 129', '(p3) SYSTEM_DIR over its 128-wide slot loud-stop')
    call expect_loudstop('w-obs',  'OBSERVABLES',  'width 257', '(p4) OBSERVABLES over its 256-wide slot loud-stop')
 
+   ! ---------- (r) declared container keys: declare -> admit -> pull -> audit ----------
+   call input_declare_keys([character(len=16) :: 'CK_REAL', 'CK_INT', 'CK_CHR', &
+                            'CK_R3', 'CK_STRAY'])
+   call write_sample('build/input_case_ckgood.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/sysdef_case_mol', &
+      'E_REL = 1.0', &
+      'B_MAX = 2.0', &
+      'R_SEP = 8.0', &
+      'DT = 0.01', &
+      'DIST_SCHEME = boltzmann', &
+      'CK_REAL = 1.5', &
+      'CK_INT = 7', &
+      'CK_CHR = weights.txt', &
+      'CK_R3 = 0.1, 0.2, 0.3' ])
+   call read_input('build/input_case_ckgood.txt')
+   ck_r = -1.0d0
+   ck_i = -1
+   ck_c = ''
+   ck_v3 = -1.0d0
+   call pull('CK_REAL', ck_r, ck_found)
+   call pull('CK_INT', ck_i)
+   call pull('CK_CHR', ck_c)
+   call pull('CK_R3', ck_v3)
+   call pull('CK_STRAY', ck_stray, ck_stray_found)   ! never buffered: default + found = F
+   call input_audit_declared()                       ! every buffered declared key consumed
+   if (ck_found .and. ck_r == 1.5d0 .and. ck_i == 7 .and. &
+       trim(ck_c) == 'weights.txt' .and. &
+       all(abs(ck_v3 - [0.1d0, 0.2d0, 0.3d0]) < 1.0d-12) .and. &
+       .not. ck_stray_found .and. ck_stray == 9.9d0) then
+      print '(a)', '(r1) declared-key channel: PASS (admission -> typed pulls -> audit clean)'
+   else
+      print '(a)', 'FAIL (r1) declared-key round-trip'
+      nfail = nfail + 1
+   end if
+   call write_case_ck('ck-audit', 'CK_STRAY = 5.0')
+   call expect_loudstop_at('input_audit_declared', 'ck-audit', 'CK_STRAY', '', &
+      '(r2) buffered-but-unconsumed key audit abort')
+   call write_case_ck('ck-undeclared', '')
+   call expect_loudstop_at('pull', 'ck-undeclared', 'not a declared container key', '', &
+      '(r3) undeclared pull abort')
+   call write_case_ck('ck-dbl', 'CK_REAL = 1.5')
+   call expect_loudstop_at('pull', 'ck-dbl', 'twice', '', '(r4) double-pull abort')
+   call write_case_ck('ck-empty', 'CK_REAL =')
+   call expect_loudstop('ck-empty', 'CK_REAL', 'empty container-parameter', &
+      '(r5) empty container-value abort')
+
    print '(a,i0,a)', '=== check_input: ', nfail, ' failure(s) ==='
    if (nfail > 0) stop 1
    stop 0
 
 contains
 
-   ! staged_row(key) - staging row index of a key (0 = not staged; a scan over the
+   ! staged_row(key) - buffer row index of a key (0 = not buffered; a scan over the
    ! public accessors, mirroring what the assembly wiring does to find member keys)
    function staged_row(key) result(idx)
       character(len=*), intent(in) :: key
       integer :: idx, j
       idx = 0
-      do j = 1, staging_n_rows()
-         if (trim(staging_key(j)) == trim(key)) then
+      do j = 1, buffer_n_rows()
+         if (trim(buffer_key(j)) == trim(key)) then
             idx = j
             return
          end if
@@ -631,11 +806,13 @@ contains
           observables%e_pot .or. .not. observables%e_tot .or. &
           trim(reactants%system_dir) /= 'build/sysdef_case_mol' .or. &
           reactants%e_rel /= 12.5d0 .or. reactants%b_max /= 3.0d0 .or. &
-          reactants%r_sep /= 9.75d0 .or. .not. ok_arr) then
+          reactants%r_sep /= 9.75d0 .or. .not. reactants%random_orient .or. &
+          reactants%bath /= 2 .or. reactants%n_bath /= 5 .or. reactants%dt_bath /= 0.025d0 .or. &
+          .not. ok_arr) then
          print '(a)', 'FAIL '//trim(label)//': slot mismatch'
          nfail = nfail + 1
       else
-         print '(a)', trim(label)//': PASS (23 keys -> exact slots; lowercase words, ISEED word-1-only)'
+         print '(a)', trim(label)//': PASS (27 keys -> exact slots; lowercase words, ISEED word-1-only)'
       end if
    end subroutine assert_full
 
@@ -657,6 +834,44 @@ contains
       call write_sample(fname, lines)
    end subroutine write_case
 
+   ! child_ck(mode) - the (r) children: declare the test vocabulary, read the
+   !                 case input, then drive the one bad channel of the mode
+   subroutine child_ck(mode)
+      character(len=*), intent(in) :: mode
+      real(8) :: v
+      call input_declare_keys([character(len=16) :: 'CK_REAL', 'CK_INT', 'CK_CHR', &
+                               'CK_R3', 'CK_STRAY'])
+      call read_input('build/input_case_'//trim(mode)//'.txt')
+      select case (trim(mode))
+      case ('ck-audit')
+         call input_audit_declared()          ! CK_STRAY buffered, never pulled
+      case ('ck-undeclared')
+         call pull('CK_NOPE', v)              ! outside the declared vocabulary
+      case ('ck-dbl')
+         call pull('CK_REAL', v)
+         call pull('CK_REAL', v)              ! one key, one consumer
+      case ('ck-empty')
+         continue                             ! the abort fired inside read_input
+      end select
+      print '(a)', 'child: NO LOUD-STOP (the ck chain returned - bug)'
+      stop 0
+   end subroutine child_ck
+
+   ! write_case_ck(cmode, extra) - the six required keys + one optional extra
+   !                 line (an empty extra leaves a blank line the parser skips)
+   subroutine write_case_ck(cmode, extra)
+      character(len=*), intent(in) :: cmode, extra
+      character(len=64) :: lines(7)
+      lines(1) = 'SYSTEM_DIR = build/sysdef_case_mol'
+      lines(2) = 'E_REL = 1.0'
+      lines(3) = 'B_MAX = 2.0'
+      lines(4) = 'R_SEP = 8.0'
+      lines(5) = 'DT = 0.01'
+      lines(6) = 'DIST_SCHEME = boltzmann'
+      lines(7) = extra
+      call write_sample('build/input_case_'//trim(cmode)//'.txt', lines)
+   end subroutine write_case_ck
+
    ! write one sample file, one array element per record (samples live under build/)
    subroutine write_sample(fname, lines)
       character(len=*), intent(in) :: fname
@@ -669,7 +884,7 @@ contains
       close (v)
    end subroutine write_sample
 
-   ! spawn the child for one bad case and assert the loud-stop: nonzero exit,
+   ! spawn the child for one bad case and assert the named abort: nonzero exit,
    ! stderr names the authority (read_input) and carries the expected key /
    ! extra needle (an empty needle is skipped)
    subroutine expect_loudstop(cmode, key, needle, label)
@@ -678,7 +893,7 @@ contains
    end subroutine expect_loudstop
 
    ! the authority-parameterized form: the window criteria stop inside
-   ! roster_load (the paradigm condition is assembly-side), so the asserted
+   ! list_atoms_load (the paradigm condition is assembly-side), so the asserted
    ! stderr authority is the assembly face, not read_input
    subroutine expect_loudstop_at(who, cmode, key, needle, label)
       character(len=*), intent(in) :: who, cmode, key, needle, label
@@ -724,7 +939,7 @@ contains
 
    ! write one width-family bad case: the offending key at line 1 with a value w
    ! characters wide, then the minimal six with the offending key's own row
-   ! replaced (a duplicate required key would loud-stop first and mask the stop
+   ! replaced (a duplicate required key would named abort first and mask the stop
    ! under test)
    subroutine write_width_case(cmode, key, w)
       character(len=*), intent(in) :: cmode, key

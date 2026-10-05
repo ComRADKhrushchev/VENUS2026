@@ -21,3 +21,5 @@ N_TRAJ = 1
 MAX_STEPS = 10
 ISEED = 20260921
 GWRITE_LEVEL = 2
+# ---- 容器键（reference 容器，原 reference_pars.txt 并入程序输入） ----
+K_HARM = 0.04

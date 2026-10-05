@@ -1,6 +1,6 @@
 # case_chain_frequencies/boltz —— boltzmann 腿: HCl 载体, 全 3N 谱 -> 几何分布采样
 # 体系: HCl 单片段(不等质量——两个可分辨解析频率锐化谱锚); 容器: reference 谐振井
-# (reference_pars.txt: 仅 K_HARM = 0.04)。链级演示由 scripts/probe_chain_freq.f90 驱动
+# (容器键: 仅 K_HARM = 0.04)。链级演示由 scripts/probe_chain_freq.f90 驱动
 # (驱动程序式: 装配期频率导出通道程序内未接线——README 第 2 节查明记录)。
 # DIST_SCHEME = ROTATION + J_ROT = 3 为无害占位成员(两 seam 的未选中守卫跳过
 # boltzmann/normalmode 的成员 init; 探针在装配后改写 dist_scheme 再直调成员公开面)。
@@ -21,3 +21,5 @@ N_TRAJ = 1
 MAX_STEPS = 10
 ISEED = 20260921
 GWRITE_LEVEL = 2
+# ---- 容器键（reference 容器，原 reference_pars.txt 并入程序输入） ----
+K_HARM = 0.04

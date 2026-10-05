@@ -1,22 +1,24 @@
-# case_surface_window —— 表面窗口端到端（POSCAR 胞 + A_LAT/BOXPAD + verlet）
+# case_surface_window —— 表面窗口端到端（POSCAR 胞 + A_LAT + verlet）
 # 体系：system/projectile.poscar 一个文件（2x2 胞 a=2·A_LAT=6.0 A 承载 H2 弹丸，含速度块）
-# 容器：reference 谐振井（reference_pars.txt：K_HARM/Q_TERM；无 E_SPLIT——合法无分类跑）
+# 容器：reference 谐振井（容器键：K_HARM/Q_TERM；无 E_SPLIT——合法无分类跑）
 # 预期锚见 README.md 第 3 节（判据先行：先写后跑）
 SYSTEM_DIR = system
 TITLE = surface window case - H2 over 2x2 cell in reference well, verlet
 E_REL = 200.0
-B_MAX = 2.0
 R_SEP = 8.0
 DT = 0.05
 DIST_SCHEME = THERMALIZE
+PROJECTILE = projectile
 T_EQ = 300.0
 N_EQ = 25
 DT_EQ = 0.05
-N_B = 1
+N_B = 0
 N_AIM = 1
 N_TRAJ = 8
 MAX_STEPS = 400
 ISEED = 20260916
 GWRITE_LEVEL = 2
 A_LAT = 3.0
-BOXPAD = 2.0
+# ---- 容器键（reference 容器，原 reference_pars.txt 并入程序输入） ----
+K_HARM = 0.04
+Q_TERM = 9.5

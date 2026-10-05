@@ -1,0 +1,10 @@
+Au(111) S-Y substrate pair - hexagonal cell a=2.95 A (the engine period cons), vacuum a3; S at origin, ghost Y at the 0.9 A oscillator offset (roster: atoms 2,3 after the incident C; surface paradigm: cell-carrying substrate file)
+1.0
+  2.9500000000  0.0000000000  0.0000000000
+ -1.4750000000  2.5547749410  0.0000000000
+  0.0000000000  0.0000000000 20.0000000000
+Au
+2
+Cartesian
+  0.0000000000  0.0000000000  0.0000000000
+  0.0000000000  0.0000000000  0.9000000000

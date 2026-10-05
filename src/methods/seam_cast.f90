@@ -1,11 +1,11 @@
 !=====================================================================
-! seam_cast.f90 - staged-string -> number cast for the assembly seam
+! seam_cast.f90 - buffered-string -> number cast for the assembly seam
 ! Design:
 !   Pure form: key name, raw string and source line in, converted
-!   number out - no member word, no driver symbol, no staging accessor
+!   number out - no member word, no driver symbol, no buffer accessor
 !   (the caller hands what it already hoisted).
 !   An unreadable value (e.g. a hand typo like T_GLO = 3O0) is a named
-!   loud-stop here, never a bare runtime read error dying mid-assembly;
+!   named abort here, never a bare runtime read error dying mid-assembly;
 !   the message shape (key + line + the unreadable value, quoted)
 !   matches the input framework's own value parsers.
 !=====================================================================
@@ -15,8 +15,8 @@ module seam_cast
    public :: seam_real, seam_int
 contains
    !------------------------------------------------------------------
-   ! seam_real(key, sval, ln, rval) - cast one staged value to real(8);
-   !              an unreadable string loud-stops named (STOP 1)
+   ! seam_real(key, sval, ln, rval) - cast one buffered value to real(8);
+   !              an unreadable string aborts with a named error (STOP 1)
    subroutine seam_real(key, sval, ln, rval)
       character(len=*), intent(in) :: key, sval
       integer, intent(in) :: ln
@@ -26,13 +26,13 @@ contains
       if (ios == 0) return
       write (0, '(a)') 'seam_cast: key '//trim(key)//trim(seam_tag(ln))// &
                        ': bad real value "'//trim(sval)//'"'
-      write (0, '(a)') 'seam_cast: loud-stop (the member parameter is not loaded)'
+      write (0, '(a)') 'seam_cast: fatal (the member parameter is not loaded)'
       stop 1
    end subroutine seam_real
 
    !------------------------------------------------------------------
-   ! seam_int(key, sval, ln, ival) - cast one staged value to integer;
-   !              an unreadable string loud-stops named (STOP 1)
+   ! seam_int(key, sval, ln, ival) - cast one buffered value to integer;
+   !              an unreadable string aborts with a named error (STOP 1)
    subroutine seam_int(key, sval, ln, ival)
       character(len=*), intent(in) :: key, sval
       integer, intent(in) :: ln
@@ -42,11 +42,11 @@ contains
       if (ios == 0) return
       write (0, '(a)') 'seam_cast: key '//trim(key)//trim(seam_tag(ln))// &
                        ': bad integer value "'//trim(sval)//'"'
-      write (0, '(a)') 'seam_cast: loud-stop (the member parameter is not loaded)'
+      write (0, '(a)') 'seam_cast: fatal (the member parameter is not loaded)'
       stop 1
    end subroutine seam_int
 
-   ! seam_tag(ln) - the source-line suffix of a message (a staged key arrives
+   ! seam_tag(ln) - the source-line suffix of a message (a buffered key arrives
    !                from a data line, ln >= 1; ln <= 0 falls back to the
    !                default tag)
    function seam_tag(ln) result(tag)

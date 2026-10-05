@@ -1,0 +1,36 @@
+ NN weights loaded: all            7  types from nn_weights.txt
+   Total weights allocated:          486
+   Type           1 : NH=           8   NW/site=          25   total=          75
+   Type           2 : NH=           9   NW/site=          28   total=          84
+   Type           3 : NH=          11   NW/site=          34   total=         102
+   Type           4 : NH=          11   NW/site=          34   total=         102
+   Type           5 : NH=           9   NW/site=          28   total=          84
+   Type           6 : NH=           4   NW/site=          13   total=          39
+   Type           7 : NH=           0   NW/site=           0   total=           0
+substrate oscillator k factor =  1.000
+1D drift(AFV): final e_tot - e0 =      3.28131  [dt= 0.050 msbstp=   4]
+  bath level  6 spin1: dn= -0.0057  eps-eV=  -1.489
+  bath level  7 spin1: dn= -0.0107  eps-eV=  -0.992
+  bath level  8 spin1: dn= -0.0362  eps-eV=  -0.561
+  bath level  9 spin1: dn= -0.2246  eps-eV=  -0.236
+  bath level 10 spin1: dn= -0.2129  eps-eV=  -0.046
+  bath level 11 spin1: dn=  0.0817  eps-eV=   0.046
+  bath level 12 spin1: dn=  0.0979  eps-eV=   0.236
+  bath level 13 spin1: dn=  0.2099  eps-eV=   0.561
+  bath level 14 spin1: dn=  0.0762  eps-eV=   0.992
+  bath level 15 spin1: dn=  0.0219  eps-eV=   1.489
+  bath level  6 spin2: dn= -0.0180  eps-eV=  -1.489
+  bath level  7 spin2: dn= -0.0848  eps-eV=  -0.992
+  bath level  8 spin2: dn= -0.1412  eps-eV=  -0.561
+  bath level  9 spin2: dn= -0.0293  eps-eV=  -0.236
+  bath level 10 spin2: dn= -0.3166  eps-eV=  -0.046
+  bath level 11 spin2: dn=  0.2961  eps-eV=   0.046
+  bath level 12 spin2: dn=  0.1977  eps-eV=   0.236
+  bath level 13 spin2: dn=  0.0547  eps-eV=   0.561
+  bath level 14 spin2: dn=  0.0279  eps-eV=   0.992
+  bath level 15 spin2: dn=  0.0097  eps-eV=   1.489
+  bath level 16 spin2: dn=  0.0026  eps-eV=   2.011
+  bath level 20 spin2: dn=  0.0028  eps-eV=   3.454
+  bath: sum(dn*eps) =   0.7422   sum|dn| =   2.1694
+  impurity n1up/n2up/n1dn/n2dn =  0.9991  0.0012  0.9983  0.0008
+  config weight  3P(parallel) / 1D(paired) =  0.0020  0.0020

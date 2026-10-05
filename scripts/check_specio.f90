@@ -1,10 +1,10 @@
 !=====================================================================
-! check_specio.f90 - C4.1 acceptance criteria program (criteria defined FIRST in
-!                    docs/plans/C4.md; this program executes them)
+! check_specio.f90 - system-file reader criteria program (criteria defined FIRST in
+!                    this header; this program executes them)
 ! Compile (from src/; module first, -Jbuild keeps the .mod out of the source tree):
 !   gfortran -Jbuild utils/specio.f90 ../scripts/check_specio.f90 -o build/check_specio.exe
 ! All sample files are written under build/ by this program - the source tree stays clean.
-! Criteria (C4.md C4.1):
+! Criteria:
 !   (a) read_xyz clean sample: per-field names/coordinates check (exact values),
 !       errmsg blank on the clean parse
 !   (b) read_xyz trailing columns: extra fields after "Symbol x y z" are read past,
@@ -208,7 +208,11 @@ program check_specio
       print '(a)', 'FAIL (c): case/blank normalization broken'
       nfail = nfail + 1
    end if
-   if (nfail == nfail0) print '(a)', '(c) elem_mass: PASS (H/C/Au/He IUPAC values, case normalization)'
+   if (elem_mass('D') /= 2.014d0 .or. elem_mass('d') /= elem_mass('D')) then
+      print '(a)', 'FAIL (c): deuterium alias missing or case-broken (need 2.014 amu)'
+      nfail = nfail + 1
+   end if
+   if (nfail == nfail0) print '(a)', '(c) elem_mass: PASS (H/C/Au/He IUPAC values, D isotope 2.014, case normalization)'
 
    ! ---------- (d) read_poscar clean Direct sample ----------
    nfail0 = nfail

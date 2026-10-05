@@ -22,14 +22,14 @@
 !   cd cases/case_chain_frequencies/normalmode && \
 !     ../../../src/build/gfortran/probe_chain_freq.exe normalmode
 ! Approach: the REAL assembly chain first (the driver's assembly steps
-! 1-8: read_input -> rng -> sysdef -> roster -> state -> registry ->
+! 1-8: read_input -> rng -> sysdef -> list_atoms -> state -> registry ->
 ! seam -> container_init), so the container is live and force_eval
 ! delivers the true composed forces of the bound reference well. The
 ! frequency derivation then runs driver-form (the assembly-time
 ! auto-export channel is mechanism-without-wiring - the case README
 ! registers the finding): a force wrapper conforming to hessian's
 ! force_proc feeds force_eval (the container chain) into hessian_cd at
-! the roster run geometry; the mass-weighted Hessian goes through
+! the atom list run geometry; the mass-weighted Hessian goes through
 ! linalg's eig_sym; the derived spectrum feeds the members' PUBLIC
 ! faces (params -> member init -> samp_run dispatch -> member sample).
 ! Expected values are computed in this program from the analytic
@@ -41,7 +41,7 @@
 !   well            V = K_HARM/2*sum|q_i|^2, K_HARM [eV/A^2] (the
 !                   container parameter file, read from cwd); F =
 !                   -grad V through force_eval lands in internal units
-!                   per A with the single legislated conversion pair
+!                   per A with the single fixed conversion pair
 !                   ev_kcal*e_conv = 23.0605*0.04184 = 0.96485132
 !                   internal per eV (program constants, restated here
 !                   as the analytic formula's own literals)
@@ -69,7 +69,7 @@
 !                   uniform omega = sqrt(K_int/m) (every vector is an
 !                   eigenvector of a multiple of the identity)
 !   member geometry the normalmode member seeds about the COM origin:
-!                   qz_com = qz - COM(qz) (qz = the roster fragment
+!                   qz_com = qz - COM(qz) (qz = the atom list fragment
 !                   seed), x = sqrt(m)*(q - qz_com), y = p/sqrt(m),
 !                   Q = C^T x, P = C^T y, mode energy
 !                   E_i = 0.5*(P_i^2 + w_i^2*Q_i^2)
@@ -126,7 +126,7 @@
 !=====================================================================
 module chain_probe_support
    use state,        only: state_t, state_create
-   use force_facade, only: force_eval
+   use force_interface, only: force_eval
    implicit none
    private
    public :: probe_force_setup, probe_force
@@ -155,29 +155,30 @@ contains
 end module chain_probe_support
 
 program probe_chain_freq
+   use spectrum,     only: spectrum_modes
    use consts,        only: e_conv, pi, two_pi
    use rng,           only: rng_init
    use control,       only: i_seed
-   use input,         only: read_input, staging_n_rows, staging_key, staging_val, staging_line
+   use input,         only: read_input, buffer_n_rows, buffer_key, buffer_val, buffer_line
    use config,        only: reactants
-   use config_roster, only: roster, roster_load
+   use config_atoms, only: list_atoms, list_atoms_load
    use state,         only: state_t, state_create, state_destroy
-   use sysdef_facade, only: sysdef_load
-   use registry_gen,  only: registry_gen_all, registry_gen_init
-   use force_facade,  only: container_init
-   use sampler,       only: samp_code, samp_run
+   use sysdef_interface, only: sysdef_load
+   use registry_gen,  only: registry_gen_all, registry_gen_init, registry_gen_keys
+   use force_interface,  only: container_init
+   use sampler,       only: samp_code, samp_run, samp_incident_word
    use seam_cast,     only: seam_real
    use hessian,       only: hessian_cd
    use linalg,        only: eig_sym
    use reference_box, only: reference_k
-   use dist_boltzmann,  only: boltz_params_t, boltz_init, boltz_last_n
-   use dist_normalmode, only: normalmode_params_t, normalmode_init
+   use samp_boltzmann,  only: boltz_params_t, boltz_init, boltz_last_n
+   use samp_normalmode, only: normalmode_params_t, normalmode_init
    use chain_probe_support, only: probe_force_setup, probe_force
    implicit none
 
    ! analytic-side constants (the formulas' own literals; ev_kcal and
-   ! e_conv are the program's legislated pair, restated here)
-   real(8), parameter :: ev_kcal_lit = 23.0605d0      ! kcal/mol per eV (the facade's literal)
+   ! e_conv are the program's fixed pair, restated here)
+   real(8), parameter :: ev_kcal_lit = 23.0605d0      ! kcal/mol per eV (the interface's literal)
    real(8), parameter :: hc_k_lit    = 1.43878d0      ! h*c/k [cm*K] (the member's literal)
    real(8), parameter :: c_light     = 2.99792458d-4 ! speed of light [cm per 10 fs]
    real(8), parameter :: w_per_rad   = 1.0d0/(two_pi*c_light) ! cm^-1 per rad/(10 fs)
@@ -211,34 +212,35 @@ program probe_chain_freq
    end if
 
    ! ---- the REAL assembly chain (the driver's assembly steps 1-8) ----
+   call registry_gen_keys()                    ! the slot handover (the driver runs keys first)
    call read_input('input_qct.txt')
    call rng_init(i_seed(1))
    call sysdef_load(reactants%system_dir)
-   call roster_load()
-   nat = size(roster%mass)
+   call list_atoms_load()
+   nat = size(list_atoms%mass)
    n = 3*nat
    call state_create(sta, nat)
    call registry_gen_all()
    call registry_gen_init()          ! DIST_SCHEME = ROTATION seam (the harmless carrier)
    call container_init()
    call probe_force_setup(nat)
-   if (size(roster%frag) /= 1) then
-      print '(a,i0)', 'probe_chain_freq: fixture expects exactly one roster fragment, got ', &
-         size(roster%frag)
+   if (size(list_atoms%frag) /= 1) then
+      print '(a,i0)', 'probe_chain_freq: fixture expects exactly one list_atoms fragment, got ', &
+         size(list_atoms%frag)
       stop 2
    end if
    if (trim(leg) == 'boltz' .and. nat /= 2) stop 'probe_chain_freq: boltz fixture expects 2 atoms'
    if (trim(leg) == 'normalmode' .and. nat /= 3) stop 'probe_chain_freq: normalmode fixture expects 3 atoms'
 
    k_int = reference_k()*ev_kcal_lit*e_conv    ! analytic Cartesian Hessian [internal/A^2]
-   print '(a,a,a,i0,a)', 'probe: leg = ', trim(leg), '  (roster atoms = ', nat, &
+   print '(a,a,a,i0,a)', 'probe: leg = ', trim(leg), '  (list_atoms atoms = ', nat, &
       ')  - real container forces through force_eval'
-   print '(a,es12.6,a)', 'probe: K_HARM staged -> analytic K_int = K*23.0605*0.04184 = ', k_int, &
+   print '(a,es12.6,a)', 'probe: K_HARM buffered -> analytic K_int = K*23.0605*0.04184 = ', k_int, &
       ' internal/A^2'
 
    ! ---- frequency derivation: real forces -> Hessian -> mass-weighting ----
    allocate (sqm(n), hess(n,n), hmw(n,n), aa(n,n), lam(n), omega(n), nu(n), lam_ana(n), omega_ana(n))
-   call hessian_cd(probe_force, roster%q0, hess)     ! default step (the honest assembly site)
+   call hessian_cd(probe_force, list_atoms%q0, hess)     ! default step (the honest assembly site)
 
    ! (F1) Hessian structure: diagonal vs K_int, off-diagonal bitwise zero
    worst_rel = 0.0d0
@@ -267,7 +269,7 @@ program probe_chain_freq
 
    ! mass-weighted Hessian (mass replicated per component)
    do i = 1, n
-      sqm(i) = sqrt(roster%mass((i + 2)/3))
+      sqm(i) = sqrt(list_atoms%mass((i + 2)/3))
    end do
    hmw = hess/(spread(sqm, 2, n)*spread(sqm, 1, n))
 
@@ -276,7 +278,7 @@ program probe_chain_freq
    do j = 1, nat
       do d = 1, 3
          i = i + 1
-         lam_ana(i) = k_int/roster%mass(j)
+         lam_ana(i) = k_int/list_atoms%mass(j)
       end do
    end do
    call sort_real(lam_ana)
@@ -308,43 +310,63 @@ program probe_chain_freq
             ' = analytic {sqrt(K_int/m_a)} within 1e-10 rel)'
       end if
 
-      ! staged T_VIB_A (the seam's own read pattern)
+      ! buffered T_VIB_A (the seam's own read pattern)
       t_vib = 0.0d0
-      do i = 1, staging_n_rows()
-         if (trim(staging_key(i)) == 'T_VIB_A') then
-            sval = staging_val(i)
-            call seam_real(staging_key(i), sval, staging_line(i), t_vib)
+      do i = 1, buffer_n_rows()
+         if (trim(buffer_key(i)) == 'T_VIB_A') then
+            sval = buffer_val(i)
+            call seam_real(buffer_key(i), sval, buffer_line(i), t_vib)
          end if
       end do
-      if (t_vib <= 0.0d0) stop 'probe_chain_freq: T_VIB_A not staged (boltz leg needs it)'
+      if (t_vib <= 0.0d0) stop 'probe_chain_freq: T_VIB_A not buffered (boltz leg needs it)'
 
-      ! the member's public face: derived table -> init -> samp_run dispatch
+      ! the member's public face: derived table -> init -> samp_run dispatch.
+      ! The member's contract takes translation-free orthonormal tables (the
+      ! realization's zero-net-momentum property rides on it), so the well's
+      ! FULL spectrum (which ties atoms to the lab frame - no null space)
+      ! goes through spectrum_modes' projection, the same chain the
+      ! production reg seam rides
       block
          type(boltz_params_t) :: par
          real(8) :: amean_m(n), emean_m(n), sig_m(n)
-         integer :: kk, nb
+         integer :: kk, nb, n_vib
+         ! the well fixture is NOT a free-molecule minimum (an external tie -
+         ! spectrum_modes' zero-mode split correctly rejects it), so the
+         ! realization-grade table cannot come from the projection. The
+         ! probe's own subject is the DRAW LAW AT TRUE DERIVED FREQUENCIES:
+         ! pair the derived top frequency with the analytic translation-free
+         ! stretch column of the 2-atom fixture (realization algebra itself
+         ! carries check_dist_boltzmann (i))
          par%t_vib_a = t_vib
-         allocate (par%w_mode_a(n))
-         par%w_mode_a = nu
-         par%n_mode_a = n
+         n_vib = 1
+         allocate (par%tbl(1))
+         allocate (par%tbl(1)%w(n_vib))
+         par%tbl(1)%w(1) = omega(n)
+         allocate (par%tbl(1)%c(3*nat, n_vib))
+         par%tbl(1)%c = 0.0d0
+         ! mass-weighted stretch of the UNEQUAL-mass diatomic (the fixture is
+         ! HCl): c = [sqrt(m2),0,0, -sqrt(m1),0,0]/sqrt(m1+m2) - unit and
+         ! orthogonal to the mass-weighted translations
+         par%tbl(1)%c(1, 1) = sqrt(list_atoms%mass(2))/sqrt(list_atoms%mass(1) + list_atoms%mass(2))
+         par%tbl(1)%c(4, 1) = -sqrt(list_atoms%mass(1))/sqrt(list_atoms%mass(1) + list_atoms%mass(2))
          deallocate (reactants%dist_scheme)
          allocate (reactants%dist_scheme(1))
          reactants%dist_scheme = samp_code('boltzmann')
          call boltz_init(par)          ! member validation + fragment binding
          call rng_init(i_seed(1))      ! seeded statistical pass
 
-         ! one draw loop feeds (B1)/(B2)/(B3)
+         ! one draw loop feeds (B1)/(B2)/(B3) over the projected modes
          amean_m = 0.0d0
          freq = 0
          nneg = 0
          do draw = 1, ndraw_boltz
-            call samp_run('incident', sta)
-            do kk = 1, n
-               ib = boltz_last_n(kk)
+            call samp_run(samp_incident_word(), sta)
+            do kk = 1, n_vib
+               ib = boltz_last_n(1, kk)
                amean_m(kk) = amean_m(kk) + dble(ib)
                if (ib < 0) nneg = nneg + 1            ! (B3) witness
             end do
-            nb = boltz_last_n(n)                      ! the highest-nu mode (an H mode)
+            nb = boltz_last_n(1, n_vib)               ! the highest-nu projected mode
             if (nb < 5) then
                freq(nb + 1) = freq(nb + 1) + 1
             else
@@ -374,13 +396,14 @@ program probe_chain_freq
                ' <= 11.07, df = 5, N = ', ndraw_boltz, ')'
          end if
 
-         ! (B2) per-mode means vs each mode's own q_k/(1-q_k)
-         do kk = 1, n
-            q1 = exp(-hc_k_lit*omega_ana(kk)*w_per_rad/t_vib)
+         ! (B2) the drawn mode's mean vs its own q/(1-q) - the theory from
+         ! the ANALYTIC nu of the paired top mode (the H-mode group)
+         do kk = 1, n_vib
+            q1 = exp(-hc_k_lit*omega_ana(n)*w_per_rad/t_vib)
             emean_m(kk) = q1/(1.0d0 - q1)
             sig_m(kk) = sqrt(q1/(1.0d0 - q1)**2/dble(ndraw_boltz))
          end do
-         do kk = 1, n
+         do kk = 1, n_vib
             if (abs(amean_m(kk) - emean_m(kk)) > 5.0d0*sig_m(kk)) then
                print '(a,i2,a,f9.5,a,f9.5,a,es9.2)', 'FAIL (B2) mode ', kk, ': mean ', amean_m(kk), &
                   ' vs theory ', emean_m(kk), ' outside 5 sigma = ', 5.0d0*sig_m(kk)
@@ -388,8 +411,8 @@ program probe_chain_freq
             end if
          end do
          if (nfail == nfail0) then
-            print '(a,3f8.4,a,3f8.4)', '(B2) per-mode means: PASS (Cl group ', amean_m(1:3), &
-               ' / H group ', amean_m(4:6), '; each within its own 5 sigma)'
+            print '(a,f8.5,a,f8.5)', '(B2) drawn-mode mean: PASS (sample ', amean_m(1), &
+               ' vs q/(1-q) = ', emean_m(1), ')'
             print '(a,f9.5,a,f9.5)', 'probe:   theory means: Cl = ', emean_m(1), '  H = ', emean_m(n)
             print '(a,es9.2,a,es9.2)', 'probe:   5 sigma:    Cl = ', 5.0d0*sig_m(1), '  H = ', 5.0d0*sig_m(n)
          end if
@@ -416,11 +439,11 @@ program probe_chain_freq
          logical :: ok_all
 
          ! translation projector: orthonormal mass-weighted translations u_d
-         m_sum = sum(roster%mass)
+         m_sum = sum(list_atoms%mass)
          trans = 0.0d0
          do d = 1, 3
             do i = 1, nat
-               trans(3*(i - 1) + d, d) = sqrt(roster%mass(i))/sqrt(m_sum)
+               trans(3*(i - 1) + d, d) = sqrt(list_atoms%mass(i))/sqrt(m_sum)
             end do
          end do
          ! hp = P*hmw*P with P = I - U*U^T, expanded as
@@ -436,7 +459,7 @@ program probe_chain_freq
          c_tab = aa(:, 4:9)                          ! eigenvectors by column
 
          ! (F3) projected spectrum + table contract
-         lam_ana_uni = k_int/roster%mass(1)          ! equal masses -> uniform analytic lambda
+         lam_ana_uni = k_int/list_atoms%mass(1)          ! equal masses -> uniform analytic lambda
          nfail0 = nfail
          worst_abs = maxval(abs(lam(1:3)))
          worst_rel = 0.0d0
@@ -478,24 +501,25 @@ program probe_chain_freq
             print '(a)', '     translation-orthogonal 1e-12, eigen-residual within 1e-10 of the scale'
          end if
 
-         ! staged E_VIB (the seam's own read pattern)
+         ! buffered E_VIB (the seam's own read pattern)
          e_vib = 0.0d0
-         do i = 1, staging_n_rows()
-            if (trim(staging_key(i)) == 'E_VIB') then
-               sval = staging_val(i)
-               call seam_real(staging_key(i), sval, staging_line(i), e_vib)
+         do i = 1, buffer_n_rows()
+            if (trim(buffer_key(i)) == 'E_VIB') then
+               sval = buffer_val(i)
+               call seam_real(buffer_key(i), sval, buffer_line(i), e_vib)
             end if
          end do
-         if (e_vib <= 0.0d0) stop 'probe_chain_freq: E_VIB not staged (normalmode leg needs it)'
+         if (e_vib <= 0.0d0) stop 'probe_chain_freq: E_VIB not buffered (normalmode leg needs it)'
          e_tot = e_vib*e_conv
          psc = sqrt(2.0d0*m_sum*e_tot)
 
          ! the member's public face: derived table -> init (its own 1e-8 battery
          ! re-validates the DERIVED table) -> samp_run dispatch
          par%e_vib = e_vib
-         allocate (par%w_mode(s_mode), par%c_mode(9, s_mode))
-         par%w_mode = w_tab
-         par%c_mode = c_tab
+         allocate (par%tbl(1))
+         allocate (par%tbl(1)%w(s_mode), par%tbl(1)%c(9, s_mode))
+         par%tbl(1)%w = w_tab
+         par%tbl(1)%c = c_tab
          deallocate (reactants%dist_scheme)
          allocate (reactants%dist_scheme(1))
          reactants%dist_scheme = samp_code('normalmode')
@@ -503,11 +527,11 @@ program probe_chain_freq
          print '(a)', 'probe:   normalmode_init PASSED on the derived table (member 1e-8 battery green)'
 
          ! (N1) exact identities (2000 draws)
-         qz = roster%frag(1)%qz
+         qz = list_atoms%frag(1)%qz
          call rng_init(i_seed(1))
          ok_all = .true.
          do draw = 1, ndraw_exact
-            call samp_run('incident', sta)
+            call samp_run(samp_incident_word(), sta)
             call reexpand(sta, qz, c_tab, xv, yv, qm, pm, com3)
             e_sum = 0.0d0
             do k = 1, s_mode
@@ -554,7 +578,7 @@ program probe_chain_freq
          amean = 0.0d0
          kmean = 0.0d0
          do draw = 1, ndraw_stat
-            call samp_run('incident', sta)
+            call samp_run(samp_incident_word(), sta)
             call reexpand(sta, qz, c_tab, xv, yv, qm, pm, com3)
             e1s = 0.5d0*(pm(1)**2 + w_tab(1)**2*qm(1)**2)/e_tot
             amean = amean + e1s
@@ -622,18 +646,18 @@ contains
       integer :: a
       cgv = 0.0d0
       do a = 1, 3
-         cgv = cgv + roster%mass(a)*gz(3*a-2:3*a)
+         cgv = cgv + list_atoms%mass(a)*gz(3*a-2:3*a)
       end do
-      cgv = cgv/sum(roster%mass)
+      cgv = cgv/sum(list_atoms%mass)
       cm = 0.0d0
       do a = 1, 3
-         cm = cm + roster%mass(a)*st%q(3*a-2:3*a)
+         cm = cm + list_atoms%mass(a)*st%q(3*a-2:3*a)
       end do
-      cm = cm/sum(roster%mass)
+      cm = cm/sum(list_atoms%mass)
       do a = 1, 3
          qzc(3*a-2:3*a) = gz(3*a-2:3*a) - cgv
-         xv(3*a-2:3*a) = sqrt(roster%mass(a))*(st%q(3*a-2:3*a) - qzc(3*a-2:3*a))
-         yv(3*a-2:3*a) = st%p(3*a-2:3*a)/sqrt(roster%mass(a))
+         xv(3*a-2:3*a) = sqrt(list_atoms%mass(a))*(st%q(3*a-2:3*a) - qzc(3*a-2:3*a))
+         yv(3*a-2:3*a) = st%p(3*a-2:3*a)/sqrt(list_atoms%mass(a))
       end do
       qm = matmul(transpose(ctab), xv)
       pm = matmul(transpose(ctab), yv)

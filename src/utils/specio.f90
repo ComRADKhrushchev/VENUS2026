@@ -8,7 +8,7 @@
 !   a new format extends the reader member set, never the existing
 !   signatures. Readers are pure unit consumers (the caller opens/positions/
 !   closes); malformed input is data - the soft ok/errmsg channel, never a
-!   loud-stop in a reader.
+!   named abort in a reader.
 !=====================================================================
 module specio
    implicit none
@@ -74,17 +74,17 @@ contains
                                    ! names)
       character(len=*), intent(out) :: title  ! line-1 comment (the reactant title; free
                                    ! text by definition, carried out for diagnostics and
-                                   ! roster naming - never interpreted)
+                                   ! list_atoms naming - never interpreted)
       real(8), intent(out) :: cell(3,3)        ! lattice vectors by row [Å] (universal
                                    ! scaling applied)
       character(len=4), allocatable, intent(out) :: names(:)  ! per-atom element symbols
                                    ! [-] (species blocks expanded by the counts line;
-                                   ! len=4 matches roster%symb)
+                                   ! len=4 matches list_atoms%symb)
       real(8), allocatable, intent(out) :: xyz(:,:)  ! per-atom Cartesian coordinates [Å]
                                    ! (3 x natoms, one column per atom)
       logical, intent(out) :: ok                ! clean-parse flag (malformed input is data,
                                    ! not a program fault - soft error channel, no
-                                   ! loud-stop in a reader)
+                                   ! named abort in a reader)
       character(len=*), intent(out), optional :: errmsg  ! failure description (names the
                                    ! offending line; meaningful only when ok = .false.)
       character(len=512) :: line
@@ -295,12 +295,12 @@ contains
       integer, intent(in) :: u    ! unit number (the caller opens/positions and closes the
                                    ! file - pure unit consumer, no file names)
       character(len=4), allocatable, intent(out) :: names(:)  ! per-atom element symbols
-                                   ! [-] (len=4 matches roster%symb)
+                                   ! [-] (len=4 matches list_atoms%symb)
       real(8), allocatable, intent(out) :: xyz(:,:)  ! per-atom Cartesian coordinates [Å]
                                    ! (3 x natoms, one column per atom; Å per the common
                                    ! convention)
       logical, intent(out) :: ok                ! clean-parse flag (soft error channel,
-                                   ! same statute as read_poscar)
+                                   ! same rule as read_poscar)
       character(len=*), intent(out), optional :: errmsg  ! failure description (names the
                                    ! offending row; meaningful only when ok = .false.)
       character(len=512) :: line
@@ -379,14 +379,21 @@ contains
       norm = trim(adjustl(symbol))
       norm(1:1) = upcase(norm(1:1))
       norm(2:2) = dncase(norm(2:2))
-      ! 2. linear scan of tbl_symb for the match; hit -> m = tbl_mass(row)
+      ! 2. the deuterium alias (an isotope, not an element - kept out of the
+      !    118-row table to preserve the Z indexing; 2.014 amu is a constant
+      !    of the record, never re-derived)
+      if (norm == 'D') then
+         m = 2.014d0
+         return
+      end if
+      ! 3. linear scan of tbl_symb for the match; hit -> m = tbl_mass(row)
       do i = 1, n_elem
          if (tbl_symb(i) == norm) then
             m = tbl_mass(i)
             return
          end if
       end do
-      ! 3. miss -> loud-stop naming the symbol (the pure-function channel has no
+      ! 4. miss -> named abort naming the symbol (the pure-function channel has no
       !    soft-error return and an unusable symbol admits no default fallback - unlike
       !    the readers' ok/errmsg channel, this is a hard stop by design)
       write (0, '(a)') 'elem_mass: unknown element symbol: '//trim(symbol)

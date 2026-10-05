@@ -7,7 +7,7 @@
 #   glo: S1/S2/S3/G1/G2 全绿（探针 14 项全 PASS，相对误差位级 0）
 
 ## thermalize/（stdout）
-assembly complete: trajectories=32 atoms=4 fragments=1 paradigm=0 members=11 init=ok columns=3
+assembly complete: trajectories=32 atoms=4 fragments=1 paradigm=0 members=12 init=ok columns=3
 statistics: trajectories=32 valid=32
 outcome counts: none (no classification bound - skipped)
 conservation drift: trajectories=32 max|e_fin-e0|=  2.9746E-06 kcal/mol
@@ -15,7 +15,7 @@ histograms: rows=32 files=hist_e_rel.dat hist_thta.dat
 timing: cpu=    7.38 s
 
 ## thermostat/（stdout）
-assembly complete: trajectories=32 atoms=4 fragments=1 paradigm=0 members=11 init=ok columns=3
+assembly complete: trajectories=32 atoms=4 fragments=1 paradigm=0 members=12 init=ok columns=3
 statistics: trajectories=32 valid=32
 outcome counts: none (no classification bound - skipped)
 conservation drift: trajectories=32 max|e_fin-e0|=  1.7462E-05 kcal/mol
@@ -23,7 +23,7 @@ histograms: rows=32 files=hist_e_rel.dat hist_thta.dat
 timing: cpu=    0.08 s
 
 ## glo/（stdout）
-assembly complete: trajectories=4 atoms=2 fragments=1 paradigm=0 members=11 init=ok columns=3
+assembly complete: trajectories=4 atoms=2 fragments=1 paradigm=0 members=12 init=ok columns=3
 statistics: trajectories=4 valid=4
 outcome counts: none (no classification bound - skipped)
 conservation drift: trajectories=4 max|e_fin-e0|=  0.0000E+00 kcal/mol
@@ -37,12 +37,30 @@ PASS (a) w getter vs W_GHOST literal rel =  0.00E+00
 PASS (a) dt_loaded vs DT literal rel =  0.00E+00
 PASS (b) bound fragment = 1
 PASS (b) nat = 2 (H+Cl), ghost_size = 6
-PASS (c) roster mass vs IUPAC hand, atom1 rel =  0.00E+00
+PASS (c) list_atoms mass vs IUPAC hand, atom1 rel =  0.00E+00
 PASS (d) sigma_noise vs sqrt(2*gamma*m*kb*T/dt), atom1 rel =  0.00E+00
 PASS (e) sigma_p vs sqrt(m*kb*T), atom1 rel =  0.00E+00
 PASS (e) sigma_q vs sqrt(kb*T/(m*w^2)), atom1 rel =  0.00E+00
-PASS (c) roster mass vs IUPAC hand, atom2 rel =  0.00E+00
+PASS (c) list_atoms mass vs IUPAC hand, atom2 rel =  0.00E+00
 PASS (d) sigma_noise vs sqrt(2*gamma*m*kb*T/dt), atom2 rel =  0.00E+00
 PASS (e) sigma_p vs sqrt(m*kb*T), atom2 rel =  0.00E+00
 PASS (e) sigma_q vs sqrt(kb*T/(m*w^2)), atom2 rel =  0.00E+00
 probe_glo: all checks passed (loading chain consistent with FDT algebra)
+
+## thermostat/ 迁移重跑（2026-09-22，bath 分家裁决：THERMOSTAT 词退役）
+- 迁移：DIST_SCHEME=THERMOSTAT → J（纯抽签端，零种子姿态）+ BATH=ANDERSEN/N_BATH=2000/DT_BATH=0.05；
+  重置原语的 chi^2 后验移入 scripts/check_bath_thermostat.f90（(b) 即原目标带，20000 抽 z 带绿）
+- assembly: members=11（词表 12→10 的落点；thermostat 不再是分布词）
+- 首帧锚：t_kin≈5.33 / v_pot≈2.73 / e_tot≈8.06 kcal/mol（渐近 3N·kb·T=8.35；KE/PE 分摊滞后为有限 N_BATH 形态）
+- 守恒漂移 2.1E-05 kcal/mol（32 traj × MAX_STEPS=20）
+- 旧 THERMOSTAT-词时代结果见上文历史段（语义已变更，不构成回归对象）
+
+## thermostat/ 冻结立法重定（2026-09-23）
+- 立法：有采样方案的片段在 bath 期间 q/p 逐位冻结；浴作用域=无主原子；BATH 激活即隐含
+  无主原子从 list_atoms%q0 播种（本案例为纯片段体系——隐式播种/探针/扫描全部平凡化）
+- N_BATH 2000→5；锚改为冻结见证：本 armed 跑与 BATH=NONE 孪生跑 trajectories.txt 逐字节一致（已验）
+- 数学后验在 scripts/check_bath_thermostat.f90（10 判据：σ 表/Maxwell 重置 z 带/碰撞概率带/
+  双惰性/冻结立法/分离探针 d*=18/非衰减 PES 中止）
+- 上一段"循环后验"（t_kin≈5.33 等）随冻结立法废止，留史
+
+## 子文件夹更名（2026-09-23）：thermostat/ -> andersen/（模块 bath_thermostat -> bath_andersen 同批；历史段落原词留档）

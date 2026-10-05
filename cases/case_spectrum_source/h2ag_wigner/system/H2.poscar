@@ -1,0 +1,10 @@
+H2/Ag(111) projectile - parallel H2 (bond +y, place() convention) at z=3.0; cell = the engine's own periodicity (primitive Ag(111), dmm=2.9437 A, criterion leg (a); c = 20 A vacuum); placement material - the incident channel re-places the COM
+1.0
+  2.9437000000   0.0000000000   0.0000000000
+  1.4718500000   2.5493189811   0.0000000000
+  0.0000000000   0.0000000000  20.0000000000
+H
+2
+Cartesian
+  0.0000000000  -0.3707000000   3.0000000000
+  0.0000000000   0.3707000000   3.0000000000

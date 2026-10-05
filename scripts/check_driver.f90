@@ -7,26 +7,30 @@
 ! systems/ container into that module; -Jbuild keeps the .mod files out of the
 ! source tree):
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
-!            utils/specio.f90 facade/sysdef_facade.f90 input.f90 utils/rng.f90 &
-!            globals/state.f90 globals/config_roster.f90 &
-!            facade/elec_facade.f90 utils/linalg.f90 facade/force_facade.f90 &
-!            facade/sampler.f90 utils/geometry.f90 dynamics/propagator.f90 &
-!            methods/dist_boltzmann.f90 methods/dist_ebk.f90 methods/dist_incident.f90 &
-!            methods/dist_j.f90 methods/dist_rotation.f90 methods/dist_surface_oscillator.f90 &
-!            methods/dist_normalmode.f90 methods/dist_barrier_excitation.f90 &
-!            methods/dist_thermostat.f90 methods/dist_glo_target.f90 &
-!            methods/dist_thermalize.f90 methods/elec_adiabatic.f90 &
+!            utils/specio.f90 interface/sysdef_interface.f90 input.f90 utils/rng.f90 &
+!            globals/state.f90 globals/config_atoms.f90 &
+!            interface/elec_interface.f90 utils/linalg.f90 utils/spectrum.f90 &
+!            utils/hessian.f90 interface/force_interface.f90 interface/spectrum_interface.f90 &
+!            utils/geom_init.f90 dynamics/propagator.f90 interface/bath.f90 &
+!            interface/sampler.f90 utils/geometry.f90 &
+!            methods/samp_boltzmann.f90 methods/samp_ebk.f90 methods/beam_laws.f90 methods/inc_surface.f90 methods/inc_pair.f90 methods/inc_single.f90 &
+!            methods/samp_j.f90 methods/samp_rotation.f90 methods/samp_surface_oscillator.f90 &
+!            methods/samp_normalmode.f90 methods/samp_barrier_excitation.f90 &
+!            methods/bath_andersen.f90 methods/samp_glo_target.f90 &
+!            methods/samp_thermalize.f90 methods/samp_wigner.f90 methods/elec_adiabatic.f90 &
 !            methods/seam_cast.f90 &
 !            methods/reg_adiabatic.f90 methods/reg_prop.f90 &
-!            methods/reg_dist_boltzmann.f90 methods/reg_dist_ebk.f90 &
-!            methods/reg_dist_incident.f90 methods/reg_dist_j.f90 &
-!            methods/reg_dist_rotation.f90 methods/reg_dist_surface_oscillator.f90 &
-!            methods/reg_dist_normalmode.f90 methods/reg_dist_barrier_excitation.f90 &
-!            methods/reg_dist_thermostat.f90 methods/reg_dist_glo_target.f90 &
-!            methods/reg_dist_thermalize.f90 output/recorder.f90 output/final_state.f90 &
+!            methods/reg_samp_boltzmann.f90 methods/reg_samp_ebk.f90 &
+!            methods/reg_inc_surface.f90 methods/reg_inc_pair.f90 methods/reg_inc_single.f90 methods/reg_samp_j.f90 &
+!            methods/reg_samp_rotation.f90 methods/reg_samp_surface_oscillator.f90 &
+!            methods/reg_samp_normalmode.f90 methods/reg_samp_barrier_excitation.f90 &
+!            methods/reg_bath_andersen.f90 methods/reg_samp_glo_target.f90 &
+!            methods/reg_samp_thermalize.f90 methods/reg_samp_wigner.f90 &
+!            output/recorder.f90 output/final_state.f90 &
 !            output/plot_hist.f90 &
 !            ../systems/reference/reference_pot.f90 &
 !            ../systems/reference/reference_box.f90 &
+!            interface/container_sched.f90 &
 !            ../systems/reference/reg_reference.f90 &
 !            build/gfortran/registry_gen.f90 ../scripts/check_driver.f90 &
 !            -o build/check_driver.exe
@@ -91,7 +95,7 @@
 !       1..N, step strictly 1..M+1 in file order, t strictly increasing within
 !       each trajectory; the column line's order is t_kin, v_pot, e_tot (the
 !       recorder's selected-column legislation); frames per trajectory =
-!       MAX_STEPS+1 (the safety-net-only run - this case binds no termination)
+!       MAX_STEPS+1 (the MAX_STEPS-only run - this case binds no termination)
 !   (d) MAX_STEPS SAFETY NET: a small MAX_STEPS input (5, one trajectory) ->
 !       exactly 6 frames in trajectories.txt, the last at step 6 with t>0
 !   (e) TERM-BOUND PATH: the container's parameter file carries Q_TERM (the
@@ -118,7 +122,7 @@
 !       for the two-fragment gas pair; observable: the FIRST frame's sec_qp
 !       section carries non-zero momenta (the sampling really happened; the
 !       case input's GWRITE_LEVEL=2 row is retained as documentation - it now
-!       restates the E26 bare-input default, not a departure from level 1)
+!       restates the bare-input default, not a departure from level 1)
 !   (det) DETERMINISM: the same input run twice -> trajectories.txt
 !       byte-identical (the rng single stream + the fixed arithmetic; compared
 !       with fc /b on Windows, cmp -s elsewhere)
@@ -133,27 +137,28 @@
 !       LIMIT: the scan stops at the FIRST 'end do' - a nested do inside
 !       the integration loop would truncate the collected set (the
 !       current loop body is unnested; the limit is declared here)
-!   (h) assembly-order error loud-stop (child): a bad SYSTEM_DIR (the folder
+!   (h) assembly-order error named abort (child): a bad SYSTEM_DIR (the folder
 !       does not exist) -> nonzero exit, stderr names sysdef_load - the
 !       existing input/sysdef channel penetrates; the driver adds NO judgment
 !       of its own
 !   (i) size guard: UNREACHABLE through the driver's public face - the driver
-!       derives state_create's natoms from size(roster%mass) itself, so
-!       size(sta%q) = 3*size(roster%mass) holds structurally; the guard is
-!       carried in the driver per the guard statute and names both sides if it
+!       derives state_create's natoms from size(list_atoms%mass) itself, so
+!       size(sta%q) = 3*size(list_atoms%mass) holds structurally; the guard is
+!       carried in the driver per the guard rule and names both sides if it
 !       ever fires (the untriggerable-guard precedent: header note here, no
 !       criterion body)
-!   (j) seam criterion (the input-staging -> member-params assembly channel):
+!   (j) seam criterion (the input-buffer -> member-params assembly channel):
 !       (j1) round-trip, IN-PROCESS through the same public chain in the same
-!            legislated assembly order (read_input -> rng_init -> sysdef_load
-!            -> roster_load -> state_create -> registry_gen_all ->
-!            registry_gen_init -> container_init -> rec_select level entry):
+!            fixed assembly order (registry_gen_keys -> read_input -> rng_init
+!            -> sysdef_load -> list_atoms_load -> state_create -> registry_gen_all
+!            -> registry_gen_init -> input_audit_declared -> container_init ->
+!            rec_select level entry):
 !            the input keys T_GLO=350 / GAMMA_GLO=0.04 / W_GHOST=1.25 / DT=
 !            0.05 / DIST_SCHEME=GLO_TARGET -> the member getters read the
 !            exact values back (glo_target_t_glo / _gamma / _w), and
 !            glo_target_dt_loaded() = DT (the dt-ordering contract); also
-!            samp_n_dist() = 11 and rec_n_sel() = 3 through the same chain;
-!            and container_term(sta) = .false. (the parameter file absent in
+!            samp_n_dist() = 12 and rec_n_sel() = 3 through the same chain;
+!            and container_term(sta) = .false. (no container keys buffered in
 !            this case - the termination slot unbound, the legal
 !            safety-net-only posture)
 !       (j2) bad value (child, the real driver exe): T_GLO = -5 -> nonzero
@@ -196,19 +201,19 @@
 !   (q) NON-LINEAR FRAGMENT ANCHOR (child 'nlfrag', self-respawn; the
 !       rotation-strip anchor the final-state criteria program deferred - its
 !       constructed fragments were all linear): a real 3-atom non-collinear
-!       fragment (the centered H3 triangle staged in the case folder, real
-!       roster masses), pure rigid rotation about z (p_i = m_i*(omega x r_i),
+!       fragment (the centered H3 triangle buffered in the case folder, real
+!       list_atoms masses), pure rigid rotation about z (p_i = m_i*(omega x r_i),
 !       omega = 0.07 z-hat): fin_eval must recover j_a = (0,0,I_zz*omega) in
 !       hbar units, e_rot_a = (I_zz*omega^2/2) in kcal/mol, the internal
 !       kinetic e_int_a(1) EQUAL to it (two computational paths to one number
 !       - the cross-identity), the archive rotation STRIPPED (max|p_fin| <=
 !       1e-10 against a p scale of ~0.06 - THE non-linear anchor; linear
 !       fragments keep their rotation by design), q_fin the COM-shifted
-!       triangle, e_int_a(2) the staged well on a check-staged constant
+!       triangle, e_int_a(2) the buffered well on a check-buffered constant
 !       (calibrated through the bound container), e_cm bitwise 0 (a pure
 !       rotation carries no net momentum) and the pair/B fields bitwise 0
 !       (the single-fragment skip)
-! Child-process scheme (the sibling checks' discipline): every loud-stop path
+! Child-process scheme (the sibling checks' discipline): every named abort path
 !   runs in a child - driver-exe children run with cwd = their case directory
 !   (the driver reads ./input_qct.txt relative to its cwd; 'cd <case> && exe'
 !   carries both shell families); the setup copies the build product to
@@ -224,22 +229,22 @@ program check_driver
    use control,       only: i_seed
    use consts,        only: e_conv, hbar_code
    use config,        only: reactants, observables, electronic, prop_cfg => propagator
-   use config_roster, only: roster, roster_load
+   use config_atoms, only: list_atoms, list_atoms_load
    use state,         only: state_t, state_create
    use rng,           only: rng_init
-   use sysdef_facade, only: sysdef_load
-   use registry_gen,  only: registry_gen_all, registry_gen_init
-   use force_facade,  only: container_init, container_term, container_bind_pes, force_eval
+   use sysdef_interface, only: sysdef_load
+   use registry_gen,  only: registry_gen_all, registry_gen_init, registry_gen_keys
+   use force_interface,  only: container_init, container_term, container_bind_pes, force_eval
    use sampler,       only: samp_n_dist
    use recorder,      only: rec_select, rec_n_sel
    use final_state,   only: fin_t, fin_eval, container_classify
    use hist,          only: hist_spec_t, hist_data_t, lat_t, plot_hist, k_e_hist
-   use elec_facade,   only: method_bind
+   use elec_interface,   only: method_bind
    use reg_adiabatic, only: reg_adiabatic_all
    use reference_pot, only: harm_set_constant
    use reference_box, only: reference_pes
-   use input,         only: read_input
-   use dist_glo_target, only: glo_target_t_glo, glo_target_gamma, glo_target_w, &
+   use input,         only: read_input, input_audit_declared
+   use samp_glo_target, only: glo_target_t_glo, glo_target_gamma, glo_target_w, &
                               glo_target_dt_loaded
    implicit none
    integer :: nfail = 0
@@ -247,7 +252,7 @@ program check_driver
    character(len=2048) :: obuf_a = ''    ! case_a's stdout, kept for (f)
    character(len=2048) :: obuf_t = ''    ! case_t's stdout, kept for (f)
 
-   ! ---------- child modes (self-respawn): the loud-stop paths that cannot run here ----------
+   ! ---------- child modes (self-respawn): the named abort paths that cannot run here ----------
    if (command_argument_count() >= 1) then
       call get_command_argument(1, cmode)
       select case (trim(cmode))
@@ -272,14 +277,14 @@ program check_driver
    call crit_a()      ! (a) end-to-end through + the two summary blocks
    call crit_b()      ! (b) end-to-end energy conservation
    call crit_r()      ! (r) radau end to end (completion + adaptive conservation)
-   call crit_c()      ! (c) frame structure (safety-net-only run)
+   call crit_c()      ! (c) frame structure (MAX_STEPS-only run)
    call crit_g()      ! (g) the sampling chain really ran
    call crit_d()      ! (d) MAX_STEPS safety net
    call crit_e()      ! (e) term-bound early termination (+ case_t stdout for (f))
    call crit_f()      ! (f) statistics first version (unbound + bound)
    call crit_det()    ! (det) determinism, same input twice
    call crit_e7()     ! (E7) the integration loop's direct-call set
-   call crit_h()      ! (h) bad SYSTEM_DIR loud-stop
+   call crit_h()      ! (h) bad SYSTEM_DIR named abort
    call crit_j1()     ! (j1) seam round-trip + unbound container_term
    call crit_j2()     ! (j2) bad member value
    call crit_k()      ! (k) unbound-classification child
@@ -298,29 +303,31 @@ program check_driver
 contains
    !------------------------------------------------------------------
    ! child_eclass() - the (k) child: the full assembly chain on a system folder
-   !                  WITHOUT the container parameter file (termination and
-   !                  classification unbound), then container_classify - the
-   !                  unbound call must be the loud-stop authority
+   !                  WITHOUT container keys (termination and classification
+   !                  unbound), then container_classify - the unbound call must
+   !                  be the named-abort authority
    subroutine child_eclass()
       type(state_t) :: stc
       type(fin_t) :: fc
       character(len=32) :: nm
+      call registry_gen_keys()
       call read_input('build/drv_case_a/input_eclass.txt')
       call rng_init(i_seed(1))
       call sysdef_load(reactants%system_dir)
-      call roster_load()
-      call state_create(stc, size(roster%mass), max(electronic%n_surf, 1))
+      call list_atoms_load()
+      call state_create(stc, size(list_atoms%mass), max(electronic%n_surf, 1))
       call registry_gen_all()
-      call registry_gen_init()     ! parameter file absent -> slots stay unbound
+      call registry_gen_init()     ! container keys absent -> slots stay unbound
+      call input_audit_declared()
       call container_init()
-      nm = container_classify(fc)  ! the unbound call - must loud-stop here
+      nm = container_classify(fc)  ! the unbound call - must named abort here
       print '(a)', 'child eclass: container_classify returned ', trim(nm)
    end subroutine child_eclass
 
    !------------------------------------------------------------------
    ! child_phguard() - the (phg) child: plot_hist on an inverted range
    !                  (v_hi < v_lo, kind 1) - the bin-width choke point must
-   !                  loud-stop here
+   !                  named abort here
    subroutine child_phguard()
       type(hist_spec_t) :: sh
       type(hist_data_t) :: dh
@@ -329,11 +336,11 @@ contains
       dh%e_rel = 1.0d0
       dh%n_traj = 1
       sh = hist_spec_t(k_e_hist, 'build/drv_phg.dat', 2.0d0, 1.0d0, 4, 0, .true.)
-      call plot_hist(sh, dh, la)   ! the inverted range - must loud-stop here
+      call plot_hist(sh, dh, la)   ! the inverted range - must named abort here
    end subroutine child_phguard
 
    !------------------------------------------------------------------
-   ! child_nlfrag() - the (q) child: the real 3-atom non-collinear roster (the
+   ! child_nlfrag() - the (q) child: the real 3-atom non-collinear list_atoms (the
    !                  centered H3 triangle of the case folder, real masses)
    !                  driven through the analysis chain, one pure rigid
    !                  rotation about z constructed on it, fin_eval, and every
@@ -341,22 +348,22 @@ contains
    subroutine child_nlfrag()
       type(state_t) :: stc
       type(fin_t) :: fc
-      real(8), parameter :: kk = 0.123d0   ! the check-staged well constant [eV/A^2]
+      real(8), parameter :: kk = 0.123d0   ! the check-buffered well constant [eV/A^2]
       real(8), parameter :: omg = 0.07d0   ! the constructed rotation rate [rad/(10 fs)]
       real(8) :: rc(3), m3(3), ii_zz, ee, cal, sq, pmax
       integer :: a, d
       call read_input('build/drv_case_n/input_nlfrag.txt')
       call rng_init(i_seed(1))
       call sysdef_load(reactants%system_dir)
-      call roster_load()
+      call list_atoms_load()
       ! the analysis chain: degenerate method row + the reference PES + the
-      ! check's own well constant (the staged-potential anchor rides the staged
+      ! check's own well constant (the buffered-potential anchor rides the buffered
       ! value, not the package default)
       call reg_adiabatic_all()
       call method_bind('adiabatic')
       call container_bind_pes(reference_pes)
       call harm_set_constant(kk)
-      call state_create(stc, size(roster%mass), max(electronic%n_surf, 1))
+      call state_create(stc, size(list_atoms%mass), max(electronic%n_surf, 1))
       ! conversion calibration: one force_eval at a single-offset geometry with
       ! p = 0 (V = kk/2 * |q|^2 eV) measures the kcal/mol-per-eV factor through
       ! the bound container - the conversion literal never lands here
@@ -370,22 +377,22 @@ contains
       ! I_zz about z, p_i = m_i*(omega x r_i) with omega = omg*z-hat (no COM
       ! velocity - the rotation is the whole motion)
       rc = 0.0d0
-      m3 = roster%mass(1:3)
+      m3 = list_atoms%mass(1:3)
       do a = 1, 3
-         rc(:) = rc(:) + m3(a)*roster%frag(1)%qz(3*a-2:3*a)
+         rc(:) = rc(:) + m3(a)*list_atoms%frag(1)%qz(3*a-2:3*a)
       end do
       rc = rc(:)/sum(m3)
       ii_zz = 0.0d0
       sq = 0.0d0
       do a = 1, 3
-         stc%q(3*a-2:3*a) = roster%frag(1)%qz(3*a-2:3*a)
+         stc%q(3*a-2:3*a) = list_atoms%frag(1)%qz(3*a-2:3*a)
          stc%p(3*a-2) = -m3(a)*omg*(stc%q(3*a-1) - rc(2))
          stc%p(3*a-1) =  m3(a)*omg*(stc%q(3*a-2) - rc(1))
          stc%p(3*a)   = 0.0d0
          ii_zz = ii_zz + m3(a)*((stc%q(3*a-2) - rc(1))**2 + (stc%q(3*a-1) - rc(2))**2)
       end do
       do d = 1, 9
-         sq = sq + roster%frag(1)%qz(d)**2
+         sq = sq + list_atoms%frag(1)%qz(d)**2
       end do
       stc%f = 0.0d0
       stc%t = 0.4d0
@@ -399,7 +406,7 @@ contains
                   0.5d0*ii_zz*omg*omg/e_conv)
       call chk_nl('(q) e_int_a(1) [COM-frame path - the cross-identity]', fc%e_int_a(1), &
                   0.5d0*ii_zz*omg*omg/e_conv)
-      call chk_nl('(q) e_int_a(2) [staged well, check-staged constant]', fc%e_int_a(2), &
+      call chk_nl('(q) e_int_a(2) [buffered well, check-buffered constant]', fc%e_int_a(2), &
                   cal*(kk/2.0d0)*sq)
       call chk_z('(q) e_cm [pure rotation carries no net momentum]', fc%e_cm)
       call chk_z('(q) e_rel [single fragment]', fc%e_rel)
@@ -420,12 +427,12 @@ contains
       do a = 1, 3
          do d = 1, 3
             call chk_nl('(q) q_fin (COM-shifted triangle)', fc%q_fin(3*(a-1) + d), &
-                        roster%frag(1)%qz(3*(a-1) + d) - rc(d))
+                        list_atoms%frag(1)%qz(3*(a-1) + d) - rc(d))
          end do
       end do
       if (nfail == 0) then
          print '(a)', 'nlfrag: non-linear fragment anchors hold (rotation stripped,'// &
-            ' j/e_rot/kinetic cross-identity, staged well, COM-shifted archive)'
+            ' j/e_rot/kinetic cross-identity, buffered well, COM-shifted archive)'
          stop 0
       end if
       stop 1
@@ -556,7 +563,7 @@ contains
 
    !------------------------------------------------------------------
    ! crit_c() - (c): frame header monotonicity, column order, frames =
-   !             MAX_STEPS+1 per trajectory (the safety-net-only run)
+   !             MAX_STEPS+1 per trajectory (the MAX_STEPS-only run)
    subroutine crit_c()
       character(len=512) :: line
       integer :: v, ios, tj, sj, cur_t, cur_s, itraj
@@ -891,7 +898,7 @@ contains
            ' container_term'
    end subroutine crit_e7
    !------------------------------------------------------------------
-   ! crit_h() - (h): bad SYSTEM_DIR -> the sysdef channel's own loud-stop penetrates
+   ! crit_h() - (h): bad SYSTEM_DIR -> the sysdef channel's own named abort penetrates
    subroutine crit_h()
       character(len=2048) :: obuf, ebuf
       integer :: stat
@@ -907,16 +914,18 @@ contains
 
    !------------------------------------------------------------------
    ! crit_j1() - (j1): the in-process seam round-trip (the legislated order) and
-   !              the unbound container_term posture (no parameter file here)
+   !              the unbound container_term posture (no container keys here)
    subroutine crit_j1()
       type(state_t) :: st
+      call registry_gen_keys()
       call read_input('build/drv_case_d/input_dpos.txt')
       call rng_init(i_seed(1))
       call sysdef_load(reactants%system_dir)
-      call roster_load()
-      call state_create(st, size(roster%mass), max(electronic%n_surf, 1))
+      call list_atoms_load()
+      call state_create(st, size(list_atoms%mass), max(electronic%n_surf, 1))
       call registry_gen_all()
       call registry_gen_init()
+      call input_audit_declared()
       call container_init()
       call rec_select(observables%rec_level)
       if (len_trim(observables%obs_list) > 0) call rec_select(trim(observables%obs_list))
@@ -926,22 +935,22 @@ contains
                   d2s(glo_target_t_glo())//' '//d2s(glo_target_gamma())//' '// &
                   d2s(glo_target_w()))
       else
-         print '(a)', '(j1): PASS - staged member keys round-trip: t_glo=350 gamma=0.04 w=1.25'
+         print '(a)', '(j1): PASS - buffered member keys round-trip: t_glo=350 gamma=0.04 w=1.25'
       end if
       if (glo_target_dt_loaded() /= 0.05d0 .or. glo_target_dt_loaded() /= prop_cfg%dt) then
          call fail('(j1): dt-ordering mismatch - glo_target_dt_loaded() = '// &
-                  d2s(glo_target_dt_loaded())//' but DT staged '//d2s(prop_cfg%dt))
+                  d2s(glo_target_dt_loaded())//' but DT buffered '//d2s(prop_cfg%dt))
       else
          print '(a)', '(j1): PASS - the member init snapshotted the finalized dt (0.05)'
       end if
       if (samp_n_dist() /= 11) then
-         call fail('(j1): member-table count expected 11 (10 scheme + incident), got '// &
+         call fail('(j1): member-table count expected 11 (10 scheme + one paradigm-armed incident member - thermostat left the family 2026-09-22), got '// &
                   i2s(samp_n_dist()))
       else if (rec_n_sel() /= 3) then
          call fail('(j1): selected column count expected 3 (the framework energy '// &
                   'columns at the default level), got '//i2s(rec_n_sel()))
       else
-         print '(a)', '(j1): PASS - member table carries 11 rows; selected columns 3'
+         print '(a)', '(j1): PASS - member table carries 12 rows; selected columns 3'
       end if
       if (container_term(st)) then
          call fail('(j1): unbound container_term must return .false.')
@@ -1098,7 +1107,7 @@ contains
    !------------------------------------------------------------------
    ! crit_n() - (n): occ/n_hop through the real driver, every frame line and
    !             final row (the degenerate adiabatic values end to end).
-   !             The case input omits GWRITE_LEVEL, so under the E26 default
+   !             The case input omits GWRITE_LEVEL, so under the bare-input default
    !             (level 2) every frame also carries a sec_qp section - the
    !             scan skips the section bodies (atom rows share the final
    !             row's no-# no-= shape but not its column count/semantics)
@@ -1223,7 +1232,7 @@ contains
       else
          print '(a)', '(q): PASS - the 3-atom non-collinear fragment: rotation'// &
               ' stripped from the archive (p_fin ~ 0), j/e_rot/internal-kinetic'// &
-              ' cross-identity, staged well, COM-shifted rows'
+              ' cross-identity, buffered well, COM-shifted rows'
       end if
    end subroutine crit_q
 
@@ -1258,9 +1267,9 @@ contains
    !                  trees are probed and a missing exe is a NAMED failure)
    subroutine make_cases()
       character(len=80) :: xyza(4), xyzb(4), xyz1(4), xyz3(5)
-      character(len=80) :: la(14), lb(6), ld(9), ldp(9), lec(10)
-      character(len=80) :: lm(9), lt(13), lpars(3)
-      character(len=80) :: lr(15), lo(10), ln(7)
+      character(len=80) :: la(16), lb(6), ld(9), ldp(9), lec(12)
+      character(len=80) :: lm(9), lt(18)
+      character(len=80) :: lr(17), lo(10), ln(7)
       logical :: have_g, have_i
       character(len=64) :: srcexe, srcw
       integer :: j
@@ -1279,12 +1288,13 @@ contains
                'H -0.45 -0.7794228634059948 0.0' ]
       ! (a): the end-to-end case - two-fragment gas-phase system, thermalize on
       ! fragment 1, rotation on fragment 2, the incident channel for the pair;
-      ! GWRITE_LEVEL=2 opens the sec_qp flattened section (the E26 legislated
+      ! GWRITE_LEVEL=2 opens the sec_qp flattened section (the decision-fixed
       ! bare-input default - the momenta criterion reads the
       ! section); NO container parameter file -> termination and
       ! classification unbound
       la = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 1.0', 'B_MAX = 2.0', &
              'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = THERMALIZE,ROTATION', &
+             'PROJECTILE = pair_a', 'TARGET = pair_b', &
              'T_EQ = 300.0', 'N_EQ = 25', 'DT_EQ = 0.05', 'J_ROT = 3', 'N_TRAJ = 3', &
              'MAX_STEPS = 40', 'ISEED = 20260915', 'GWRITE_LEVEL = 2' ]
       ! (h): the bad system_dir case (the folder does not exist)
@@ -1304,7 +1314,8 @@ contains
       ! per fragment - a member instance carries one parameter set)
       lec = [ character(len=80) :: 'SYSTEM_DIR = build/drv_case_a/system', 'E_REL = 1.0', &
               'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.05', &
-              'DIST_SCHEME = THERMALIZE,ROTATION', 'T_EQ = 300.0', 'N_EQ = 25', &
+              'DIST_SCHEME = THERMALIZE,ROTATION', 'PROJECTILE = pair_a', 'TARGET = pair_b', &
+              'T_EQ = 300.0', 'N_EQ = 25', &
               'DT_EQ = 0.05', 'N_TRAJ = 1' ]
       ! (d): the MAX_STEPS safety-net case - one trajectory, five steps
       lm = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 1.0', 'B_MAX = 2.0', &
@@ -1316,15 +1327,17 @@ contains
       ! the run light at ~44 force calls per boot sequence)
       lr = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 1.0', 'B_MAX = 2.0', &
              'R_SEP = 8.0', 'DT = 0.05', 'INTEGRATOR = RADAU', 'ORDER = 8', &
-             'DIST_SCHEME = THERMALIZE,ROTATION', 'T_EQ = 300.0', 'N_EQ = 25', &
-             'DT_EQ = 0.05', 'J_ROT = 3', 'N_TRAJ = 2', 'MAX_STEPS = 40', &
+             'DIST_SCHEME = THERMALIZE,ROTATION', 'PROJECTILE = pair_a', 'TARGET = pair_b', &
+             'T_EQ = 300.0', 'N_EQ = 25', 'DT_EQ = 0.05', 'J_ROT = 3', 'N_TRAJ = 2', 'MAX_STEPS = 40', &
              'ISEED = 20260915' ]
       ! (e)/(f): the term+classify bound case - a high collision energy so the
       ! amplitude climb crosses Q_TERM mid-run; MAX_STEPS=400 is the safety net
       lt = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 200.0', 'B_MAX = 2.0', &
              'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = THERMALIZE,ROTATION', &
+             'PROJECTILE = pair_a', 'TARGET = pair_b', &
              'T_EQ = 300.0', 'N_EQ = 25', 'DT_EQ = 0.05', 'J_ROT = 3', 'N_TRAJ = 2', &
-             'MAX_STEPS = 400', 'ISEED = 20260915' ]
+             'MAX_STEPS = 400', 'ISEED = 20260915', &
+             'K_HARM = 0.04', 'Q_TERM = 9.5', 'E_SPLIT = 1.0' ]   ! container keys
       ! (n): the occupation-column case - the list entry appends occ/n_hop to
       ! the energy three (columns=5); a short safety-net run keeps the file
       ! small while exercising every frame line and final row
@@ -1337,7 +1350,6 @@ contains
       ln = [ character(len=80) :: 'SYSTEM_DIR = build/drv_case_n/system', 'E_REL = 1.0', &
              'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = ROTATION', &
              'N_TRAJ = 1' ]
-      lpars = [ character(len=80) :: 'K_HARM = 0.04', 'Q_TERM = 9.5', 'E_SPLIT = 1.0' ]
       ! wipe every case folder BEFORE rebuilding it: a case folder must hold
       ! exactly what THIS run writes - a stale file from an earlier round
       ! (a renamed system sample, a relocated parameter file) would ride the
@@ -1368,10 +1380,6 @@ contains
       call write_sample('build/drv_case_t/system/pair_b.xyz', xyzb)
       call write_sample('build/drv_case_o/system/h2.xyz', xyz1)
       call write_sample('build/drv_case_n/system/h3.xyz', xyz3)
-      ! the container parameter file is RUN material (cwd of the driver child),
-      ! not system-definition material - the system-folder scan would reject
-      ! its unknown extension
-      call write_sample('build/drv_case_t/reference_pars.txt', lpars)
       call write_sample('build/drv_case_a/input_qct.txt', la)
       call write_sample('build/drv_case_a/input_eclass.txt', lec)
       call write_sample('build/drv_case_b/input_qct.txt', lb)

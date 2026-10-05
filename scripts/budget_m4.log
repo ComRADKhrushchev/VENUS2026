@@ -1,0 +1,18 @@
+ NN weights loaded: all            7  types from nn_weights.txt
+   Total weights allocated:          486
+   Type           1 : NH=           8   NW/site=          25   total=          75
+   Type           2 : NH=           9   NW/site=          28   total=          84
+   Type           3 : NH=          11   NW/site=          34   total=         102
+   Type           4 : NH=          11   NW/site=          34   total=         102
+   Type           5 : NH=           9   NW/site=          28   total=          84
+   Type           6 : NH=           4   NW/site=          13   total=          39
+   Type           7 : NH=           0   NW/site=           0   total=           0
+substrate oscillator k factor =  1.000
+== per-channel budget over the synthetic 3P trajectory (eV) ==
+C height at end =         8.0088
+channel        W(force)      dE(book)      mismatch (W+dE)
+E0 ground           -0.2070        0.1331       -0.0739
+h impurity          -0.1758        0.1104       -0.0654
+coupling            -0.4031        0.0000       -0.4031
+mean-field           0.0292       -0.0456       -0.0164
+T_final - T_initial =        -0.7844

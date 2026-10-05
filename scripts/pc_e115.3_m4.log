@@ -1,0 +1,48 @@
+ NN weights loaded: all            7  types from nn_weights.txt
+   Total weights allocated:          486
+   Type           1 : NH=           8   NW/site=          25   total=          75
+   Type           2 : NH=           9   NW/site=          28   total=          84
+   Type           3 : NH=          11   NW/site=          34   total=         102
+   Type           4 : NH=          11   NW/site=          34   total=         102
+   Type           5 : NH=           9   NW/site=          28   total=          84
+   Type           6 : NH=           4   NW/site=          13   total=          39
+   Type           7 : NH=           0   NW/site=           0   total=           0
+substrate oscillator k factor =  1.000
+1D drift(AFV): final e_tot - e0 =      0.72717  [dt= 0.050 msbstp=   4]
+  bath level  2 spin1: dn= -0.0025  eps-eV=  -3.264
+  bath level  4 spin1: dn= -0.0051  eps-eV=  -2.508
+  bath level  5 spin1: dn= -0.0033  eps-eV=  -2.011
+  bath level  6 spin1: dn= -0.1132  eps-eV=  -1.489
+  bath level  7 spin1: dn= -0.1064  eps-eV=  -0.992
+  bath level  8 spin1: dn= -0.0720  eps-eV=  -0.561
+  bath level  9 spin1: dn= -0.2486  eps-eV=  -0.236
+  bath level 10 spin1: dn= -0.5668  eps-eV=  -0.046
+  bath level 11 spin1: dn=  0.0345  eps-eV=   0.046
+  bath level 12 spin1: dn=  0.0508  eps-eV=   0.236
+  bath level 13 spin1: dn=  0.0274  eps-eV=   0.561
+  bath level 14 spin1: dn=  0.0098  eps-eV=   0.992
+  bath level 15 spin1: dn=  0.0034  eps-eV=   1.489
+  bath level 16 spin1: dn=  0.0038  eps-eV=   2.011
+  bath level 18 spin1: dn=  0.0030  eps-eV=   2.939
+  bath level 19 spin1: dn=  0.0063  eps-eV=   3.264
+  bath level 20 spin1: dn=  0.0051  eps-eV=   3.454
+  bath level  1 spin2: dn= -0.0027  eps-eV=  -3.454
+  bath level  2 spin2: dn= -0.0030  eps-eV=  -3.264
+  bath level  5 spin2: dn= -0.0026  eps-eV=  -2.011
+  bath level  6 spin2: dn= -0.0081  eps-eV=  -1.489
+  bath level  7 spin2: dn= -0.0167  eps-eV=  -0.992
+  bath level  8 spin2: dn= -0.0169  eps-eV=  -0.561
+  bath level  9 spin2: dn= -0.2108  eps-eV=  -0.236
+  bath level 11 spin2: dn=  0.5311  eps-eV=   0.046
+  bath level 12 spin2: dn=  0.1825  eps-eV=   0.236
+  bath level 13 spin2: dn=  0.2420  eps-eV=   0.561
+  bath level 14 spin2: dn=  0.1548  eps-eV=   0.992
+  bath level 15 spin2: dn=  0.0415  eps-eV=   1.489
+  bath level 16 spin2: dn=  0.0434  eps-eV=   2.011
+  bath level 17 spin2: dn=  0.0105  eps-eV=   2.508
+  bath level 18 spin2: dn=  0.0173  eps-eV=   2.939
+  bath level 19 spin2: dn=  0.0100  eps-eV=   3.264
+  bath level 20 spin2: dn=  0.0190  eps-eV=   3.454
+  bath: sum(dn*eps) =   1.3358   sum|dn| =   2.7823
+  impurity n1up/n2up/n1dn/n2dn =  0.9862  0.9886  0.0042  0.0080
+  config weight  3P(parallel) / 1D(paired) =  0.9750  0.0121

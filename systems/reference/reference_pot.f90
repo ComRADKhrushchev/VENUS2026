@@ -6,8 +6,8 @@
 !                     knowledge, zero dependencies
 ! Material status: every routine is system-independent pure mathematics.
 !   Positions in angstrom, energies in eV, gradients g = dV/dq in
-!   eV/angstrom (the class-A member unit contract: the eV-to-internal
-!   conversion belongs to the force facade alone). The well acts on
+!   eV/angstrom (the member unit contract of the delivery channel: the
+!   eV-to-internal conversion belongs to the force interface alone). The well acts on
 !   every atom; the pair/triatomic forms read atoms 1-2 / 1-2-3 and
 !   leave the remaining atoms at zero gradient.
 ! Parameters: module data carrying LITERATURE REFERENCE CONSTANTS as

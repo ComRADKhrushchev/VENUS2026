@@ -43,7 +43,7 @@ module config
   ! distributions; composition arrives from the container folder and surface_model
   ! is derived)
   type :: reactants_t
-     integer :: n_frag = 1           ! number of fragments (= size(roster%frag) after assembly)
+     integer :: n_frag = 1           ! number of fragments (= size(list_atoms%frag) after assembly)
      character(len=128) :: system_dir = '' ! container folder path scanned by sysdef_load
      integer :: surface_model = 0    ! configuration paradigm (0 = gas phase / molecular; 1/2 = the
                                      ! two surface paradigms) - DERIVED, not an input key:
@@ -52,14 +52,42 @@ module config
                                      ! paradigm; none -> 0); the 1-vs-2 selection is not
                                      ! derivable from cell presence alone
      integer, allocatable :: dist_scheme(:) ! per-fragment sampling scheme (pointing to dist_* members;
-                                            ! arrayed together with roster%frag - allocated at
+                                            ! arrayed together with list_atoms%frag - allocated at
                                             ! input/assembly, size = n_frag)
      real(8) :: e_rel  = 0.0d0       ! collision energy (relative-motion distribution) [kcal/mol]
      real(8) :: b_max  = 0.0d0       ! maximum impact parameter [Å]
      real(8) :: r_sep  = 0.0d0       ! initial separation [Å]
-     ! Configuration details (roster/geometry/unit cell) are carried by config_roster;
-     ! Left blank: orientation prescriptions and per-fragment distribution parameters -
-     ! owned by the dist_* members
+     logical :: random_orient = .false. ! universal orientation stage switch (RANDOM_ORIENT;
+                                       ! off = the archived five-case stream: the initial state
+                                       ! keeps whatever orientation its member wrote; on = after
+                                       ! the per-fragment members and before the incident
+                                       ! channel, every nat>=2 fragment not served by the
+                                       ! 'rotation' word gets one isotropic rot_euler pass
+                                       ! about its COM - q and p together)
+     integer :: bath = 0              ! bath provision selector (BATH enum code; 1 = none,
+                                       ! 2 = Andersen velocity-reset species; 0 = the unset
+                                       ! default, treated as none) - arms the pre-evolution
+                                       ! bath loop inside samp_run (members realize -> bath
+                                       ! loop -> orientation -> incident)
+     integer :: n_bath = 0            ! bath-loop step count (N_BATH; 0 = the armed bath runs
+                                       ! no steps - no collisions, no propagation)
+     real(8) :: dt_bath = 0.0d0      ! bath-loop step size [10 fs] (DT_BATH; must be positive
+                                       ! when N_BATH > 0)
+     integer :: spectrum_src = 1     ! spectrum producer selector (SPECTRUM_SOURCE enum;
+                                       ! 1 = COMPUTE - the internal Hessian derivation, lazy on
+                                       ! first pull at the member seam; 2 = MANUAL - the
+                                       ! spectrum-table file is the only producer; the
+                                       ! container export channel is withdrawn - 2026-10-05
+                                       ! spectrum-source legislation, docs/plans/)
+     character(len=128) :: spectrum_file = '' ! spectrum-table file (SPECTRUM_FILE; MANUAL's
+                                       ! carrier records - composition-keyed mode tables
+                                       ! [cm^-1 face] + optional diatomic constants; a staged
+                                       ! path under COMPUTE is a formal input error)
+
+     ! Configuration details (list_atoms/geometry/unit cell) are carried by config_atoms;
+     ! Left blank: per-fragment distribution parameters - owned by the dist_* members
+     ! (the orientation prescription is the sampler stage above, not a member parameter;
+     ! the bath species parameters T_BATH/NU_COLL are bath_andersen's seam keys)
   end type
 
   ! (the event provisions type is WITHDRAWN - termination is the container's own

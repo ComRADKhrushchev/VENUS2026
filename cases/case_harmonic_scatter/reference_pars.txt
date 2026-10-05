@@ -1,7 +1,0 @@
-# 谐振井容器参数（box 文件，运行材料——驱动器按 cwd 读取）
-# K_HARM  力常数 [eV/A^2]：V = K/2 * sum|q_i|^2 作用于全部坐标
-# Q_TERM  终止阈值 [A]：任一坐标 |q| > Q_TERM 即散射完成、轨迹终止
-# E_SPLIT 分类阈值 [kcal/mol]：终态相对径向能量高于此 -> scattering，否则 capture
-K_HARM = 0.04
-Q_TERM = 9.5
-E_SPLIT = 1.0

@@ -5,9 +5,9 @@
 ! Compile (from src/; modules in use-order first, -Jbuild keeps the .mod files out
 ! of the source tree):
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
-!            utils/specio.f90 facade/sysdef_facade.f90 input.f90 globals/config_roster.f90 &
-!            globals/state.f90 facade/elec_facade.f90 &
-!            utils/linalg.f90 facade/force_facade.f90 dynamics/propagator.f90 methods/reg_prop.f90 &
+!            utils/specio.f90 interface/sysdef_interface.f90 input.f90 globals/config_atoms.f90 &
+!            globals/state.f90 interface/elec_interface.f90 &
+!            utils/linalg.f90 interface/force_interface.f90 dynamics/propagator.f90 methods/reg_prop.f90 &
 !            ../scripts/check_propagator.f90 -o build/check_propagator.exe
 ! Posture: the force chain is assembled CHECK-SIDE - a local analytic test container is
 !   bound through container_bind_pes (a degenerate no-op method row registered through
@@ -18,17 +18,17 @@
 !   attraction, a uniform field, free flight, per-dof Morse, and a per-dof quartic
 !   wall (the radau adaptive-response branches); every branch is a local procedure of
 !   this check - none of them ever enters src/.
-! Unit notes: q [Ang]; p [amu*Ang/(10 fs)]; t and dt [10 fs]; mass [amu] (roster);
-!   facade force [internal energy units per Ang]. The eV->kcal/mol conversion
-!   literal lives only in force_facade - this check NEVER writes it: the composed
+! Unit notes: q [Ang]; p [amu*Ang/(10 fs)]; t and dt [10 fs]; mass [amu] (list_atoms);
+!   interface force [internal energy units per Ang]. The eV->kcal/mol conversion
+!   literal lives only in force_interface - this check NEVER writes it: the composed
 !   conversion constant is measured once by a calibrated force_eval call (cal below)
 !   and reused everywhere.
-! Loud-stop verification approach (same scheme as the sibling checks): every
-!   loud-stop criterion runs as a CHILD PROCESS - the check re-spawns itself with a
+! Named-abort verification approach (same scheme as the sibling checks): every
+!   named-abort criterion runs as a CHILD PROCESS - the check re-spawns itself with a
 !   mode argument (execute_command_line, stderr redirected); the child drives the
 !   real stop path and must print a naming message on stderr and exit nonzero.
 ! Criteria:
-!   (a) framework loud-stops (children): (a1) duplicate integrator id;
+!   (a) framework aborts with a named error (children): (a1) duplicate integrator id;
 !       (a2) registry full (max_integ exceeded); (a3) dispatch with an unregistered
 !       id names the id; (a4) illegal verlet order (= 3) names the order
 !   (b) velocity-Verlet energy-error scaling: harmonic oscillator, max |E(t)-E(0)|
@@ -45,21 +45,21 @@
 !       analytic solution drops ~8x per dt halving (dt 0.08/0.04/0.02, T = 12.56,
 !       N = 157/314/628; ratio window [6.0, 10.5] per halving; anchor = the closed-
 !       form harmonic solution with the measured-conversion frequencies)
-!   (f) Beeman first-step boot + force staging (registered semantics: no usable
+!   (f) Beeman first-step boot + force buffer (registered semantics: no usable
 !       history -> the step runs the velocity-Verlet sequence and stages its
 !       left-end force as the next step's history):
 !       (f1) the boot step is IDENTICAL to an order=1 step from the same state
 !            (q, p, f compared exactly - both run the same shared sequence);
 !       (f2) from step 2 on the force differencing is correct - a 5-step order=2
 !            run at dt 0.04 beats the order=1 position error by more than 2x
-!            (third- vs second-order positions; a mis-staged history degrades the
+!            (third- vs second-order positions; a mis-buffered history degrades the
 !            error toward or below the order=1 level)
-!   (g) force path through the facade (bound slot): force_eval returns the analytic
+!   (g) force path through the interface (bound slot): force_eval returns the analytic
 !       force component-wise at two geometries (proportionality to the gradient -
 !       the conversion constant cancels), and e_tot decomposes as t_kin(p) + v_pot(q)
 !       with the derived conversion consistent across both geometries and momentum
-!       sets (rel 1e-12; e_conv from consts, never the facade literal)
-!   (h) unbound class-A slot loud-stop (child): force_eval called before any
+!       sets (rel 1e-12; e_conv from consts, never the interface literal)
+!   (h) unbound force slot named abort (child): force_eval called before any
 !       container_bind_pes names the slot on stderr
 !   ---------- symple criteria (the composition member, id = 2) ----------
 !   (s-a) coefficient loading (criteria stated on the composed array a(0:2N), N = 5/8/17
@@ -75,7 +75,7 @@
 !           independent transcription of the historical Schlier tables driving the same
 !           arithmetic stream (the reference's expression grouping mirrors the member's;
 !           any differing coefficient bit perturbs the stream and flips trajectory bits;
-!           the order-4 row of the reference carries the SIGN CORRECTION legislated in
+!           the order-4 row of the reference carries the SIGN CORRECTION prescribed in
 !           the propagator header - the historical a(2) = +1/3 set is second order)
 !   (s-b) per-order convergence: harmonic position error at fixed T = 25.12 against the
 !       analytic solution drops ~2^order per dt halving, orders 4/6/8 each; dt sets per
@@ -106,7 +106,7 @@
 !   (s-f) endpoint-force contract: after 1 and 3 symple steps (each order, harmonic;
 !       order 8 kepler) sta%f equals the analytic force of the branch at the RETURNED
 !       q, component-wise (rel 1e-13, as (d))
-!   (s-ls) illegal symple order (= 5) loud-stop (child): names the order
+!   (s-ls) illegal symple order (= 5) named abort (child): names the order
 !   ---------- radau criteria (the RA15 adaptive member, id = 3) ----------
 !   Test potentials beyond the harmonic default: branch 4 = per-dof Morse
 !   (V = D(e^{-2au} - 2e^{-au}), D = 5 eV, a = 1.5/A - the anharmonic bound
@@ -181,7 +181,7 @@
 !   (r-g) dispatch: id = 3 through prop_step advances sta%t by the seed on the
 !       first sequence and by a DIFFERENT (adaptive, growth-limited) length on
 !       the second - the member is reachable and internally adaptive
-!   (r-ls) loud-stops (children): illegal radau order (= 17) names the order;
+!   (r-ls) aborts with a named error (children): illegal radau order (= 17) names the order;
 !       dt = 0 names dt; a positive dt_min > dt_max pair names the pair; a
 !       floor-pinned diverged trial names the guard - quartic wall at seed
 !       dt = dt_min = 0.7, order 12: the diverged trial's probe clamps back UP
@@ -202,10 +202,10 @@
 program check_propagator
    use consts,        only: e_conv, two_pi
    use config,        only: prop_cfg => propagator
-   use config_roster, only: roster
+   use config_atoms, only: list_atoms
    use state,         only: state_t, state_create, state_destroy
-   use elec_facade,   only: method_reg
-   use force_facade,  only: force_eval, container_bind_pes, container_init
+   use elec_interface,   only: method_reg
+   use force_interface,  only: force_eval, container_bind_pes, container_init
    use propagator,    only: prop_step, prop_reg, verlet_step
    use reg_prop,      only: reg_prop_all
    implicit none
@@ -224,7 +224,7 @@ program check_propagator
    real(8) :: adv(3), advh(3), qk0(6), pk0(6)
    ! ---------- radau-section state ----------
    integer :: fcount = 0                  ! bound-container call count (= force_eval count;
-                                         ! one container call per evaluation, facade step 3)
+                                         ! one container call per evaluation, interface step 3)
    logical :: rlog_on = .false.           ! substep-geometry logging flag (test_pes appends)
    integer :: rlog_n = 0                  ! logged force-site count
    real(8), allocatable :: rlog_q(:, :)   ! logged force-site geometries (6, site)
@@ -270,7 +270,7 @@ program check_propagator
    real(8), parameter :: pB(6)    = [ 1.1d0,-0.7d0, 0.5d0,-0.9d0, 0.6d0, 1.3d0 ]
    tmax = 12.56d0
 
-   ! ---------- child dispatch: one bad case per spawn, must loud-stop ----------
+   ! ---------- child dispatch: one bad case per spawn, must named abort ----------
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       select case (trim(mode))
@@ -328,8 +328,8 @@ program check_propagator
          prop_cfg%dt_max = 0.1d0
          call prop_step(sa)
       case ('c-rdiv')                      ! (r-ls): floor-pinned diverged trial - the
-         allocate (roster%mass(2))         ! quartic branch must be bound (the trial runs
-         roster%mass = [ 1.0d0, 4.0d0 ]    ! real forces before the estimate fires)
+         allocate (list_atoms%mass(2))         ! quartic branch must be bound (the trial runs
+         list_atoms%mass = [ 1.0d0, 4.0d0 ]    ! real forces before the estimate fires)
          call state_create(sa, 2)
          call method_reg('adiabatic', noop_prop, noop_match)
          call container_bind_pes(test_pes)
@@ -353,8 +353,8 @@ program check_propagator
    end if
 
    ! ---------- parent: assemble the force chain check-side ----------
-   allocate (roster%mass(2))
-   roster%mass = [ 1.0d0, 4.0d0 ]
+   allocate (list_atoms%mass(2))
+   list_atoms%mass = [ 1.0d0, 4.0d0 ]
    call state_create(sta, 2)
    call state_create(sa, 2)
    call state_create(sb, 2)
@@ -371,8 +371,8 @@ program check_propagator
 
    ! ---------- calibration: measure the composed conversion constant ----------
    ! one force_eval call at a known single-dof offset (p = 0): f = -k*u*cal, with cal
-   ! the eV->internal product the facade applies - the literal lives only in
-   ! force_facade, never in this check; the per-dof frequencies follow
+   ! the eV->internal product the interface applies - the literal lives only in
+   ! force_interface, never in this check; the per-dof frequencies follow
    ! omega^2 = k*cal/m
    sa%q = q_ctr
    sa%q(1) = q_ctr(1) + 0.30d0
@@ -384,10 +384,10 @@ program check_propagator
       nfail = nfail + 1
    end if
    do i = 1, 6
-      om(i) = sqrt(k_eV(i)*cal/roster%mass((i + 2)/3))
+      om(i) = sqrt(k_eV(i)*cal/list_atoms%mass((i + 2)/3))
    end do
 
-   ! ---------- (a)+(h) framework loud-stops (children) ----------
+   ! ---------- (a)+(h) framework aborts with a named error (children) ----------
    call expect_loudstop('c-dup',     'duplicate',     'prop_reg',    '(a1) duplicate-id loud-stop')
    call expect_loudstop('c-full',    'full',          'prop_reg',    '(a2) registry-full loud-stop')
    call expect_loudstop('c-unreg',   'id 9',          'prop_step',   '(a3) unregistered-id loud-stop')
@@ -451,7 +451,7 @@ program check_propagator
    sta%t = 0.0d0
    call prop_step(sta)
    call check_endpoint_force('(d) order=2 boot step')
-   call prop_step(sta)                       ! genuine Beeman (history staged)
+   call prop_step(sta)                       ! genuine Beeman (history buffered)
    call prop_step(sta)                       ! genuine Beeman
    call check_endpoint_force('(d) order=2 third step')
    if (nfail == nfail0) print '(a)', '(d) endpoint force: PASS (sta%f = analytic force at the returned q,'// &
@@ -478,7 +478,7 @@ program check_propagator
    if (nfail == nfail0) print '(a)', '(e) Beeman position scaling: PASS (error ratios '//trim(d2s(r1))//' / '// &
       trim(d2s(r2))//' per dt halving, dt 0.08/0.04/0.02, T = 12.56, vs analytic)'
 
-   ! ---------- (f) Beeman boot + force staging ----------
+   ! ---------- (f) Beeman boot + force buffer ----------
    ! (f1) the boot step is identical to an order=1 step from the same state
    prop_cfg%dt = 0.02d0
    sa%q = q_ctr + u0
@@ -504,12 +504,12 @@ program check_propagator
       call fail('(f2) the order=1 position error vanished - comparison undefined')
    else if (errb >= errv/2.0d0) then
       call fail('(f2) Beeman 5-step error not below half the order=1 error: '//trim(d2s(errb))//' vs '// &
-                trim(d2s(errv))//' (mis-staged force history?)')
+                trim(d2s(errv))//' (mis-buffered force history?)')
    end if
-   if (nfail == nfail0) print '(a)', '(f2) Beeman staging: PASS (5-step error '//trim(d2s(errb))//' < half the '// &
+   if (nfail == nfail0) print '(a)', '(f2) Beeman buffer: PASS (5-step error '//trim(d2s(errb))//' < half the '// &
       'order=1 error '//trim(d2s(errv))//', dt 0.04)'
 
-   ! ---------- (g) force path through the facade ----------
+   ! ---------- (g) force path through the interface ----------
    nfail0 = nfail
    sa%q = q_ctr + uA
    sa%p = 0.0d0
@@ -533,7 +533,7 @@ program check_propagator
    u2 = uA*uA
    tk = 0.0d0
    do i = 1, 2
-      tk = tk + dot_product(sa%p(3*i - 2:3*i), sa%p(3*i - 2:3*i))/(2.0d0*roster%mass(i))
+      tk = tk + dot_product(sa%p(3*i - 2:3*i), sa%p(3*i - 2:3*i))/(2.0d0*list_atoms%mass(i))
    end do
    tk = tk/e_conv
    if (abs(ea - (tk + 0.5d0*dot_product(k_eV, u2)*cal/e_conv)) > 1.0d-12*max(abs(ea), 1.0d0)) then
@@ -542,13 +542,13 @@ program check_propagator
    u2 = uB*uB
    tk = 0.0d0
    do i = 1, 2
-      tk = tk + dot_product(sb%p(3*i - 2:3*i), sb%p(3*i - 2:3*i))/(2.0d0*roster%mass(i))
+      tk = tk + dot_product(sb%p(3*i - 2:3*i), sb%p(3*i - 2:3*i))/(2.0d0*list_atoms%mass(i))
    end do
    tk = tk/e_conv
    if (abs(eb - (tk + 0.5d0*dot_product(k_eV, u2)*cal/e_conv)) > 1.0d-12*max(abs(eb), 1.0d0)) then
       call fail('(g) e_tot decomposition mismatch, geometry B: '//trim(d2s(eb))//' vs '//trim(d2s(tk)))
    end if
-   if (nfail == nfail0) print '(a)', '(g) facade force path: PASS (bound force_eval = analytic gradient at two'// &
+   if (nfail == nfail0) print '(a)', '(g) interface force path: PASS (bound force_eval = analytic gradient at two'// &
       ' geometries; e_tot = t_kin(p) + v_pot(q) via the derived conversion)'
 
    ! ================= symple section (the composition member, id = 2) =================
@@ -572,7 +572,7 @@ program check_propagator
          call fail('(s-a1) free-flight step changed p (order '//trim(i2s(iord))//')')
       end if
       do i = 1, 2
-         dqv = 0.02d0*pB(3*i - 2:3*i)/roster%mass(i)       ! dt*p0/m per atom
+         dqv = 0.02d0*pB(3*i - 2:3*i)/list_atoms%mass(i)       ! dt*p0/m per atom
          if (maxval(abs(sa%q(3*i - 2:3*i) - (q_ctr(3*i - 2:3*i) + uA(3*i - 2:3*i) + dqv))) > &
              1.0d-12*max(1.0d0, maxval(abs(dqv)))) then
             call fail('(s-a1) drift sum /= 1 (order '//trim(i2s(iord))//', atom '//trim(i2s(i))//')')
@@ -632,7 +632,7 @@ program check_propagator
    ! ---------- (s-a4) bit-level coefficient values: trajectory equality ----------
    ! form: the reference runs the SAME arithmetic stream (identical per-beat expression
    ! grouping) on coefficient values from an independent transcription of the historical
-   ! tables - the order-4 row carrying the sign correction legislated in the propagator
+   ! tables - the order-4 row carrying the sign correction prescribed in the propagator
    ! header (the historical +1/3 set is second order; both this reference and the member
    ! carry the corrected -1/3); q and p must be bitwise equal after every step - any
    ! differing coefficient bit perturbs a product at the ulp level and flips trajectory
@@ -761,7 +761,7 @@ program check_propagator
    ! order 6 0.05->0.025, order 8 0.10->0.05 (its dt 0.05 advance sits ~300x above
    ! the double-precision floor - halving once more would fall through it)
    pot_sel = 2
-   kep_k = gm_want*(roster%mass(1)*roster%mass(2)/sum(roster%mass))/cal
+   kep_k = gm_want*(list_atoms%mass(1)*list_atoms%mass(2)/sum(list_atoms%mass))/cal
    adv(1) = kep_adv(4, 0.05d0, 60)
    adv(2) = kep_adv(6, 0.05d0, 60)
    adv(3) = kep_adv(8, 0.05d0, 60)
@@ -879,8 +879,8 @@ program check_propagator
    call prop_step(sa)
    rlog_on = .false.
    do i = 1, 6
-      vk(i) = pB(i)/roster%mass((i + 2)/3)    ! folded IC velocity
-      fa(i) = -(f_uni(i)*cal)/roster%mass((i + 2)/3)  ! folded constant acceleration f1
+      vk(i) = pB(i)/list_atoms%mass((i + 2)/3)    ! folded IC velocity
+      fa(i) = -(f_uni(i)*cal)/list_atoms%mass((i + 2)/3)  ! folded constant acceleration f1
    end do
    nfail0 = nfail
    if (maxval(abs(rlog_q(:, 1) - (q_ctr + uA))) > 1.0d-12) then
@@ -927,7 +927,7 @@ program check_propagator
    call prop_step(sa)
    qa = q_ctr + u0*cos(om*sa%t)
    do i = 1, 6
-      pa(i) = -u0(i)*om(i)*sin(om(i)*sa%t)*roster%mass((i + 2)/3)  ! p = m*dq/dt
+      pa(i) = -u0(i)*om(i)*sin(om(i)*sa%t)*list_atoms%mass((i + 2)/3)  ! p = m*dq/dt
    end do
    nfail0 = nfail
    if (abs(sa%t - 0.01d0) > 1.0d-14) then
@@ -1165,7 +1165,7 @@ program check_propagator
    if (nfail == nfail0) print '(a)', '(r-g) id=3 dispatch: PASS (t advances; seed increment '// &
       trim(d2s(inc1))//', adaptive increment '//trim(d2s(inc2))//' - growth-limited adaptivity)'
 
-   ! ---------- (r-ls) radau loud-stops (children) ----------
+   ! ---------- (r-ls) radau aborts with a named error (children) ----------
    call expect_loudstop('c-rorder', 'order', 'radau_step', '(r-ls) illegal-order loud-stop')
    call expect_loudstop('c-rdt0', 'dt = 0', 'radau_step', '(r-ls) zero-dt loud-stop')
    call expect_loudstop('c-rmm', 'dt_min exceeds dt_max', 'radau_step', &
@@ -1198,7 +1198,7 @@ contains
       integer :: n
       real(8) :: rr(3), rn, ex
       n = size(q)
-      fcount = fcount + 1                     ! one container call per force_eval (facade
+      fcount = fcount + 1                     ! one container call per force_eval (interface
                                              ! step 2) - the radau restart instrument (r-d)
       if (rlog_on) then                       ! substep-geometry log (r-a1): append the
          if (rlog_n < size(rlog_q, 2)) then   ! q of every force site while armed
@@ -1341,7 +1341,7 @@ contains
 
    ! assert sta%f equals the analytic Morse force at the RETURNED sta%q (branch 4 of
    ! the container: V = D(e^{-2au} - 2e^{-au}), dV/du = 2aD(e^{-au} - e^{-2au}); the
-   ! facade applies F = -g*cal - the measured conversion, as check_endpoint_force)
+   ! interface applies F = -g*cal - the measured conversion, as check_endpoint_force)
    subroutine check_morse_endpoint(tag)
       character(len=*), intent(in) :: tag
       integer :: i
@@ -1362,8 +1362,8 @@ contains
    subroutine kep_ic(sx)
       type(state_t), intent(inout) :: sx
       real(8) :: m1, m2, mt, mu, rp, vp
-      m1 = roster%mass(1)
-      m2 = roster%mass(2)
+      m1 = list_atoms%mass(1)
+      m2 = list_atoms%mass(2)
       mt = m1 + m2
       mu = m1*m2/mt
       rp = kep_a*(1.0d0 - kep_ecc)
@@ -1401,13 +1401,13 @@ contains
       acc = 0.0d0
       lastA = 0.0d0
       r = sta%q(1:3) - sta%q(4:6)
-      v = sta%p(1:3)/roster%mass(1) - sta%p(4:6)/roster%mass(2)
+      v = sta%p(1:3)/list_atoms%mass(1) - sta%p(4:6)/list_atoms%mass(2)
       vrprev = r(1)*v(1) + r(2)*v(2) + r(3)*v(3)
       n = nint(n_orb*two_pi/dt)
       do i = 1, n
          call prop_step(sta)
          r = sta%q(1:3) - sta%q(4:6)
-         v = sta%p(1:3)/roster%mass(1) - sta%p(4:6)/roster%mass(2)
+         v = sta%p(1:3)/list_atoms%mass(1) - sta%p(4:6)/list_atoms%mass(2)
          vr = r(1)*v(1) + r(2)*v(2) + r(3)*v(3)
          if (vrprev < 0.0d0 .and. vr >= 0.0d0) then
             hz = r(1)*v(2) - r(2)*v(1)          ! orbit-plane angular momentum [internal]
@@ -1481,25 +1481,25 @@ contains
          call force_eval(sta, el)              ! k1 at q0
          k1p = sta%f
          do k = 1, 2
-            k1q(3*k - 2:3*k) = p0(3*k - 2:3*k)/roster%mass(k)
+            k1q(3*k - 2:3*k) = p0(3*k - 2:3*k)/list_atoms%mass(k)
          end do
          sb%q = q0 + h2*k1q
          call force_eval(sb, el)               ! k2
          k2p = sb%f
          do k = 1, 2
-            k2q(3*k - 2:3*k) = (p0(3*k - 2:3*k) + h2*k1p(3*k - 2:3*k))/roster%mass(k)
+            k2q(3*k - 2:3*k) = (p0(3*k - 2:3*k) + h2*k1p(3*k - 2:3*k))/list_atoms%mass(k)
          end do
          sb%q = q0 + h2*k2q
          call force_eval(sb, el)               ! k3
          k3p = sb%f
          do k = 1, 2
-            k3q(3*k - 2:3*k) = (p0(3*k - 2:3*k) + h2*k2p(3*k - 2:3*k))/roster%mass(k)
+            k3q(3*k - 2:3*k) = (p0(3*k - 2:3*k) + h2*k2p(3*k - 2:3*k))/list_atoms%mass(k)
          end do
          sb%q = q0 + dt*k3q
          call force_eval(sb, el)               ! k4
          k4p = sb%f
          do k = 1, 2
-            k4q(3*k - 2:3*k) = (p0(3*k - 2:3*k) + dt*k3p(3*k - 2:3*k))/roster%mass(k)
+            k4q(3*k - 2:3*k) = (p0(3*k - 2:3*k) + dt*k3p(3*k - 2:3*k))/list_atoms%mass(k)
          end do
          sta%q = q0 + h6*(k1q + 2.0d0*k2q + 2.0d0*k3q + k4q)
          sta%p = p0 + h6*(k1p + 2.0d0*k2p + 2.0d0*k3p + k4p)
@@ -1513,7 +1513,7 @@ contains
    ! ref_load(order) - fill the reference coefficient table for one order: an
    ! INDEPENDENT transcription of the historical tables (same values, the historical
    ! assignment structure with explicit mirror copies; order 4 carries the sign
-   ! correction legislated in the propagator header) - the member's own literals were
+   ! correction prescribed in the propagator header) - the member's own literals were
    ! written from the same source; agreement is asserted bitwise by (s-a4)
    subroutine ref_load(order)
       integer, intent(in) :: order
@@ -1605,15 +1605,15 @@ contains
       real(8) :: ed
       ed = 0.0d0
       do i = 0, ref_n - 1
-         do k = 1, size(roster%mass)
+         do k = 1, size(list_atoms%mass)
             sx%p(3*k - 2:3*k) = sx%p(3*k - 2:3*k) + sx%f(3*k - 2:3*k)*(dt*ref_a(2*i))
          end do
-         do k = 1, size(roster%mass)
-            sx%q(3*k - 2:3*k) = sx%q(3*k - 2:3*k) + sx%p(3*k - 2:3*k)*(dt*ref_a(2*i + 1)/roster%mass(k))
+         do k = 1, size(list_atoms%mass)
+            sx%q(3*k - 2:3*k) = sx%q(3*k - 2:3*k) + sx%p(3*k - 2:3*k)*(dt*ref_a(2*i + 1)/list_atoms%mass(k))
          end do
          call force_eval(sx, ed)
       end do
-      do k = 1, size(roster%mass)
+      do k = 1, size(list_atoms%mass)
          sx%p(3*k - 2:3*k) = sx%p(3*k - 2:3*k) + sx%f(3*k - 2:3*k)*(dt*ref_a(2*ref_n))
       end do
       sx%t = sx%t + dt
@@ -1626,7 +1626,7 @@ contains
       nfail = nfail + 1
    end subroutine fail
 
-   ! spawn the child for one bad case and assert the loud-stop: nonzero exit, stderr
+   ! spawn the child for one bad case and assert the named abort: nonzero exit, stderr
    ! names the authority and carries the expected key
    subroutine expect_loudstop(cmode, who, key, label)
       character(len=*), intent(in) :: cmode, who, key, label

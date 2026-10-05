@@ -9,7 +9,7 @@
 !   is the legal 'no deliverable cache' form).
 !=====================================================================
 module reg_adiabatic
-   use elec_facade,   only: method_reg
+   use elec_interface,   only: method_reg
    use elec_adiabatic, only: ad_prop, ad_match   ! package members; their conformance
    ! to the abstract interfaces is checked at the method_reg call site
    implicit none

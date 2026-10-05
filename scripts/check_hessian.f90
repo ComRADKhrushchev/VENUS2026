@@ -4,8 +4,8 @@
 ! Compile (from src/; -Jbuild keeps the .mod files out of the source tree):
 !   gfortran -Jbuild utils/hessian.f90 ../scripts/check_hessian.f90 -o build/check_hessian.exe
 ! All artifacts are written under build/ - the source tree stays clean.
-! Loud-stop verification (same scheme as the sibling criteria programs):
-!   every loud-stop criterion runs as a CHILD PROCESS - the check re-spawns
+! Named-abort verification (same scheme as the sibling criteria programs):
+!   every named-abort criterion runs as a CHILD PROCESS - the check re-spawns
 !   itself with a mode argument (execute_command_line); the child drives the
 !   REAL hessian_cd into the stop and must print a naming message on stderr
 !   and exit nonzero. A child that returns without stopping exits 0 and
@@ -27,7 +27,7 @@
 !       0.05 (second-order central differences; the analytic error is
 !       exactly 4 h^2, so a first-order scheme would ratio 2, a zeroth-
 !       order one 1)
-!   (d) protection loud-stops (children):
+!   (d) protection aborts with a named error (children):
 !     (d1) force returns NaN in component 1 exactly at the coordinate-2
 !          probe -> nonzero exit, stderr names hessian_cd, coordinate 2,
 !          component 1 and the +h probe
@@ -113,7 +113,7 @@ program check_hessian
    integer :: nfail = 0, nfail0, i, j, p
    character(len=256) :: mode
 
-   ! ---------- child dispatch: one bad case per spawn, must loud-stop ----------
+   ! ---------- child dispatch: one bad case per spawn, must named abort ----------
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       select case (trim(mode))
@@ -231,7 +231,7 @@ program check_hessian
    if (nfail == nfail0) print '(a)', &
       '(c) quartic order: PASS (h halved 1e-1 -> 5e-2 -> 2.5e-2, error ratio 4 at 2 points x 2 components)'
 
-   ! ---------- (d) protection loud-stops (children) ----------
+   ! ---------- (d) protection aborts with a named error (children) ----------
    call expect_loudstop('bad-nan',   'hessian_cd', 'coordinate 2', 'component 1', '+h probe', &
                         '(d1) NaN-force loud-stop')
    call expect_loudstop('bad-inf',   'hessian_cd', 'coordinate 1', 'component 2', '-h probe', &
@@ -247,7 +247,7 @@ program check_hessian
 
 contains
 
-   ! spawn the child for one bad case and assert the loud-stop: nonzero exit,
+   ! spawn the child for one bad case and assert the named abort: nonzero exit,
    ! stderr names the expected authority (hessian_cd) and carries the expected
    ! key(s); key2/key3 = '' skip that key
    subroutine expect_loudstop(cmode, who, key1, key2, key3, label)

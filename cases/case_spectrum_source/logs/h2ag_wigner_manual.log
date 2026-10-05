@@ -1,0 +1,7 @@
+ read all parameters done
+assembly complete: trajectories=4 atoms=2 fragments=1 paradigm=1 members=11 init=ok columns=3
+statistics: trajectories=4 valid=4
+outcome counts: none (no classification bound - skipped)
+conservation drift: trajectories=4 max|e_fin-e0|=  6.9325E+00 kcal/mol
+histograms: rows=4 files=hist_e_rel.dat hist_thta.dat
+timing: cpu=    0.20 s

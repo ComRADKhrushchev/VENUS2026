@@ -1,0 +1,3 @@
+STOP 1
+read_table_file: spectrum error: line 2: unknown spectrum-table word 'GARBAGE'
+read_table_file: fatal (the spectrum table is unusable)

@@ -122,7 +122,7 @@ S2 审计审 E27 后树、S3 文档批书写新契约、停放项表 P-6 的 wra
 
 | # | 登记处 | 内容 | S 相裁决 | 去向 |
 |---|---|---|---|---|
-| P-1 | V-5/chain_freq §2 | 装配期频率导出通道未接线(机制存在零生产接线,四证据) | **维持停放 → 候选后续件** | E27 后形态明确:H 形容器可自带 Hessian→谱导出(容器文件夹私有通道);触发条件=首个多面容器落地 |
+| P-1 | V-5/chain_freq §2 | 装配期频率导出通道未接线(机制存在零生产接线,四证据) | **已解(2026-10-05 谱来源立法,改道)** | 原判"容器私有谱导出通道"被推翻:容器导出槽整体废除,谱生产者=SPECTRUM_SOURCE 键选择(内部推导缺省/MANUAL 谱表文件),docs/plans/2026-10-05-spectrum-source.md |
 | P-2 | V 停放②/results_check_facade_ifx.txt | ifx 下 check_facade (g)/(r) 两红腿 | **关闭(E27 消解)** | 判据腿随 ws 构造通道退役而消失;ifx 存档留历史参考 |
 | P-3 | C8→V 第 5 条 | 采样器→统计相初值快照通道(VI/OAMI/AMAI/AMBI/SDA/SDB 生产者,解锁 fin%ang(4..18)) | **维持停放** | 随 C8 触发条件;E27 不影响(recorder 读 holder 的 getter 面未动) |
 | P-4 | V 停放④ | check_facade (g) FAIL 行不打印 got-vs-expected(scripts/ 改进注记) | **关闭(E27 消解)** | (g) 腿对象已退役;其余容差判据均打印的通例仍在 |

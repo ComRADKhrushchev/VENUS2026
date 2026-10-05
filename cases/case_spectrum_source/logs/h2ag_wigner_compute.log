@@ -1,0 +1,4 @@
+STOP 1
+wigner_init: mode column not orthogonal to the mass-weighted translations (residual norm, tolerance 1e-8*sqrt(sum m)) =  2.7573E-03
+wigner_init: fatal (the initial state is not sampled)
+ read all parameters done

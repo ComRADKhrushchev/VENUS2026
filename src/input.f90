@@ -5,10 +5,17 @@
 !   Standalone grammar, no fallback track: a data line without '=' is a parse error;
 !   old key names and MODEL are unknown keys. Two blocks - run control / system
 !   definition; member-parameter keys stage raw (central dispatch table) for the
-!   member inits at assembly; this layer holds zero system knowledge (formal checks
+!   member inits at assembly; declared container keys (the dragged-in container's
+!   parameter vocabulary, input_declare_keys BEFORE the parse) stage the same way
+!   and are consumed at the assembly seam by pull (absent key keeps the target's
+!   own default; input_audit_declared fatals a buffered-but-unconsumed declared key);
+!   this layer holds zero system knowledge (formal checks
 !   only: kind domains, slot widths). Defaults are per-key, never overriding
 !   user-set keys; required keys are those with no system-independent default
-!   (SYSTEM_DIR, E_REL, B_MAX, R_SEP, DT, DIST_SCHEME). GWRITE_LEVEL defaults to 2.
+!   (SYSTEM_DIR, E_REL, B_MAX, R_SEP, DT, DIST_SCHEME). GWRITE_LEVEL defaults to 2;
+!   RANDOM_ORIENT defaults to F (the archived five-case stream). SPECTRUM_SOURCE
+!   defaults to COMPUTE (the internal derivation; MANUAL stages the spectrum-table
+!   file - 2026-10-05 spectrum-source legislation).
 !=====================================================================
 module input
    use control, only: task, n_traj, title, i_seed, max_steps
@@ -16,7 +23,8 @@ module input
    implicit none
    private
    public :: read_input
-   public :: staging_n_rows, staging_key, staging_block, staging_line, staging_val
+   public :: buffer_n_rows, buffer_key, buffer_block, buffer_line, buffer_val
+   public :: input_declare_keys, input_audit_declared, pull
 
    integer, parameter :: key_len  = 32     ! keyword capacity [character]
    integer, parameter :: val_len  = 512    ! value capacity [character]
@@ -36,30 +44,46 @@ module input
    integer, parameter :: kind_enum = 6     ! registry word -> internal code (scalar)
    integer, parameter :: kind_elist = 7    ! comma list of registry words -> code array
    integer, parameter :: kind_posreal = 8  ! positive real scalar (parses as real AND > 0 -
-                                           ! the surface-window lengths)
+                                           ! the surface lattice length)
 
    ! enumeration families (which registry a kind_enum/kind_elist key maps through)
-   integer, parameter :: enum_none = 0, enum_task = 1, enum_integ = 2, enum_dist = 3
+   integer, parameter :: enum_none = 0, enum_task = 1, enum_integ = 2, enum_dist = 3, &
+                          enum_bath = 4, enum_spectrum = 5
 
-   ! Parse staging (KEYWORD=VALUE row table - module-private, clean slate per
-   ! read_input, read out through the public staging accessors only)
+   ! Parse buffer (KEYWORD=VALUE row table - module-private, clean slate per
+   ! read_input, read out through the public buffer accessors only)
    type :: kv_row_t
       character(len=key_len) :: key = ''   ! keyword (uppercased)
       character(len=val_len) :: val = ''   ! value section (continuations already merged)
       integer :: ln  = 0                   ! source line number (0 = default-injected row)
       integer :: blk = 0                   ! block tag (from the key table)
+      logical :: used = .false.            ! a declared-key row consumed by a pull
    end type kv_row_t
    type(kv_row_t), allocatable :: kv_tbl(:)  ! row table (module-private)
    integer :: n_kv = 0                       ! number of rows [row]
+
+   ! Declared container keys (the dragged-in container's parameter vocabulary):
+   ! its reg _all hands the key list over BEFORE read_input runs, the parse admits
+   ! those names, and the container's reg _init consumes each buffered row by pull.
+   ! Process-lifetime state (not reset by read_input - declaration precedes parse).
+   integer, parameter :: max_declared = 128          ! declared-key capacity [key]
+   character(len=key_len) :: declared_tbl(max_declared) = ''
+   integer :: n_declared = 0                          ! declared-key count [key]
+
+   ! pull(key, target [, found]) - the declared-key consumption entry at the
+   ! assembly seam: one call, one key, type-dispatched on the target
+   interface pull
+      module procedure pull_real, pull_int, pull_char, pull_r3
+   end interface pull
 
    ! Key registry: the whole grammar in one table, block one first (a new key is one
    ! row, the framework does not change). def = per-key default (injected when the
    ! user has not set the key); required = no system-independent default exists (the
    ! row's def stays unused); slotw = the value-slot width - an over-wide value
-   ! loud-stops at slot mapping instead of silently truncating (0 = no fixed slot);
+   ! aborts with a named error at slot mapping instead of silently truncating (0 = no fixed slot);
    ! cond = paradigm-conditional key (the surface window): never default-injected,
    ! never unconditionally required - the paradigm condition runs at assembly time
-   ! (the value stays staged for the assembly-time pull)
+   ! (the value stays buffered for the assembly-time pull)
    type :: key_spec_t
       character(len=key_len) :: name = ''
       integer :: blk = 0
@@ -79,7 +103,7 @@ module input
    ! DT_MIN/DT_MAX (the adaptive member's sequence-length bounds): kind_real, NOT
    ! kind_posreal - a clamp value <= 0 is the legal unclamped default (0 = off);
    ! consumed by the radau member only (fixed-step members ignore them)
-   type(key_spec_t), parameter :: key_tab(25) = [ &
+   type(key_spec_t), parameter :: key_tab(32) = [ &
       key_spec_t('TASK',         blk_flow,   kind_enum,  enum_task,  .false., 'TRAJECTORY'), &
       key_spec_t('N_TRAJ',       blk_flow,   kind_int,   enum_none,  .false., '1'), &
       key_spec_t('TITLE',        blk_flow,   kind_char,  enum_none,  .false., '', slotw=80), &
@@ -100,14 +124,21 @@ module input
       key_spec_t('E_TOT',        blk_flow,   kind_log,   enum_none,  .false., 'F'), &
       key_spec_t('SYSTEM_DIR',   blk_system, kind_char,  enum_none,  .true.,  '', slotw=128), &
       key_spec_t('E_REL',        blk_system, kind_real,  enum_none,  .true.,  ''), &
-      key_spec_t('B_MAX',        blk_system, kind_real,  enum_none,  .true.,  ''), &
+      key_spec_t('B_MAX',        blk_system, kind_real,  enum_none,  .false., '0.0'), & ! optional (PAIR channel only): the surface member loud-stops a WRITTEN B_MAX - lateral placement is N_AIM's alone (ruled 2026-10-01); the pair member enforces a positive radius at assembly (beam_init)
       key_spec_t('R_SEP',        blk_system, kind_real,  enum_none,  .true.,  ''), &
       key_spec_t('DIST_SCHEME',  blk_system, kind_elist, enum_dist,  .true.,  ''), &
-      key_spec_t('A_LAT',        blk_system, kind_posreal, enum_none, .false., '', cond=.true.), &
-      key_spec_t('BOXPAD',       blk_system, kind_posreal, enum_none, .false., '', cond=.true.) ]
+      key_spec_t('RANDOM_ORIENT', blk_system, kind_log,  enum_none,  .false., 'F'), &
+      key_spec_t('BATH',          blk_system, kind_enum, enum_bath,  .false., 'NONE'), &
+      key_spec_t('N_BATH',        blk_system, kind_int,  enum_none,  .false., '0'), &
+      key_spec_t('DT_BATH',       blk_system, kind_real, enum_none,  .false., '0.0'), &
+      key_spec_t('SPECTRUM_SOURCE', blk_system, kind_enum, enum_spectrum, .false., 'COMPUTE'), &
+      key_spec_t('SPECTRUM_FILE',  blk_system, kind_char, enum_none,  .false., '', slotw=128), &
+      key_spec_t('PROJECTILE',   blk_system, kind_char,  enum_none,  .false., '', slotw=64, cond=.true.), &
+      key_spec_t('TARGET',       blk_system, kind_char,  enum_none,  .false., '', slotw=64, cond=.true.), &
+      key_spec_t('A_LAT',        blk_system, kind_posreal, enum_none, .false., '', cond=.true.) ]
 
    ! Enumeration registries (table-driven word -> code). task: 1 = TRAJECTORY (the one
-   ! task this program runs - an unlisted word loud-stops); integ: the propagator
+   ! task this program runs - an unlisted word aborts with a named error); integ: the propagator
    ! closed-family codes (prop_reg ids); dist: the PER-FRAGMENT scheme words the
    ! sampler's scheme-code lookup resolves. 'INCIDENT' is withdrawn from the dist
    ! registry - the incident channel is selected by the samp_run scheme argument, so
@@ -121,8 +152,21 @@ module input
       enum_row_t('ROTATION', 3), enum_row_t('J', 4), &
       enum_row_t('SURFACE_OSCILLATOR', 5), enum_row_t('NORMALMODE', 6), &
       enum_row_t('BARRIER_EXCITATION', 7), &
-      enum_row_t('THERMOSTAT', 8), enum_row_t('GLO_TARGET', 9), &
-      enum_row_t('THERMALIZE', 10) ]
+      enum_row_t('GLO_TARGET', 8), &
+      enum_row_t('THERMALIZE', 9), enum_row_t('WIGNER', 10) ]
+
+   ! bath provision words (THERMOSTAT left the dist registry 2026-09-22: the
+   ! Andersen species is a bath, not a per-fragment distribution word - the
+   ! BATH selector arms the pre-evolution bath loop inside samp_run)
+   type(enum_row_t), parameter :: bath_tbl(2) = [ &
+      enum_row_t('NONE', 1), enum_row_t('ANDERSEN', 2) ]
+
+   ! spectrum producer words (2026-10-05 spectrum-source legislation: the container
+   ! export slot is withdrawn - the producer is the internal derivation (default) or
+   ! the manual spectrum-table file; the consumer seam is interface/spectrum_interface)
+   type(enum_row_t), parameter :: spectrum_tbl(2) = [ &
+      enum_row_t('COMPUTE', 1), enum_row_t('MANUAL', 2) ]
+
 
    ! GWRITE_LEVEL recording-level set - the formal domain of observables%rec_level
    ! (recorder opens sec_qp/sec_frc at >=2/>=5)
@@ -136,18 +180,20 @@ module input
       character(len=key_len) :: key = ''    ! member parameter key (e.g. 'T_VIB_A')
       character(len=32) :: member = ''      ! owning member name (init target)
    end type dispatch_row_t
-   type(dispatch_row_t), parameter :: dispatch_tbl(30) = [ &
+   type(dispatch_row_t), parameter :: dispatch_tbl(35) = [ &
       dispatch_row_t('T_VIB_A',  'boltzmann'), &
       dispatch_row_t('T_VIB_B',  'boltzmann'), &
-      dispatch_row_t('N_E_REL',  'incident'), &
-      dispatch_row_t('T_TRANS',  'incident'), &
-      dispatch_row_t('V_WIDTH',  'incident'), &
-      dispatch_row_t('N_THTA',   'incident'), &
-      dispatch_row_t('THTA_MAX', 'incident'), &
-      dispatch_row_t('N_CHI',    'incident'), &
-      dispatch_row_t('CHI',      'incident'), &
-      dispatch_row_t('N_B',      'incident'), &
-      dispatch_row_t('N_AIM',    'incident'), &
+      dispatch_row_t('N_E_REL',  'incident_surface/pair'), &
+      dispatch_row_t('T_TRANS',  'incident_surface/pair'), &
+      dispatch_row_t('V_WIDTH',  'incident_surface/pair'), &
+      dispatch_row_t('N_THTA',   'incident_surface/pair'), &
+      dispatch_row_t('THTA_MAX', 'incident_surface/pair'), &
+      dispatch_row_t('N_CHI',    'incident_surface/pair'), &
+      dispatch_row_t('CHI',      'incident_surface/pair'), &
+      dispatch_row_t('N_B',      'incident_surface/pair'), &
+      dispatch_row_t('N_AIM',    'incident_surface/pair'), &
+      dispatch_row_t('AIM_X',    'incident_surface'), &
+      dispatch_row_t('AIM_Y',    'incident_surface'), &
       dispatch_row_t('T_ROT',    'j'), &
       dispatch_row_t('J_ROT',    'rotation'), &
       dispatch_row_t('N_OSC',    'surface_oscillator'), &
@@ -159,18 +205,21 @@ module input
       dispatch_row_t('N_E_BAR',  'barrier_excitation'), &
       dispatch_row_t('E_BAR',    'barrier_excitation'), &
       dispatch_row_t('T_BAR',    'barrier_excitation'), &
-      dispatch_row_t('T_BATH',   'thermostat'), &
-      dispatch_row_t('NU_COLL',  'thermostat'), &
+      dispatch_row_t('T_BATH',   'bath_andersen'), &
+      dispatch_row_t('NU_COLL',  'bath_andersen'), &
       dispatch_row_t('T_GLO',    'glo_target'), &
       dispatch_row_t('GAMMA_GLO','glo_target'), &
       dispatch_row_t('W_GHOST',  'glo_target'), &
       dispatch_row_t('T_EQ',     'thermalize'), &
       dispatch_row_t('N_EQ',     'thermalize'), &
-      dispatch_row_t('DT_EQ',    'thermalize') ]
+      dispatch_row_t('DT_EQ',    'thermalize'), &
+      dispatch_row_t('E_SCALE',  'wigner'), &
+      dispatch_row_t('N_VIB',    'ebk'), &
+      dispatch_row_t('N_ROT',    'ebk') ]
 contains
    !------------------------------------------------------------------
    ! read_input(file) - read and map the input; a bad return from the detection
-   !                   layer converts into the loud-stop
+   !                   layer converts into the named abort
    !------------------------------------------------------------------
    subroutine read_input(file)
       character(len=*), intent(in) :: file  ! input file name (a dummy argument)
@@ -179,49 +228,238 @@ contains
       call collect_input(file, ok, errmsg)
       if (.not. ok) then
          write (0, '(a)') 'read_input: input error: '//trim(errmsg)
-         write (0, '(a)') 'read_input: loud-stop (unusable input - the standalone grammar has no fallback track, E21/E22)'
+         write (0, '(a)') 'read_input: fatal (unusable input - the standalone grammar has no fallback track, E21/E22)'
          stop 1
       end if
    end subroutine read_input
 
    !------------------------------------------------------------------
-   ! staging accessors (public, read-only; all getters return copies, staging
+   ! buffer accessors (public, read-only; all getters return copies, buffer
    !                   itself stays intact)
    !------------------------------------------------------------------
-   pure integer function staging_n_rows()
-      staging_n_rows = n_kv
-   end function staging_n_rows
+   pure integer function buffer_n_rows()
+      buffer_n_rows = n_kv
+   end function buffer_n_rows
 
-   function staging_key(i) result(k)
+   function buffer_key(i) result(k)
       integer, intent(in) :: i
       character(len=key_len) :: k
       k = ''
       if (i >= 1 .and. i <= n_kv) k = kv_tbl(i)%key
-   end function staging_key
+   end function buffer_key
 
-   pure integer function staging_block(i)
+   pure integer function buffer_block(i)
       integer, intent(in) :: i
-      staging_block = 0
-      if (i >= 1 .and. i <= n_kv) staging_block = kv_tbl(i)%blk
-   end function staging_block
+      buffer_block = 0
+      if (i >= 1 .and. i <= n_kv) buffer_block = kv_tbl(i)%blk
+   end function buffer_block
 
-   pure integer function staging_line(i)
+   pure integer function buffer_line(i)
       integer, intent(in) :: i
-      staging_line = 0
-      if (i >= 1 .and. i <= n_kv) staging_line = kv_tbl(i)%ln
-   end function staging_line
+      buffer_line = 0
+      if (i >= 1 .and. i <= n_kv) buffer_line = kv_tbl(i)%ln
+   end function buffer_line
 
-   function staging_val(i) result(v)
+   function buffer_val(i) result(v)
       integer, intent(in) :: i
       character(len=val_len) :: v
       v = ''
       if (i >= 1 .and. i <= n_kv) v = kv_tbl(i)%val
-   end function staging_val
+   end function buffer_val
+
+   !------------------------------------------------------------------
+   ! declared-key channel (container parameter keys): declare before the
+   ! parse (the container reg _all), consume at the assembly seam (pull),
+   ! audit after the seams (input_audit_declared)
+   !------------------------------------------------------------------
+   subroutine input_declare_keys(keys)
+      character(len=*), intent(in) :: keys(:)  ! the container's key vocabulary
+      integer :: i
+      do i = 1, size(keys)
+         if (len_trim(keys(i)) == 0) then
+            write (0, '(a)') 'input_declare_keys: an empty key name in the container list'
+            write (0, '(a)') 'input_declare_keys: fatal (a container key must be a name)'
+            stop 1
+         end if
+         if (len_trim(keys(i)) > key_len) then
+            write (0, '(a)') 'input_declare_keys: key '//trim(keys(i))//' exceeds the '// &
+                             'keyword width '//trim(i2s(key_len))
+            write (0, '(a)') 'input_declare_keys: fatal (a container key must fit the grammar)'
+            stop 1
+         end if
+         if (key_index(trim(keys(i))) > 0 .or. dispatch_index(trim(keys(i))) > 0) then
+            write (0, '(a)') 'input_declare_keys: key '//trim(keys(i))//' collides with a '// &
+                             'program key or a member-parameter key'
+            write (0, '(a)') 'input_declare_keys: fatal (a container key must be a new name)'
+            stop 1
+         end if
+         if (declared_index(trim(keys(i))) > 0) then
+            write (0, '(a)') 'input_declare_keys: key '//trim(keys(i))//' declared twice'
+            write (0, '(a)') 'input_declare_keys: fatal (one declaration per container key)'
+            stop 1
+         end if
+         if (n_declared >= max_declared) then
+            write (0, '(a)') 'input_declare_keys: declared-key capacity '//trim(i2s(max_declared))// &
+                             ' exhausted at key '//trim(keys(i))
+            write (0, '(a)') 'input_declare_keys: fatal (defensive capacity guard)'
+            stop 1
+         end if
+         n_declared = n_declared + 1
+         declared_tbl(n_declared) = to_upper(trim(keys(i)))   ! the parse uppercases the
+      end do                                                 ! user's rows; compare in kind
+   end subroutine input_declare_keys
+
+   ! pull_row(key) - the shared consumption locate: buffer row of a declared key
+   !              (0 = never buffered, the caller default stands); an undeclared pull
+   !              or a second pull of one key is a container-authoring named abort
+   function pull_row(key) result(k)
+      character(len=*), intent(in) :: key
+      integer :: k
+      if (declared_index(trim(key)) == 0) then
+         write (0, '(a)') 'pull: key '//trim(key)//' is not a declared container key '// &
+                          '(input_declare_keys runs in the container reg _all)'
+         write (0, '(a)') 'pull: fatal (an undeclared pull is a container-authoring error)'
+         stop 1
+      end if
+      k = staged_index(trim(key))
+      if (k == 0) return                       ! never buffered: the caller default stands
+      if (kv_tbl(k)%used) then
+         write (0, '(a)') 'pull: key '//trim(key)//' pulled twice (one key, one consumer)'
+         write (0, '(a)') 'pull: fatal (a double pull is a container-authoring error)'
+         stop 1
+      end if
+      kv_tbl(k)%used = .true.
+   end function pull_row
+
+   ! pull_fatal(key, errmsg) - a failed cast of a buffered value (the parse-side
+   !                         parsers already named key and line in errmsg)
+   subroutine pull_fatal(errmsg)
+      character(len=*), intent(in) :: errmsg
+      write (0, '(a)') 'pull: input error: '//trim(errmsg)
+      write (0, '(a)') 'pull: fatal (a buffered container parameter is not consumable)'
+      stop 1
+   end subroutine pull_fatal
+
+   !------------------------------------------------------------------
+   ! pull(key, target [, found]) - one declared key, one call: the buffered value
+   !              lands in the target (absent key leaves the caller's default;
+   !              found reports presence for the optional-slot semantics)
+   !------------------------------------------------------------------
+   subroutine pull_real(key, target, found)
+      character(len=*), intent(in) :: key
+      real(8), intent(inout) :: target
+      logical, intent(out), optional :: found
+      type(key_spec_t) :: sp
+      character(len=val_len) :: sval
+      character(len=msg_len) :: emsg
+      integer :: k, ln
+      logical :: ok
+      k = pull_row(key)
+      if (present(found)) found = k > 0
+      if (k == 0) return
+      sval = kv_tbl(k)%val
+      ln = kv_tbl(k)%ln
+      sp%name = trim(key)                     ! the parsers read only the key name
+      call parse_real(sp, sval, ln, target, ok, emsg)
+      if (.not. ok) call pull_fatal(emsg)
+   end subroutine pull_real
+
+   subroutine pull_int(key, target, found)
+      character(len=*), intent(in) :: key
+      integer, intent(inout) :: target
+      logical, intent(out), optional :: found
+      type(key_spec_t) :: sp
+      character(len=val_len) :: sval
+      character(len=msg_len) :: emsg
+      integer :: k, ln
+      logical :: ok
+      k = pull_row(key)
+      if (present(found)) found = k > 0
+      if (k == 0) return
+      sval = kv_tbl(k)%val
+      ln = kv_tbl(k)%ln
+      sp%name = trim(key)
+      call parse_int(sp, sval, ln, target, ok, emsg)
+      if (.not. ok) call pull_fatal(emsg)
+   end subroutine pull_int
+
+   subroutine pull_char(key, target, found)
+      character(len=*), intent(in) :: key
+      character(len=*), intent(inout) :: target
+      logical, intent(out), optional :: found
+      integer :: k
+      k = pull_row(key)
+      if (present(found)) found = k > 0
+      if (k == 0) return
+      if (len_trim(kv_tbl(k)%val) > len(target)) then
+         write (0, '(a)') 'pull: key '//trim(key)//': value width '// &
+                          trim(i2s(len_trim(kv_tbl(k)%val)))//' exceeds its slot width '// &
+                          trim(i2s(len(target)))//' (silent truncation closed - fatal)'
+         stop 1
+      end if
+      target = trim(kv_tbl(k)%val)
+   end subroutine pull_char
+
+   subroutine pull_r3(key, target, found)
+      character(len=*), intent(in) :: key
+      real(8), intent(inout) :: target(3)
+      logical, intent(out), optional :: found
+      integer :: k, ln, ios, i, j
+      k = pull_row(key)
+      if (present(found)) found = k > 0
+      if (k == 0) return
+      ln = kv_tbl(k)%ln
+      ! exactly three comma-separated items (the strict form: no fourth item,
+      ! no empty item - a list-directed read of three reals fails the rest)
+      i = count([(kv_tbl(k)%val(j:j) == ',', j = 1, len_trim(kv_tbl(k)%val))])
+      if (i /= 2) then
+         write (0, '(a)') 'pull: key '//trim(key)//trim(line_tag(ln))// &
+                          ': bad 3-vector value "'//trim(kv_tbl(k)%val)//'" (exactly three '// &
+                          'comma-separated numbers expected)'
+         write (0, '(a)') 'pull: fatal (a buffered container parameter is not consumable)'
+         stop 1
+      end if
+      read (kv_tbl(k)%val, *, iostat=ios) target(1), target(2), target(3)
+      if (ios /= 0) then
+         write (0, '(a)') 'pull: key '//trim(key)//trim(line_tag(ln))// &
+                          ': bad 3-vector value "'//trim(kv_tbl(k)%val)//'"'
+         write (0, '(a)') 'pull: fatal (a buffered container parameter is not consumable)'
+         stop 1
+      end if
+   end subroutine pull_r3
+
+   !------------------------------------------------------------------
+   ! input_audit_declared() - after the assembly seams: every buffered declared-key
+   !              row was pulled exactly once; a row nobody consumed is a named
+   !              fatal (a pull typo in the container seam, or the seam skipped -
+   !              e.g. container keys buffered while SYSTEM_DIR was not)
+   !------------------------------------------------------------------
+   subroutine input_audit_declared()
+      integer :: k
+      logical :: bad
+      bad = .false.
+      do k = 1, n_kv
+         if (declared_index(trim(kv_tbl(k)%key)) == 0) cycle
+         if (kv_tbl(k)%used) cycle
+         if (.not. bad) then
+            bad = .true.
+            write (0, '(a)') 'input_audit_declared: buffered container key(s) never pulled:'
+         end if
+         write (0, '(a)') '  '//trim(kv_tbl(k)%key)//trim(line_tag(kv_tbl(k)%ln))// &
+                          ' - the dragged-in container did not consume it (a pull typo, '// &
+                          'or the seam skipped: SYSTEM_DIR unstaged?)'
+      end do
+      if (bad) then
+         write (0, '(a)') 'input_audit_declared: fatal (a buffered container key outside '// &
+                          'the container seam is a configuration or authoring error)'
+         stop 1
+      end if
+   end subroutine input_audit_declared
 
    !------------------------------------------------------------------
    ! collect_input(file, ok, errmsg) - the whole flow on the soft ok/errmsg channel
    !              (detection layer; read_input converts a bad return into the
-   !              loud-stop): reset staging -> parse -> required check -> default
+   !              named abort): reset buffer -> parse -> required check -> default
    !              injection -> slot mapping (block one first, block two after)
    subroutine collect_input(file, ok, errmsg)
       character(len=*), intent(in) :: file
@@ -229,7 +467,7 @@ contains
       character(len=*), intent(out) :: errmsg
       ok = .false.
       errmsg = ''
-      call reset_staging()
+      call reset_buffer()
       call parse_file(file, ok, errmsg)
       if (.not. ok) return
       call check_required(ok, errmsg)
@@ -241,13 +479,13 @@ contains
    end subroutine collect_input
 
    !------------------------------------------------------------------
-   ! parse_file(file, ok, errmsg) - line-by-line parse into the staging: skip blank
+   ! parse_file(file, ok, errmsg) - line-by-line parse into the buffer: skip blank
    !              and '#','!' whole-line comments; split on '='; a trailing ',' in
    !              the value absorbs continuation lines; uppercase keys; line numbers
    !              feed the error channel. A data line without '=' is a PARSE ERROR
    !              (no sequential-grammar fallback); unknown keys (old names, MODEL,
    !              member keys outside the dispatch table) and duplicate keys
-   !              loud-stop with key + line number
+   !              abort with a named error (key + line) number
    subroutine parse_file(file, ok, errmsg)
       character(len=*), intent(in) :: file
       logical, intent(out) :: ok
@@ -309,12 +547,14 @@ contains
             close (u)
             return
          end if
-         ! 3. registry membership: key table or member-parameter dispatch table
+         ! 3. registry membership: key table, member-parameter dispatch table, or
+         !    the declared container-key set
          ri = key_index(trim(kw))
-         if (ri == 0 .and. dispatch_index(trim(kw)) == 0) then
+         if (ri == 0 .and. dispatch_index(trim(kw)) == 0 .and. declared_index(trim(kw)) == 0) then
             errmsg = 'unknown key '//trim(kw)//' (line '//trim(i2s(kln))//'): not in the key table '// &
                      '(old key names, withdrawn keys and MODEL are intercepted as unknown - '// &
-                     'E21/E22; member keys outside the dispatch table likewise)'
+                     'E21/E22; member keys outside the dispatch table and container keys '// &
+                     'outside the declared set likewise)'
             close (u)
             return
          end if
@@ -332,11 +572,12 @@ contains
             blk = blk_system   ! member-parameter keys sit in block two
          end if
          ! 5. capacity guard: kv_tbl is sized to the key table PLUS the dispatch rows
-         ! (member keys stage here too) - loud-stop, never a silent overflow
+         ! and the declared container keys (all of them stage here) - named abort,
+         ! never a silent overflow
          if (n_kv >= size(kv_tbl)) then
-            errmsg = 'staging capacity exhausted at key '//trim(kw)//' (line '//trim(i2s(kln))// &
-                     '): distinct staged keys exceed size(kv_tbl) (sized to the key table '// &
-                     'plus the dispatch rows)'
+            errmsg = 'buffer capacity exhausted at key '//trim(kw)//' (line '//trim(i2s(kln))// &
+                     '): distinct buffered keys exceed size(kv_tbl) (sized to the key table '// &
+                     'plus the dispatch rows and the declared container keys)'
             close (u)
             return
          end if
@@ -352,7 +593,7 @@ contains
    end subroutine parse_file
 
    !------------------------------------------------------------------
-   ! check_required(ok, errmsg) - every required key staged with a non-empty value
+   ! check_required(ok, errmsg) - every required key buffered with a non-empty value
    !              (an empty value counts as missing)
    subroutine check_required(ok, errmsg)
       logical, intent(out) :: ok
@@ -374,21 +615,21 @@ contains
 
    !------------------------------------------------------------------
    ! inject_defaults() - each non-required key absent from the user's rows gets its
-   !              per-key default staged (ln = 0 marks a default-injected row);
+   !              per-key default buffered (ln = 0 marks a default-injected row);
    !              user-set keys are NEVER overridden
    subroutine inject_defaults()
       integer :: r
       do r = 1, size(key_tab)
          if (key_tab(r)%required) cycle
-         if (key_tab(r)%cond) cycle     ! conditional keys never inject (a staged row
+         if (key_tab(r)%cond) cycle     ! conditional keys never inject (a buffered row
                                        ! is always a user row)
          if (staged_index(trim(key_tab(r)%name)) > 0) cycle
          ! defensive capacity guard (unreachable through the current fill routes):
-         ! loud-stop rather than write past the table
+         ! named abort rather than write past the table
          if (n_kv >= size(kv_tbl)) then
-            write (0, '(a)') 'inject_defaults: staging capacity exhausted at key '// &
+            write (0, '(a)') 'inject_defaults: buffer capacity exhausted at key '// &
                              trim(key_tab(r)%name)//': rows would exceed size(kv_tbl)'
-            write (0, '(a)') 'inject_defaults: loud-stop (defensive capacity guard - '// &
+            write (0, '(a)') 'inject_defaults: fatal (defensive capacity guard - '// &
                              'unreachable through the current fill routes)'
             stop 1
          end if
@@ -402,10 +643,10 @@ contains
 
    !------------------------------------------------------------------
    ! map_slots(ok, errmsg) - two-block slot mapping, in key-table order (block one
-   !              first, block two after): for every key the staged value is parsed
-   !              per its kind (bad values loud-stop with key + line) and written
+   !              first, block two after): for every key the buffered value is parsed
+   !              per its kind (bad values abort with a named error (key + line)) and written
    !              into its control/config slot; the member-parameter dispatch loop
-   !              follows (staged member keys must be non-empty)
+   !              follows (buffered member keys must be non-empty)
    subroutine map_slots(ok, errmsg)
       logical, intent(out) :: ok
       character(len=*), intent(out) :: errmsg
@@ -417,11 +658,11 @@ contains
       logical :: lval
       ok = .false.
       errmsg = ''
-      ! 1. slot mapping loop: parse each staged value per its kind and write its slot
+      ! 1. slot mapping loop: parse each buffered value per its kind and write its slot
       do r = 1, size(key_tab)
          sp = key_tab(r)
          k = staged_index(trim(sp%name))
-         ! guaranteed staged: required keys were checked, defaults injected (the guard
+         ! guaranteed buffered: required keys were checked, defaults injected (the guard
          ! is fail-safe against a future key-table row flipping the flags wrongly)
          if (k == 0) then
             if (sp%cond) cycle    ! conditional key absent: nothing to map - the
@@ -455,13 +696,13 @@ contains
             return
          end select
          if (.not. ok) return
-         ! slot-width guard: an over-wide value loud-stops (key + line + actual
+         ! slot-width guard: an over-wide value aborts with a named error (key + line + actual
          ! width) instead of silently truncating at the slot write below
          if (sp%slotw > 0 .and. len_trim(sval) > sp%slotw) then
             ok = .false.
             errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': value width '// &
                      trim(i2s(len_trim(sval)))//' exceeds its slot width '//trim(i2s(sp%slotw))// &
-                     ' (silent truncation closed - loud-stop)'
+                     ' (silent truncation closed - fatal)'
             return
          end if
          select case (trim(sp%name))
@@ -473,7 +714,7 @@ contains
             title(1) = sval                              ! one TITLE key -> line 1
             title(2) = ''
          case ('ISEED')
-            i_seed = 0                                   ! scalar statute: word 1 only, the
+            i_seed = 0                                   ! scalar rule: word 1 only, the
             i_seed(1) = ival                             ! 8-word conversion is rng-side
          case ('MAX_STEPS')
             max_steps = ival
@@ -489,7 +730,7 @@ contains
             propagator%dt_max = rval
          case ('ELEC_METHOD')
             electronic%method = to_lower(sval)           ! package-name string (lookup at
-                                                         ! the facade, not here)
+                                                         ! the interface, not here)
          case ('N_SURF')
             electronic%n_surf = ival
          case ('PES_MAIN')
@@ -517,9 +758,28 @@ contains
             allocate (reactants%dist_scheme(size(ivec)))
             reactants%dist_scheme = ivec                 ! per-fragment code array (the
                                                          ! size-vs-n_frag reconcile is assembly wiring)
-         case ('A_LAT', 'BOXPAD')                        ! surface-window keys: no slot write
-            continue                                     ! here - the value stays staged and
-                                                         ! roster_load pulls it at assembly time
+         case ('RANDOM_ORIENT')
+            reactants%random_orient = lval                ! universal orientation stage switch
+                                                         ! (the sampler stage reads it; default F
+                                                         ! keeps the archived stream)
+         case ('BATH')
+            reactants%bath = ival                         ! bath provision selector (arms the
+                                                         ! pre-evolution bath loop; NONE default)
+         case ('N_BATH')
+            reactants%n_bath = ival                       ! bath-loop step count
+         case ('DT_BATH')
+            reactants%dt_bath = rval                      ! bath-loop step size [10 fs]
+
+         case ('SPECTRUM_SOURCE')                     ! spectrum producer selector (consumed
+            reactants%spectrum_src = ival             ! at the member seam, spectrum_interface)
+         case ('SPECTRUM_FILE')
+            reactants%spectrum_file = sval            ! spectrum-table path (MANUAL's records;
+                                                     ! a staged path under COMPUTE never reaches
+                                                     ! a pull - the cross rule below stops it)
+
+         case ('A_LAT', 'PROJECTILE', 'TARGET') ! surface-window / role keys: no slot
+            continue                                     ! write here - the values stay buffered and
+                                                         ! list_atoms_load pulls them at assembly time
                                                          ! (paradigm condition included)
          case default
             ok = .false.
@@ -527,9 +787,18 @@ contains
             return
          end select
       end do
-      ! 2. member-parameter dispatch (central table): a staged member key must carry a
+      ! 1b. formal cross-key rule (formal, no system knowledge): a staged
+      !     SPECTRUM_FILE under COMPUTE would sit unused (no pull happens) - a
+      !     silent unused key is not this grammar's way
+      if (len_trim(reactants%spectrum_file) > 0 .and. reactants%spectrum_src /= 2) then
+         ok = .false.
+         errmsg = 'SPECTRUM_FILE is staged while SPECTRUM_SOURCE is COMPUTE - a '// &
+                  'spectrum-table file requires SPECTRUM_SOURCE=MANUAL'
+         return
+      end if
+      ! 2. member-parameter dispatch (central table): a buffered member key must carry a
       ! non-empty value (key + line named on failure - the value semantics themselves
-      ! are member-side knowledge; the assembly wiring hands the staged values to the
+      ! are member-side knowledge; the assembly wiring hands the buffered values to the
       ! member inits)
       do d = 1, size(dispatch_tbl)
          k = staged_index(trim(dispatch_tbl(d)%key))
@@ -538,6 +807,18 @@ contains
             errmsg = 'key '//trim(dispatch_tbl(d)%key)//trim(line_tag(kv_tbl(k)%ln))// &
                      ': empty member-parameter value (the owning member "'// &
                      trim(dispatch_tbl(d)%member)//'" would receive nothing)'
+            return
+         end if
+      end do
+      ! 3. declared container keys: same non-empty rule (the value semantics are
+      !    container-side knowledge; the seam pull hands the buffered value over)
+      do d = 1, n_declared
+         k = staged_index(trim(declared_tbl(d)))
+         if (k > 0 .and. len_trim(kv_tbl(k)%val) == 0) then
+            ok = .false.
+            errmsg = 'key '//trim(declared_tbl(d))//trim(line_tag(kv_tbl(k)%ln))// &
+                     ': empty container-parameter value (the container pull '// &
+                     'would receive nothing)'
             return
          end if
       end do
@@ -722,13 +1003,14 @@ contains
    !------------------------------------------------------------------
    ! private helpers (pure string/table mechanics - no system knowledge)
    !------------------------------------------------------------------
-   subroutine reset_staging()
+   subroutine reset_buffer()
       if (allocated(kv_tbl)) deallocate (kv_tbl)
-      allocate (kv_tbl(size(key_tab) + size(dispatch_tbl)))   ! one row per registry key
-      n_kv = 0                           ! PLUS one per dispatch row (member keys stage
-                                         ! too); both fill sites guard their increment
-                                         ! with a capacity loud-stop
-   end subroutine reset_staging
+      allocate (kv_tbl(size(key_tab) + size(dispatch_tbl) + n_declared))   ! one row per
+      n_kv = 0                           ! registry key PLUS one per dispatch row (member
+                                         ! keys stage too) PLUS one per declared container
+                                         ! key; both fill sites guard their increment
+                                         ! with a capacity named abort
+   end subroutine reset_buffer
 
    ! key_index(key) - registry row of a key (0 = not a key-table key)
    pure integer function key_index(key)
@@ -756,7 +1038,21 @@ contains
       end do
    end function dispatch_index
 
-   ! staged_index(key) - staging row of a key (0 = not staged)
+   ! declared_index(key) - declared-set row of a container parameter key (0 = none;
+   !                       stored uppercased, compared in kind)
+   pure integer function declared_index(key)
+      character(len=*), intent(in) :: key
+      integer :: i
+      declared_index = 0
+      do i = 1, n_declared
+         if (trim(declared_tbl(i)) == trim(key)) then
+            declared_index = i
+            exit
+         end if
+      end do
+   end function declared_index
+
+   ! staged_index(key) - buffer row of a key (0 = not buffered)
    pure integer function staged_index(key)
       character(len=*), intent(in) :: key
       integer :: i
@@ -797,6 +1093,20 @@ contains
                exit
             end if
          end do
+      case (enum_bath)
+         do i = 1, size(bath_tbl)
+            if (trim(bath_tbl(i)%word) == trim(word)) then
+               enum_lookup = bath_tbl(i)%code
+               exit
+            end if
+         end do
+      case (enum_spectrum)
+         do i = 1, size(spectrum_tbl)
+            if (trim(spectrum_tbl(i)%word) == trim(word)) then
+               enum_lookup = spectrum_tbl(i)%code
+               exit
+            end if
+         end do
       end select
    end function enum_lookup
 
@@ -821,6 +1131,16 @@ contains
          do i = 1, size(dist_tbl)
             if (i > 1) s = trim(s)//', '
             s = trim(s)//trim(dist_tbl(i)%word)
+         end do
+      case (enum_bath)
+         do i = 1, size(bath_tbl)
+            if (i > 1) s = trim(s)//', '
+            s = trim(s)//trim(bath_tbl(i)%word)
+         end do
+      case (enum_spectrum)
+         do i = 1, size(spectrum_tbl)
+            if (i > 1) s = trim(s)//', '
+            s = trim(s)//trim(spectrum_tbl(i)%word)
          end do
       end select
    end function legal_words

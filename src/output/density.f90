@@ -86,7 +86,7 @@ contains
       if (size(a, 1) < n .or. size(a, 2) < n) then
          write (0, '(a,i0,a,i0,a,i0)') 'eig_out: the eigenvector matrix is ', size(a, 1), 'x', &
             size(a, 2), ' but the eigenvalue table carries ', n, ' values'
-         write (0, '(a)') 'eig_out: loud-stop (the table and the values disagree)'
+         write (0, '(a)') 'eig_out: fatal (the table and the values disagree)'
          stop 1
       end if
       call swap_triangles(a, n)         ! column vectors temporarily row-stored

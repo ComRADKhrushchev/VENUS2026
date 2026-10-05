@@ -1,0 +1,3 @@
+STOP 1
+spectrum_frag_diatomic: spectrum error: the diatomic-constants channel has no generic derivation (anharmonic/rotational constants are literature data) - provide SPECTRUM_SOURCE=MANUAL with a DIAT record in SPECTRUM_FILE
+spectrum_frag_diatomic: fatal (the spectrum table is unusable)

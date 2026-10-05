@@ -10,6 +10,8 @@ DT = 0.05
 INTEGRATOR = RADAU
 ORDER = 8
 DIST_SCHEME = THERMALIZE,ROTATION
+PROJECTILE = frag_a
+TARGET = frag_b
 T_EQ = 300.0
 N_EQ = 25
 DT_EQ = 0.05
@@ -19,3 +21,7 @@ N_TRAJ = 8
 MAX_STEPS = 400
 ISEED = 20260915
 GWRITE_LEVEL = 2
+# ---- 容器键（reference 容器，原 reference_pars.txt 并入程序输入） ----
+K_HARM = 0.04
+Q_TERM = 9.5
+E_SPLIT = 1.0

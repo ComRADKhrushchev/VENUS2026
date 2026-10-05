@@ -3,11 +3,11 @@
 !             passed by argument
 ! Design:
 !   state_t is purely Q/P/s/F/t; dimensions are size-derived (ndof = size(q),
-!   natoms = size(roster%mass)) - no cached labels, no statistical fields (occ/n_hop
-!   live in the elec_facade statistics holder). elec_t carries the dual ontic
-!   containers a/rho, symmetric with no subordination legislated (amplitude-ODE
+!   natoms = size(list_atoms%mass)) - no cached labels, no statistical fields (occ/n_hop
+!   live in the elec_interface statistics holder). elec_t carries the dual ontic
+!   containers a/rho, symmetric with no subordination prescribed (amplitude-ODE
 !   methods propagate a, density-matrix methods rho, adiabatic allocates neither);
-!   index semantics are defined by the class-B method member.
+!   index semantics are defined by the electronic method member.
 !=====================================================================
 module state
   implicit none
@@ -17,12 +17,12 @@ module state
   ! Electronic state s (runtime): purely the quantum-state ontic layer - the dual
   ! containers a/rho plus the dimension label n_surf. Index semantics of a/rho
   ! (surface number / electron x state / configuration cardinality / z = x+ip
-  ! encoding) are defined by the class-B method member.
+  ! encoding) are defined by the electronic method member.
   type :: elec_t
      integer :: n_surf = 1   ! number of potential-energy surfaces (under the
                              ! single-electron representation read as the
                              ! configuration-space cardinality - semantics defined
-                             ! by the class-B method member, field name unchanged)
+                             ! by the electronic method member, field name unchanged)
      complex(8), allocatable :: a(:,:)  ! coefficient matrix (propagation container)
      complex(8), allocatable :: rho(:,:)! density matrix (ontic for rho-native methods;
                                         ! derived cache for a-native methods - the mapping
@@ -30,7 +30,7 @@ module state
   end type
 
   type :: state_t            ! purely physical: Q/P/s/F/t - dimensions size-derived,
-                             ! statistical fields live in the elec_facade holder
+                             ! statistical fields live in the elec_interface holder
      real(8), allocatable :: q(:) ! coordinates [Å] (size = ndof = 3*natoms)
      real(8), allocatable :: p(:) ! momenta [amu·Å/(10 fs)] (size = ndof)
      real(8), allocatable :: f(:) ! forces [internal energy/Å] (size = ndof)
@@ -77,7 +77,7 @@ contains
         st%s%a(1,1) = (1.0d0, 0.0d0)   ! degenerate-point population 1 (well-defined at the
                                        ! adiabatic degenerate point)
         st%s%rho = (0.0d0, 0.0d0)
-        st%s%rho(1,1) = (1.0d0, 0.0d0) ! symmetric degenerate seed - no subordination legislated
+        st%s%rho(1,1) = (1.0d0, 0.0d0) ! symmetric degenerate seed - no subordination prescribed
      end if
   end subroutine state_create
 

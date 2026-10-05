@@ -5,7 +5,9 @@
 !   Stateless routines over (state, mass, list) triples; all angles in RADIANS.
 !   The COM-frame workspace q_cm_frm/p_cm_frm is module-private and rebuilt by
 !   cenmas on every call (derived quantities do not enter state) - cenmas is the
-!   precondition of rot_euler/rot_jkm/angvel/amom.
+!   precondition of rot_apply/rot_euler/rot_jkm/angvel/amom. rot_euler is the
+!   fused draw+apply convenience; rot_rand_rmat draws the matrix (the only RNG
+!   site) and rot_apply writes the state (no RNG - the realize half).
 !=====================================================================
 module geometry
    use consts, only: pi, two_pi, e_conv
@@ -13,7 +15,7 @@ module geometry
    use rng,    only: rng_u
    implicit none
    private
-   public :: rot_euler, rot_jkm, rot_axis, cenmas, angvel, amom, align_step, gl_nodes
+   public :: rot_euler, rot_rand_rmat, rot_apply, rot_jkm, rot_axis, cenmas, angvel, amom, align_step, gl_nodes
 
    ! Center-of-mass frame workspace (derived quantities do not enter state; rebuilt
    ! by cenmas on every call):
@@ -68,18 +70,12 @@ contains
    end subroutine cenmas
 
    !------------------------------------------------------------------
-   ! rot_euler(st, mass, list) - rotate a fragment about its center of mass by random Euler
-   ! angles (coordinates and momenta transformed together)
-   subroutine rot_euler(st, mass, list)
-      type(state_t), intent(inout) :: st  ! physical state (the in-list q/p components rotated in place)
-      real(8), intent(in) :: mass(:)      ! per-atom masses [amu]
-      integer, intent(in) :: list(:)      ! fragment atom index list
+   ! rot_rand_rmat(rmat) - draw one isotropic uniform rotation matrix
+   ! (three Euler-angle uniforms; the draw half of rot_euler)
+   subroutine rot_rand_rmat(rmat)
+      real(8), intent(out) :: rmat(3,3)  ! the drawn rotation matrix [-]
       real(8) :: rand, rphi, csthta, rchi, rthta, snthta, snphi, csphi, snchi, cschi
       real(8) :: rxx, rxy, rxz, ryx, ryy, ryz, rzx, rzy, rzz
-      real(8) :: qcm(3), vcm(3)
-      integer :: i, j
-      call cenmas(st, mass, list, qcm, vcm)   ! the COM-frame workspace precondition
-      ! 1. draw random Euler angles and build the rotation matrix
       rand = rng_u()
       rphi = two_pi*rand
       rand = rng_u()
@@ -92,6 +88,8 @@ contains
       csphi = cos(rphi)
       snchi = sin(rchi)
       cschi = cos(rchi)
+      ! compute into scalars first (the historical inline form - keeps compiler
+      ! contraction patterns stable across the draw/apply split), then store
       rxx = csthta*csphi*cschi - snphi*snchi
       rxy = -csthta*csphi*snchi - snphi*cschi
       rxz = snthta*csphi
@@ -101,7 +99,36 @@ contains
       rzx = -snthta*cschi
       rzy = snthta*snchi
       rzz = csthta
-      ! 2. rotate the COM-frame q/p in place and refresh the workspace
+      rmat(1,1) = rxx
+      rmat(1,2) = rxy
+      rmat(1,3) = rxz
+      rmat(2,1) = ryx
+      rmat(2,2) = ryy
+      rmat(2,3) = ryz
+      rmat(3,1) = rzx
+      rmat(3,2) = rzy
+      rmat(3,3) = rzz
+   end subroutine rot_rand_rmat
+
+   !------------------------------------------------------------------
+   ! rot_apply(st, mass, list, rmat) - rotate a fragment about its center of
+   ! mass by rmat (coordinates and momenta transformed together, written back
+   ! COM-re-centered with zero net fragment momentum; the apply half of
+   ! rot_euler - no RNG draws)
+   subroutine rot_apply(st, mass, list, rmat)
+      type(state_t), intent(inout) :: st  ! physical state (the in-list q/p components rotated in place)
+      real(8), intent(in) :: mass(:)      ! per-atom masses [amu]
+      integer, intent(in) :: list(:)      ! fragment atom index list
+      real(8), intent(in) :: rmat(3,3)    ! the rotation to apply [-]
+      real(8) :: rxx, rxy, rxz, ryx, ryy, ryz, rzx, rzy, rzz
+      real(8) :: qcm(3), vcm(3)
+      integer :: i, j
+      ! copy to scalars first (the historical inline form - keeps compiler
+      ! contraction patterns stable across the draw/apply split)
+      rxx = rmat(1,1); rxy = rmat(1,2); rxz = rmat(1,3)
+      ryx = rmat(2,1); ryy = rmat(2,2); ryz = rmat(2,3)
+      rzx = rmat(3,1); rzy = rmat(3,2); rzz = rmat(3,3)
+      call cenmas(st, mass, list, qcm, vcm)   ! the COM-frame workspace precondition
       do i = 1, size(list)
          j = 3*list(i)
          st%q(j-2) = q_cm_frm(j-2)*rxx + q_cm_frm(j-1)*rxy + q_cm_frm(j)*rxz
@@ -113,6 +140,19 @@ contains
          q_cm_frm(j-2:j) = st%q(j-2:j)
          p_cm_frm(j-2:j) = st%p(j-2:j)
       end do
+   end subroutine rot_apply
+
+   !------------------------------------------------------------------
+   ! rot_euler(st, mass, list) - rotate a fragment about its center of mass by random Euler
+   ! angles (coordinates and momenta transformed together) - the fused
+   ! draw+apply convenience atop rot_rand_rmat/rot_apply
+   subroutine rot_euler(st, mass, list)
+      type(state_t), intent(inout) :: st  ! physical state (the in-list q/p components rotated in place)
+      real(8), intent(in) :: mass(:)      ! per-atom masses [amu]
+      integer, intent(in) :: list(:)      ! fragment atom index list
+      real(8) :: rmat(3,3)
+      call rot_rand_rmat(rmat)
+      call rot_apply(st, mass, list, rmat)
    end subroutine rot_euler
 
    !------------------------------------------------------------------

@@ -1,0 +1,3 @@
+STOP 1
+spectrum_frag_diatomic: spectrum error: the matched MANUAL record carries no DIAT record - the EBK member needs (w_e, w_e*x_e, B_e) in SPECTRUM_FILE
+spectrum_frag_diatomic: fatal (the spectrum table is unusable)

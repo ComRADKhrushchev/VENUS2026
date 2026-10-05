@@ -1,0 +1,30 @@
+# case_b_layer/thermostat —— B 层 bath 冻结立法见证（armed = bitwise 无操作）
+# 2026-09-22/23 迁移史：THERMOSTAT 词退役（bath 分家）→ 循环后验 → 冻结立法
+# （方案：有采样方案的片段在 bath 期间 q/p 逐位冻结；浴作用域=无主原子）。
+# 本案例为纯片段体系（H4 即唯一片段、scheme=J）——armed bath 的全部阶段
+# （隐式 q0 播种：无无主原子=无操作；探针：无保护对象=平凡通过；扫描掩码
+# 全空=零抽签；冻结还原）合起来是逐位无操作
+# 锚：本 armed 跑与 BATH=NONE 的孪生跑 trajectories.txt 逐字节一致；
+# 重置原语与循环的数学后验在 scripts/check_bath_thermostat.f90（10 判据）
+# 体系：H4 单片段；容器：reference 谐振井（仅 K_HARM——安全网式无分类跑）
+# E_REL/B_MAX/R_SEP 为必键占位（单片段气相 incident 通道不派发）
+# 预期锚见 ../README.md 第 3 节（判据先行：两段式标定——试跑产物不入档）
+SYSTEM_DIR = system
+TITLE = b-layer thermostat posterior - H4 velocity reset target band, verlet
+E_REL = 200.0
+B_MAX = 2.0
+R_SEP = 8.0
+DT = 0.05
+DIST_SCHEME = J
+T_ROT = 300.0
+BATH = ANDERSEN
+N_BATH = 5
+DT_BATH = 0.05
+T_BATH = 350.0
+NU_COLL = 0.137
+N_TRAJ = 32
+MAX_STEPS = 20
+ISEED = 20260918
+GWRITE_LEVEL = 2
+# ---- 容器键（reference 容器，原 reference_pars.txt 并入程序输入） ----
+K_HARM = 0.04

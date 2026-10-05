@@ -1,0 +1,3 @@
+STOP 1
+read_input: input error: SPECTRUM_FILE is staged while SPECTRUM_SOURCE is COMPUTE - a spectrum-table file requires SPECTRUM_SOURCE=MANUAL
+read_input: fatal (unusable input - the standalone grammar has no fallback track, E21/E22)

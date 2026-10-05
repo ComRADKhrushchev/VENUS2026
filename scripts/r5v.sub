@@ -1,0 +1,21 @@
+#!/bin/bash
+#SBATCH -J r5v
+#SBATCH -p mars_l
+#SBATCH -N 1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH -t 2:00:00
+#SBATCH -o r5v_%a.log
+#SBATCH --array=0-2
+cd "$SLURM_SUBMIT_DIR"
+AWKPROG='/^# frame/{ match($0,/traj=[0-9]+/); nt=substr($0,RSTART+5,RLENGTH-5)+0; match($0,/t= *[0-9.E+-]+/); tt=substr($0,RSTART+2,RLENGTH-2)+0; if(nt!=ct && ct>0) printf "%d %.4f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n", ct, ctk, cqx, cqy, cqz, cp1, cp2, cp3, cup, cdn, cmg, cet; ct=nt; ctk=tt } /^t_kin=/{ match($0,/e_tot= *[0-9.E+-]+/); cet=substr($0,RSTART+6,RLENGTH-6)+0; match($0,/n_imp_up= *[0-9.E+-]+/); cup=substr($0,RSTART+9,RLENGTH-9)+0; match($0,/n_imp_dn= *[0-9.E+-]+/); cdn=substr($0,RSTART+9,RLENGTH-9)+0; match($0,/mag_mom= *[0-9.E+-]+/); cmg=substr($0,RSTART+8,RLENGTH-8)+0 } /^1 C /{ cp1=$6+0; cp2=$7+0; cp3=$8+0; cqx=$3+0; cqy=$4+0; cqz=$5+0 } END{ if(ct>0) printf "%d %.4f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n", ct, ctk, cqx, cqy, cqz, cp1, cp2, cp3, cup, cdn, cmg, cet }'
+d=$(ls -d r5v_runs/*/ | sort | sed -n "$((SLURM_ARRAY_TASK_ID+1))p")
+leg=$(basename "$d")
+cd "$d"
+../../src/build/gfortran/venus.e > stdout_run.txt 2>&1
+awk "$AWKPROG" trajectories.txt > "../../r5v_${leg}_fin.txt"
+cp hist_thta.dat "../../r5v_${leg}_thta.dat" 2>/dev/null
+cp hist_e_rel.dat "../../r5v_${leg}_erel.dat" 2>/dev/null
+rm -f trajectories.txt
+echo "DONE leg=$leg rows=$(wc -l < ../../r5v_${leg}_fin.txt)"
+echo DONE > "../../r5v_${leg}.done"

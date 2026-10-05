@@ -1,12 +1,12 @@
 !=====================================================================
-! check_recorder.f90 - C4.5 acceptance criteria program (criteria defined FIRST in
-!                      docs/plans/C4.md; this program executes them)
+! check_recorder.f90 - recorder criteria program (criteria defined FIRST in
+!                      this header; this program executes them)
 ! Compile (from src/; modules in use-order first, -Jbuild keeps the .mod files out
 ! of the source tree):
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
-!            utils/specio.f90 facade/sysdef_facade.f90 input.f90 globals/state.f90 &
-!            facade/elec_facade.f90 globals/config_roster.f90 &
-!            utils/linalg.f90 facade/force_facade.f90 &
+!            utils/specio.f90 interface/sysdef_interface.f90 input.f90 globals/state.f90 &
+!            interface/elec_interface.f90 globals/config_atoms.f90 &
+!            utils/linalg.f90 interface/force_interface.f90 &
 !            output/recorder.f90 ../scripts/check_recorder.f90 -o build/check_recorder.exe
 ! Sample output files are written under build/ and read back line-by-line - the
 ! source tree stays clean.
@@ -17,17 +17,17 @@
 !   MECHANISM). Numeric assertions cover the constructible quantities: frame-header
 !   step/trajectory/time and the sec_qp q/p six-tuple rows (hand-built state_t). The
 !   force section is asserted for GATING + header/line count only (the E20 posture).
-! Placeholder statute -> reality: the occ / n_hop columns are REAL - the extractors
-!   read the elec_facade statistics holder through the getters (occ_get /
+! Placeholder rule -> reality: the occ / n_hop columns are REAL - the extractors
+!   read the elec_interface statistics holder through the getters (occ_get /
 !   n_hop_get), seeded at the method bind. Under the degenerate adiabatic row
 !   the holder carries occ = [1] constant and n_hop = 0, so criterion (p)
 !   asserts exactly those values end to end (file digits + the final-row
 !   read-back) - the numeric channel for any surface-hopping method later.
-! Loud-stop verification approach (same scheme as check_sysdef/check_roster): the
-!   loud-stop criteria run as CHILD PROCESSES - the check re-spawns itself with a
-!   mode argument (execute_command_line); the child triggers the real loud-stop path
+! Named-abort verification approach (same scheme as check_sysdef/check_roster): the
+!   named-abort criteria run as CHILD PROCESSES - the check re-spawns itself with a
+!   mode argument (execute_command_line); the child triggers the real named abort path
 !   and must print a naming message on stderr and exit nonzero.
-! Criteria (C4.md C4.5 + D3/N3.1):
+! Criteria:
 !   (a) registration + level 0/1 minimal group: select level 0 -> one frame carries
 !       the frame header (traj=1 step=1 t exact) + the column line naming exactly
 !       t_kin/v_pot/e_tot in registry order; no section markers; level 1 selects the
@@ -36,7 +36,7 @@
 !   (b) sec_qp gate + content: level 2 -> '# sec_qp begin/end' markers with exactly
 !       natoms six-tuple lines between them; per-atom index/symbol/3q/3p numerically
 !       exact against the hand-built state (constructible quantities); labels from
-!       roster%symb (excision fix (2)); sec_frc absent at level 2 (positional proof)
+!       list_atoms%symb (excision fix (2)); sec_frc absent at level 2 (positional proof)
 !   (c) sec_frc gate: level 5 -> '# sec_frc begin/end' markers with exactly natoms
 !       lines between them (gating + header only - force VALUES unasserted, E20)
 !   (d) list entry + union semantics: level 1 then list 'n_hop,T_KIN,occ' ->
@@ -52,22 +52,22 @@
 !   (g) final-state line: rec_final at traj=1 writes the name header
 !       ('# final: traj t <selected column names>') + one row (traj=1, t exact,
 !       values parse); a second rec_final (traj=2) writes NO second header
-!   (h) duplicate-name registration loud-stop (child)
-!   (i) registry-capacity loud-stop (child): overflowing the 64-column registry
-!       loud-stops naming the overflow
-!   (j) unknown-column-name loud-stop in the list (child)
-!   (k) empty-list-item loud-stop (child - no silent swallow)
-!   (l) illegal level loud-stop (child: rec_select(3) - the domain is {0,1,2,5},
-!       the C4.4 GWRITE_LEVEL set)
-!   (m) rec_frame before any rec_select loud-stop (child - assembly-order error)
-!   (n) state-larger-than-roster loud-stop (child, fix round 1): a 3-atom state against
-!       a 2-atom roster hits the named size-mismatch stop - the equality guard fires
-!       BEFORE col_tkin's roster%mass walk could read out of bounds
+!   (h) duplicate-name registration named abort (child)
+!   (i) registry-capacity named abort (child): overflowing the 64-column registry
+!       aborts with a named error naming the overflow
+!   (j) unknown-column-name named abort in the list (child)
+!   (k) empty-list-item named abort (child - no silent swallow)
+!   (l) illegal level named abort (child: rec_select(3) - the domain is {0,1,2,5},
+!       the GWRITE_LEVEL domain {0,1,2,5})
+!   (m) rec_frame before any rec_select named abort (child - assembly-order error)
+!   (n) state-larger-than-list_atoms named abort (child, fix round 1): a 3-atom state against
+!       a 2-atom list_atoms hits the named size-mismatch stop - the equality guard fires
+!       BEFORE col_tkin's list_atoms%mass walk could read out of bounds
 !   (o) final-row read-back (the statistics-phase value channel): rec_fin_val(name)
 !       hands back the LAST written final row's named column value - the analytic
 !       e_tot fold to machine precision, the case-insensitive name lookup, and the
 !       e_tot = t_kin identity on the zero container; two children cover the named
-!       loud-stops (a name outside the selection; a read before any rec_final)
+!       aborts with a named error (a name outside the selection; a read before any rec_final)
 !   (p) occupation columns on the real holder (the column-activation value
 !       channel): level 1 + the list 'occ,n_hop' -> the frame column line and
 !       the final row carry occ = 1.0 and n_hop = 0.0 exactly (the degenerate
@@ -82,9 +82,9 @@ program check_recorder
                            rec_fin_val
    use consts,       only: e_conv
    use state,        only: state_t, state_create, state_destroy
-   use config_roster, only: roster
-   use elec_facade,  only: method_reg
-   use force_facade, only: container_bind_pes, container_init
+   use config_atoms, only: list_atoms
+   use elec_interface,  only: method_reg
+   use force_interface, only: container_bind_pes, container_init
    implicit none
    integer :: nfail = 0, nfail0
    character(len=256) :: mode
@@ -94,15 +94,15 @@ program check_recorder
    real(8) :: vals(8), r6(6), tt, tol
    integer :: nlines, lp, nv, i, j, u, ios, traj, step
    type(state_t) :: sta
-   ! hand-built constructible state (2 atoms): q/p/f exact short decimals, roster
-   ! masses/symbols set directly (the roster instance is public and input-independent
+   ! hand-built constructible state (2 atoms): q/p/f exact short decimals, list_atoms
+   ! masses/symbols set directly (the atom list instance is public and input-independent
    ! here - no sysdef chain needed for the recording mechanism)
    real(8), parameter :: q2(6) = [ 0.5d0,-1.0d0, 2.0d0, 0.25d0, 1.25d0,-0.75d0 ]
    real(8), parameter :: p2(6) = [ 1.0d0, 2.0d0, 3.0d0,-0.5d0, 0.5d0, 4.0d0 ]
    real(8) :: tk_ana                  ! the analytic kinetic fold [kcal/mol] (criterion o)
    tol = 1.0d-13
 
-   ! ---------- child dispatch: one bad case per spawn, must loud-stop ----------
+   ! ---------- child dispatch: one bad case per spawn, must named abort ----------
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       select case (trim(mode))
@@ -122,19 +122,19 @@ program check_recorder
       case ('c-noselect')                 ! frame before any selection
          call state_create(sta, 1)
          call rec_frame(sta, 11)
-      case ('c-big')                      ! state LARGER than the roster (fix round 1:
-         allocate (roster%mass(2), roster%symb(2)) ! the old one-way guard let this read
-         roster%mass = [ 1.5d0, 3.0d0 ]          ! roster%mass out of bounds in col_tkin)
-         roster%symb = [ character(4) :: 'H', 'He' ]
+      case ('c-big')                      ! state LARGER than the atom list (fix round 1:
+         allocate (list_atoms%mass(2), list_atoms%symb(2)) ! the old one-way guard let this read
+         list_atoms%mass = [ 1.5d0, 3.0d0 ]          ! list_atoms%mass out of bounds in col_tkin)
+         list_atoms%symb = [ character(4) :: 'H', 'He' ]
          call rec_select(0)
          call state_create(sta, 3)
          call rec_frame(sta, 11)
       case ('c-nofin')                    ! statistics read before ANY rec_final ran
-         print *, rec_fin_val('t_kin')    ! no row stashed yet - must loud-stop
+         print *, rec_fin_val('t_kin')    ! no row stashed yet - must named abort
       case ('c-badfin')                   ! a name outside the selection (the row
-         allocate (roster%mass(2), roster%symb(2)) ! carries the selection only)
-         roster%mass = [ 1.5d0, 3.0d0 ]
-         roster%symb = [ character(4) :: 'H', 'He' ]
+         allocate (list_atoms%mass(2), list_atoms%symb(2)) ! carries the selection only)
+         list_atoms%mass = [ 1.5d0, 3.0d0 ]
+         list_atoms%symb = [ character(4) :: 'H', 'He' ]
          call method_reg('adiabatic', noop_prop, noop_match)
          call container_bind_pes(zero_pes)
          call container_init()            ! the energy columns ride force_eval
@@ -142,7 +142,7 @@ program check_recorder
          call state_create(sta, 2)
          open (newunit=u, file='build/rec_finchild.txt', status='replace', action='write')
          call rec_final(sta, u)           ! a good row first (the stash goes live)
-         print *, rec_fin_val('zzz')      ! unselected name - must loud-stop
+         print *, rec_fin_val('zzz')      ! unselected name - must named abort
       case default
          print '(a)', 'child: unknown mode '//trim(mode)
          stop 2
@@ -151,10 +151,10 @@ program check_recorder
       stop 0
    end if
 
-   ! ---------- hand-built roster + physical state (all under the parent only) ----------
-   allocate (roster%mass(2), roster%symb(2))
-   roster%mass = [ 1.5d0, 3.0d0 ]
-   roster%symb = [ character(4) :: 'H', 'He' ]
+   ! ---------- hand-built list_atoms + physical state (all under the parent only) ----------
+   allocate (list_atoms%mass(2), list_atoms%symb(2))
+   list_atoms%mass = [ 1.5d0, 3.0d0 ]
+   list_atoms%symb = [ character(4) :: 'H', 'He' ]
    call state_create(sta, 2)
    sta%q = q2
    sta%p = p2
@@ -312,8 +312,8 @@ program check_recorder
    ! trajectory 2's parsed row digit for digit, and the analytic fold still
    ! names them - the stash is checked against all three
    nfail0 = nfail
-   tk_ana = (dot_product(p2(1:3), p2(1:3))/(2.0d0*roster%mass(1)) + &
-             dot_product(p2(4:6), p2(4:6))/(2.0d0*roster%mass(2)))/e_conv
+   tk_ana = (dot_product(p2(1:3), p2(1:3))/(2.0d0*list_atoms%mass(1)) + &
+             dot_product(p2(4:6), p2(4:6))/(2.0d0*list_atoms%mass(2)))/e_conv
    if (abs(rec_fin_val('e_tot') - tk_ana) > 1.0d-10) then
       call fail('(o) rec_fin_val(e_tot) off the analytic fold: '//d2s(rec_fin_val('e_tot'))// &
                 ' vs '//d2s(tk_ana)//' kcal/mol')
@@ -371,7 +371,7 @@ program check_recorder
       ' n_hop = 0.0 exactly in family order; rec_fin_val reads the pair back;'// &
       ' no trailing lines)'
 
-   ! ---------- (h)+ loud-stop criteria (child processes) ----------
+   ! ---------- (h)+ named-abort criteria (child processes) ----------
    call expect_loudstop('c-dup',     'duplicate',            'rec_reg_col', &
                         '(h) duplicate-name registration loud-stop')
    call expect_loudstop('c-full',    'full',                 'rec_reg_col', &
@@ -385,7 +385,7 @@ program check_recorder
    call expect_loudstop('c-noselect','rec_select',           'rec_frame', &
                         '(m) frame-before-selection loud-stop')
    call expect_loudstop('c-big',     'size mismatch',        'rec_frame', &
-                        '(n) state-larger-than-roster loud-stop (fix round 1)')
+                        '(n) state-larger-than-list_atoms loud-stop (fix round 1)')
    call expect_loudstop('c-nofin',   'no final-state row',   'rec_fin_val', &
                         '(o1) read-before-any-rec_final loud-stop')
    call expect_loudstop('c-badfin',  'zzz',                  'rec_fin_val', &
@@ -673,7 +673,7 @@ contains
       end do
    end subroutine parse_final_header
 
-   ! spawn the child for one bad case and assert the loud-stop (check_roster scheme)
+   ! spawn the child for one bad case and assert the named abort (check_roster scheme)
    subroutine expect_loudstop(cmode, key, who, label)
       character(len=*), intent(in) :: cmode, key, who, label
       character(len=512) :: cmd, ln

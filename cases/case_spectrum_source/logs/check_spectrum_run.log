@@ -1,0 +1,9 @@
+(a) fold calibration        PASS  fold = 9.648513E-01
+(b) Morse diatomic         PASS  rel dev =  1.89E-08
+(c) BKMP2 H2 + empty atom  PASS  rel dev =  1.66E-08  nu =    4403.2
+(d) tetrahedral molecule    PASS  rel dev =  3.90E-10
+(f) surface derives        PASS  rel dev =  1.89E-08
+(g) MANUAL round trip      PASS
+(h) stretch mode + wvn rt   PASS
+
+check_spectrum: 13 PASS, 0 FAIL

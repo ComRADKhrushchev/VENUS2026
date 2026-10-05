@@ -15,23 +15,23 @@
 !   cd cases/case_b_layer/glo && ../../../src/build/gfortran/probe_glo.exe
 ! Approach: unlike the mechanism-level check (synthetic parameters, the
 ! input grammar out of the loop), this probe drives the REAL assembly
-! chain - read_input -> sysdef_load -> roster_load -> registry_gen_all ->
+! chain - read_input -> sysdef_load -> list_atoms_load -> registry_gen_all ->
 ! registry_gen_init (the driver's assembly steps 1,3,4,6,7; no rng and no
 ! state needed, nothing is sampled) - and then compares the member's
 ! loaded bath data against HAND values: the input-file literals and the
-! IUPAC masses written below (a route independent of the roster's
+! IUPAC masses written below (a route independent of the atom list's
 ! symbol->mass parse). Exit 0 = all checks green; exit 1 = any failure
 ! (each failure prints check tag, got-vs-hand values, relative error).
 ! Criteria:
 !   (a) parameter loading through the real chain: the t_glo/gamma/w
 !       getters return the input literals T_GLO/GAMMA_GLO/W_GHOST
-!       (staged by read_input, pulled by the reg_dist_glo_target seam),
+!       (buffered by read_input, pulled by the reg_dist_glo_target seam),
 !       and dt_loaded returns the propagator step DT the member was
 !       calibrated against - relative 1e-12 each
 !   (b) carrier binding: the bound fragment is fragment 1, its atom
 !       count is 2 (H+Cl), the ghost-state size is 3*nat = 6 (one ghost
 !       oscillator per carrier atom, isotropic three components)
-!   (c) roster-mass route: roster%mass of the carrier atoms equals the
+!   (c) list_atoms-mass route: list_atoms%mass of the carrier atoms equals the
 !       hand IUPAC masses 1.008 / 35.45 amu (the xyz symbol ->
 !       elem_mass parse chain), relative 1e-9
 !   (d) fluctuation-dissipation algebra ON-CHAIN: for every carrier
@@ -46,9 +46,9 @@ program probe_glo
    use consts,        only: kb_code
    use input,         only: read_input
    use config,        only: reactants
-   use config_roster, only: roster, roster_load
-   use sysdef_facade, only: sysdef_load
-   use registry_gen,  only: registry_gen_all, registry_gen_init
+   use config_atoms, only: list_atoms, list_atoms_load
+   use sysdef_interface, only: sysdef_load
+   use registry_gen,  only: registry_gen_all, registry_gen_init, registry_gen_keys
    use dist_glo_target, only: glo_target_t_glo, glo_target_gamma, glo_target_w, &
                               glo_target_dt_loaded, glo_target_frag, glo_target_nat, &
                               glo_target_ghost_size, glo_target_sigma_noise, &
@@ -56,7 +56,7 @@ program probe_glo
    implicit none
    ! hand side: the input-file literals (glo/input_qct.txt) and the IUPAC
    ! masses (the specio table values, written here as literals - a route
-   ! independent of the roster's symbol->mass parse)
+   ! independent of the atom list's symbol->mass parse)
    real(8), parameter :: t_hand = 550.0d0      ! T_GLO [K]
    real(8), parameter :: g_hand = 0.09d0       ! GAMMA_GLO [1/(10 fs)]
    real(8), parameter :: w_hand = 0.0021d0     ! W_GHOST [1/(10 fs)]
@@ -67,9 +67,10 @@ program probe_glo
    nfail = 0
 
    ! the real loading chain (driver assembly steps 1,3,4,6,7; nothing sampled)
+   call registry_gen_keys()                    ! the slot handover (the driver runs keys first)
    call read_input('input_qct.txt')
    call sysdef_load(reactants%system_dir)
-   call roster_load()
+   call list_atoms_load()
    call registry_gen_all()
    call registry_gen_init()
 
@@ -95,9 +96,9 @@ program probe_glo
    end if
 
    do i = 1, glo_target_nat()
-      ! (c) roster-mass route vs hand IUPAC masses
-      got = roster%mass(roster%frag(glo_target_frag())%list(i))
-      call chk_val('(c) roster mass vs IUPAC hand, atom', got, m_hand(i), 1.0d-9, nfail, i)
+      ! (c) list_atoms-mass route vs hand IUPAC masses
+      got = list_atoms%mass(list_atoms%frag(glo_target_frag())%list(i))
+      call chk_val('(c) list_atoms mass vs IUPAC hand, atom', got, m_hand(i), 1.0d-9, nfail, i)
       ! (d) fluctuation-dissipation algebra on-chain
       hand = sqrt(2.0d0*g_hand*m_hand(i)*kb_code*t_hand/dt_hand)
       call chk_val('(d) sigma_noise vs sqrt(2*gamma*m*kb*T/dt), atom', &

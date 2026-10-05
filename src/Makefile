@@ -28,8 +28,10 @@ PREBUILD := ../scripts/prebuild.sh
 
 # ---- sources (wildcard, E11) ----
 # filter-out build/: the artifact directory sits inside the tree pattern (*/ *.f90 would
-# pick up the generated registry_gen.f90 twice - a ghost object and a circular dep)
-SRC_TREE := $(filter-out $(BUILD)/%,$(wildcard *.f90 */*.f90))
+# pick up the generated registry_gen.f90 twice - a ghost object and a circular dep);
+# build/ as a WHOLE is excluded - any source parked under build/ (probe programs of a
+# concurrent session, legacy src/build content) never compiles into venus.e
+SRC_TREE := $(filter-out build/%,$(wildcard *.f90 */*.f90))
 SRC_SYS  := $(wildcard ../systems/*/*.f90)
 
 OBJ_TREE := $(patsubst %.f90,$(BUILD)/%.o,$(SRC_TREE))

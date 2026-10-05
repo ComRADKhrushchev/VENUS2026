@@ -23,3 +23,36 @@ cases/*/*/hist_*.dat
 # K3 build isolation (src/build/)
 build/
 __pycache__/
+
+# 会话/编辑器本地产物（2026-10-04 入库批：不入公开仓库）
+.zcode/
+.vscode/
+
+# 编译二进制与脚本侧构建产物
+*.exe
+scripts/ct_build/
+
+# 一次性运行产物（入库约定：README/results.txt 载摘录）
+cases/*/traj_flushfix_check.txt
+
+# 大体量审计运行数据（45MB，本地留档）
+scripts/local_audit/
+
+# 已发表文献 PDF 与程序手册（版权物，不入公开仓库；README 索引入库）
+docs/literature/*.pdf
+docs/160310_ANT_Manual_v2016.pdf
+
+# 报告渲染图件（工作产物，可再生）
+render/
+
+# --- 2026-10-05 landing batch housekeeping ---
+# afv sweep raw drift dumps (kept on disk; the anchor logs the plan doc cites are committed)
+scripts/drift*.txt
+# literature reference PDFs (not work product; excluded from any publish face)
+docs/literature/
+# stray publish_min copy inside the dev tree (2026-10-05 morning session artifact; cleanup candidate)
+/publish_min/
+# check-recipe object files at src root
+src/*.o
+# vendor archives
+*.rar

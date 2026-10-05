@@ -1,0 +1,18 @@
+#!/bin/bash
+#SBATCH -J r10v
+#SBATCH -p mars_l
+#SBATCH -N 1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH -t 6:00:00
+#SBATCH -o r10v_%a.log
+#SBATCH --array=0-1
+cd "$SLURM_SUBMIT_DIR"
+AWKPROG='/^# frame/{ match($0,/traj=[0-9]+/); nt=substr($0,RSTART+5,RLENGTH-5)+0; match($0,/t= *[0-9.E+-]+/); tt=substr($0,RSTART+2,RLENGTH-2)+0; if(nt!=ct){ if(ct>0) printf "%d %.3f %.4f %.4f %.4f\n", ct, ctk, czmin, ce0, cet; ct=nt; seen0=0; czmin=99 }; ctk=tt } /^t_kin=/{ match($0,/e_tot= *[0-9.E+-]+/); v=substr($0,RSTART+6,RLENGTH-6)+0; cet=v; if(seen0==0){ ce0=v; seen0=1 } } /^1 C /{ z=$5+0; if(z<czmin) czmin=z } END{ if(ct>0) printf "%d %.3f %.4f %.4f %.4f\n", ct, ctk, czmin, ce0, cet }'
+d=$(ls -d r10v_runs/*/ | sort | sed -n "$((SLURM_ARRAY_TASK_ID+1))p")
+leg=$(basename "$d")
+cd "$d"
+../../src/build/gfortran/venus.e > stdout_run.txt 2>&1
+awk "$AWKPROG" trajectories.txt > "../../r10v_${leg}_drift.txt"
+if [ -s "../../r10v_${leg}_drift.txt" ]; then rm -f trajectories.txt; else cp trajectories.txt trajectories.keep; fi
+echo DONE > "../../r10v_${leg}.done"

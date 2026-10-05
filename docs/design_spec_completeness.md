@@ -225,18 +225,28 @@ Corollary 1 (decomposition of the method concept): Ehrenfest and FSSH share all 
 2. Decoherence corrections straddle the layer boundary between electronic propagation and matching: DoM-type schemes modify the amplitude equation (a declarative sub-option of electronic propagation); decay-of-mixing-type schemes reset the amplitudes after a failed hop (post-processing of matching) — decoherence models enter as sub-options and do not break the decomposition;
 3. Inter-trajectory coupling methods (CT-MQC, AIMS) break the premise that "matching reads the statistics of a single trajectory by itself" and remain outside the QCT family definition (consistent with the scope-boundary clause of 3.3).
 
-**Architectural placement**: the class-B members (electron propagation laws) are further decomposed internally into two registration units — the amplitude propagator (cross-method shared infrastructure; RK/matrix-exponential integrators for a given representation, bounded functional scope, closable) and the matching rule (a method-specific small unit, the consumption point of the random stream). Refined diagnosis of the historical pathology: the over-reacher that forced VERLET in TDHF-FSSH is the matching layer (the momentum projection requires force evaluation in step with integration); it should be handled as a dependency declaration from the matching layer to the nuclear-propagation layer, negotiated at assembly time, not as a hard constraint.
+**Architectural placement**: the electronic method members (electron propagation laws) are further decomposed internally into two registration units — the amplitude propagator (cross-method shared infrastructure; RK/matrix-exponential integrators for a given representation, bounded functional scope, closable) and the matching rule (a method-specific small unit, the consumption point of the random stream). Refined diagnosis of the historical pathology: the over-reacher that forced VERLET in TDHF-FSSH is the matching layer (the momentum projection requires force evaluation in step with integration); it should be handled as a dependency declaration from the matching layer to the nuclear-propagation layer, negotiated at assembly time, not as a hard constraint.
 
 **Benchmarking feedback**: the three Tully 1990 models (R8-5) degrade nuclear propagation to the trivial (one-dimensional translation) and isolate electronic propagation and matching for testing — model 1 tests the asymptotic correctness of matching (the LZ limit); model 2 tests the time-step coupling of the two layers. The acceptance targets of R8-5 are stated per layer.
 
-### 4.2 Formal Signatures (Backfilled 2026-09-16 at S/T7; E27 composition-root contract)
+### 4.2 Formal Signatures (Backfilled 2026-09-16 at S/T7; E27 container contract)
 
 [E27 revision 2026-09-16 — the ws interchange and the h_form/h_deliver matchmaking are RETIRED
-(superseding the relevant parts of E10/E13/E14): the container is the composition root. It delivers
-the COMPOSED active force kernel directly; system-specific method packages may live in their
+(superseding the relevant parts of E10/E13/E14): the physical-system container is the composition
+point of system-specific code. It delivers
+the composed force evaluation directly; system-specific method packages may live in their
 systems/ folder and share private modules with the H definition — no lingua franca. The entries
 below are the landed forms (src/facade/), verified by the S-phase audit
 (docs/completeness_audit_src.md) and the V/S case set.]
+
+[E28 revision 2026-09-22 — the container parameter channel rides the program input: the
+run-directory *_pars.txt channel is RETIRED. A container's parameter vocabulary is a set of
+declared container keys of input_qct.txt (the box owns the key list and a params_t whose field
+defaults are the container defaults; the reg file declares the vocabulary before the parse via
+registry_gen_keys and consumes the staged rows at its seam by pull(key, target [, found]);
+input_audit_declared fatals a staged-but-unconsumed declared key). E21/E22's closed-grammar
+posture is unchanged — admission stays parse-time, the membership set gains the declared names;
+a declared key may not collide with a program or member key. Ruling record: docs/plans/T.md.]
 
 **Interface A (the force boundary, force_facade.f90)**:
 
@@ -245,10 +255,10 @@ below are the landed forms (src/facade/), verified by the S-phase audit
   by the container (the active-surface fold, the member sum, and stochastic laws are
   container-side; rng single-stream inside; an H-shaped container folds its own eigenproblem).
 - `force_eval(sta, e_tot)` — the one evolution-phase force entry: container call → the unique
-  unit conversion `f = -g*ev_kcal*e_conv` (23.0605 × C1 lives only here, T4) → E = T(P)+V.
+  unit conversion `f = -g*ev_kcal*e_conv` (23.0605 × 0.04184 lives only here, T4) → E = T(P)+V.
 - Assembly: `container_bind_pes(proc)` (single slot, one container per run),
   `container_bind_term(proc)` (optional termination judgment, read-only sta),
-  `container_init()` (method name lookup + idle-chain posture; purely formal, E13).
+  `container_init()` (method name lookup + the no-container-bound posture; purely formal, E13).
 
 **Interface B (the electronic axis, elec_facade.f90)**:
 
@@ -261,17 +271,21 @@ below are the landed forms (src/facade/), verified by the S-phase audit
   (ELEC_METHOD key; the degenerate 'adiabatic' row is the default — an adiabatic reference
   run of ANY system stays expressible).
 
-**Interface B′ (initial-state sampling, sampler.f90)**: `dist_proc_i(sta)` members registered by
-`samp_reg(name, proc)`, selected per fragment by DIST_SCHEME codes; `samp_run(scheme, sta)`
-dispatches fragment members in roster order, then the ONE orchestration member (incident)
-once — skipped for single-fragment gas phase.
+**Interface B′ (initial-state sampling, sampler.f90)**: member pairs registered by
+`samp_reg(name, draw, realize)` (the 2026-09-22 two-phase split: draw consumes the RNG into a
+module-private record, realize writes q/p and draws no RNG), selected per fragment by
+DIST_SCHEME codes; `samp_run(scheme, sta)` dispatches fragment members in roster order, then
+the ONE paradigm-resolved incident member once - the incident channel is three members
+(`inc_surface`/`inc_pair`/`inc_single`, 2026-09-28 split; `samp_incident_word()` resolves,
+the regs register under paradigm guards, and the trivial `inc_single` is a bitwise no-op that
+replaced the historical skip-guard).
 
 **Well-definedness at degenerate points (verified)**: (i) the adiabatic degenerate package —
 all-no-op members, occ seeded [1], zero rng consumption (check_facade (h)/(j)); (ii) the
 single-fragment surface paradigm — incident skipped, degenerate histogram channels pinned
-(case_surface_window A4, dual to the gas-phase thta degeneracy); (iii) the idle chain — no
-container dragged in assembles and loud-stops only at force_eval's first call (check_facade
-posture notes).
+(case_surface_window A4, dual to the gas-phase thta degeneracy); (iii) no container bound —
+assembling without a container dragged in succeeds and aborts with a named error only at
+force_eval's first call (check_facade posture notes).
 
 **Dual-implementation verification records (this repository's carriers; the master plan's
 RST/EMT-NN/GLO-stochastic names are full-form assets outside this repo, kept as historical
@@ -280,7 +294,10 @@ self-consistency vs central difference, plus the OLD-CHAIN BIT-LEVEL comparison
 max|dF| = max|dE| = 0 per potential and geometry, re-verified green AFTER E27); Interface
 B′ — eleven dist_* members covered by the five-case set and eleven check_dist_* criteria
 programs (mechanism level) + on-chain numeric posteriors (b_layer χ² exact bands, chain_freq
-spectra bitwise to 1e-13); configuration level — the two paradigms (gas-phase four cases,
+spectra bitwise to 1e-13); a twelfth member dist_wigner (ground-state Wigner normal-mode
+distribution, 2026-09-21) joined after the S-phase record — criterion-covered
+(check_dist_wigner, sixteen legs green), five-case coverage pending; configuration
+level — the two paradigms (gas-phase four cases,
 surface POSCAR-cell case); electronic axis — the adiabatic degenerate point (the nonadiabatic
 axis lands with the first container-composed package, per E27).
 

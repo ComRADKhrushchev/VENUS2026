@@ -65,18 +65,18 @@ contains
       ! 1. guards: known kind; positive bin count and nonempty range (except the map)
       if (spec%kind < k_e_hist .or. spec%kind > k_bnc) then
          write (0, '(a,i0)') 'plot_hist: unknown histogram kind ', spec%kind
-         write (0, '(a)') 'plot_hist: loud-stop (the kind key is outside the five-kind set)'
+         write (0, '(a)') 'plot_hist: fatal (the kind key is outside the five-kind set)'
          stop 1
       end if
       if (spec%kind /= k_pos .and. spec%n_bin < 1) then
          write (0, '(a,i0)') 'plot_hist: nonpositive bin count ', spec%n_bin
-         write (0, '(a)') 'plot_hist: loud-stop (the bin geometry is not computable)'
+         write (0, '(a)') 'plot_hist: fatal (the bin geometry is not computable)'
          stop 1
       end if
       if (spec%kind /= k_pos .and. spec%v_hi <= spec%v_lo) then
          write (0, '(2(a,es12.4))') 'plot_hist: empty histogram range v_hi <= v_lo (v_lo = ', &
             spec%v_lo, ', v_hi = ', spec%v_hi, ')'
-         write (0, '(a)') 'plot_hist: loud-stop (the bin width would be nonpositive -'// &
+         write (0, '(a)') 'plot_hist: fatal (the bin width would be nonpositive -'// &
             ' the range must satisfy v_hi > v_lo)'
          stop 1
       end if
@@ -106,7 +106,7 @@ contains
    ! kinds share everything but their column)
    !------------------------------------------------------------------
    subroutine column_hist(fname, vals, n_traj, spec, nb)
-      character(len=*), intent(in) :: fname      ! output file name (caller-staged)
+      character(len=*), intent(in) :: fname      ! output file name (caller-buffered)
       real(8), intent(in) :: vals(:)             ! the binned column
       integer, intent(in) :: n_traj              ! trajectory row count (the P denominator)
       type(hist_spec_t), intent(in) :: spec      ! histogram specification
@@ -140,7 +140,7 @@ contains
    ! point folded into the reference cell, four columns (x, y, e_rel, z_min)
    !------------------------------------------------------------------
    subroutine pos_map(fname, data, lattice)
-      character(len=*), intent(in) :: fname      ! output file name (caller-staged)
+      character(len=*), intent(in) :: fname      ! output file name (caller-buffered)
       type(hist_data_t), intent(in) :: data      ! trajectory row table
       type(lat_t), intent(in) :: lattice         ! lattice constants
       real(8) :: f(2)

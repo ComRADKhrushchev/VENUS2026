@@ -7,19 +7,20 @@ system specificity enters only through the method's own data channels at runtime
 ruling: system material lives in systems/<system>/; a method that embeds system
 parameters or system knowledge does not belong here — see also the
 knowledge-ownership audit: system/method-specific knowledge must not enter generic
-code). E27 composition root: a SYSTEM-SPECIFIC method package (bespoke Hamiltonian +
-bespoke evolution law) is container material - it lives in its systems/<system>/
+code). E27: a SYSTEM-SPECIFIC method package (bespoke Hamiltonian + bespoke evolution
+law) is physical-system container material - it lives in its systems/<system>/
 folder, shares private modules with the container's H definition, and registers its
 method row from a reg_*.f90 in that same folder (one registration site; the former
-ws interchange between the two homes is retired).
+ws interchange between the two homes is retired - a historical term, docs/plans/S.md
+E27).
 
 ## File prefixes (self-describing families)
 
 | Prefix | Family | Registered by | Present / planned |
 |---|---|---|---|
-| `elec_*` | MQC method packages — {prop member, match member [, sync member]}, one `method_reg` row each | its thin `reg_<package>.f90` (assembly phase; in methods/ for generic packages, in systems/<system>/ for container-composed ones - E27) | `elec_adiabatic` (present — the all-no-op degenerate seed); `elec_tsh` / `elec_iesh` / `elec_ehrenfest` phase C |
-| `dist_*` | initial-state distribution members (the B' sampler family; parameters via config — E12 wording carried, zero embedded system data) | thin `reg_dist_*.f90` at C5 together with the sample routines (K2 E3 slimming ruling) | boltzmann / ebk / incident (present — migrated from the former interface_distributions/, E14); the remaining 9 arrive C5 |
-| `amp_*` | shared amplitude integrators — library modules, not packages (Corollary 1: FSSH and Ehrenfest share the same prop code; the method count drops multiplicatively) | none (components, consumed via use — level 2) | `amp_rk` / `amp_expm` phase C |
+| `elec_*` | MQC method packages — {prop member, match member [, sync member]}, one `method_reg` row each | its thin `reg_<package>.f90` (assembly phase; in methods/ for generic packages, in systems/<system>/ for container-composed ones - E27) | `elec_adiabatic` (present — the all-no-op degenerate seed); `elec_tsh` / `elec_iesh` / `elec_ehrenfest` planned (R8-5) |
+| `dist_*` | initial-state distribution members (the B′ sampler family; parameters via config — E12 wording carried, zero embedded system data) | thin `reg_dist_*.f90`, landed at C5 together with the sample routines (K2 E3 slimming ruling) | 12 members present (boltzmann, ebk, incident, surface_oscillator, rotation, j, barrier_excitation, thermostat, glo_target, thermalize, normalmode, wigner); qmmicro dropped (old-library defect variant, C5-R4) |
+| `amp_*` | shared amplitude integrators — library modules, not packages (Corollary 1: FSSH and Ehrenfest share the same prop code; the method count drops multiplicatively) | none (components, consumed via use — level 2) | `amp_rk` / `amp_expm` planned |
 | `reg_*` | thin registration modules — build material, not methods | (they are the registration) | `reg_adiabatic` (present — the sole reg file of the K2 seed) |
 
 ## Two exposure levels of the library ("ready-made semantics", spec §5)
@@ -60,32 +61,49 @@ final form carries zero registration lines. Until then the K2 skeleton wires
 The facade is a purely formal authority: `method_reg` fills one row and checks only
 name-table hygiene (duplicate name / full table). That one registration vouches for
 the whole package — which prop member pairs with which match member is the
-registering author's own knowledge, not the facade's. A member loud-stops at runtime
-on a ws%repr it does not support (E10 contract) and on dt semantics it cannot live
-with (E13 open point — fixed-step-only laws, shape landed in phase C with elec_tsh).
+registering author's own knowledge, not the facade's. A member aborts at runtime with
+a named error on dt semantics it cannot live with (E13 open point — fixed-step-only
+laws; the shape lands with elec_tsh).
 
-## The dist_* family (initial-state distributions — the B' sampler registry)
+## The samp_* family (initial-state distributions — the B′ sampler registry)
 
-`dist_*` members are pre-stored generic initial-state distribution methods: each
+`samp_*` members are pre-stored generic initial-state distribution methods: each
 draws one fragment of the trajectory's initial state per its prescription
-(Boltzmann normal-mode quantum numbers, fixed (n,J) EBK levels, incident-channel
-collision energy / impact parameter / orientation). E12 wording carried: the
-members are physics-generic code with zero embedded system data — temperatures,
-frequencies, quantum numbers, and mode switches all arrive as member params
-filled from config at runtime; system material lives in systems/<system>/.
+(Boltzmann normal-mode quantum numbers, fixed (n,J) EBK levels, surface-oscillator
+stretch ...). E12 wording carried: the members are physics-generic code with zero
+embedded system data — temperatures, frequencies, quantum numbers, and mode
+switches all arrive as member params filled from config at runtime; system
+material lives in systems/<system>/. The family was renamed `dist_*` -> `samp_*`
+on 2026-09-22..28 (registration words unchanged); the incident channel left the
+family for its own `inc_*` prefix (below).
 
-Registration timing (K2 E3 slimming ruling): `samp_reg` registers a
-`dist_proc_i(sta)` sample routine, and the K2 skeletons carry only `*_init` —
-the sample routines land at C5 — so each member's thin `reg_dist_*.f90` and its
-`samp_reg` line land at C5 together with the sample routine (drag-in rule
-unchanged). `reg_adiabatic.f90` remains the sole reg file of the K2 library
-seed.
+Present — 10 members: `samp_boltzmann` / `samp_ebk` (migrated from the former
+interface_distributions/ at the E14 rebuild) plus `samp_surface_oscillator`,
+`samp_rotation`, `samp_j`, `samp_barrier_excitation`, `samp_glo_target`,
+`samp_thermalize`, `samp_normalmode` (landed at C5; scheme-code table in
+interface/sampler.f90; `samp_thermostat` was deleted when the thermostat became
+the BATH provision, 2026-09-22), and `samp_wigner` (2026-09-21: the ground-state
+Wigner normal-mode distribution — independent Gaussian q/p per mode with
+virial-matched widths; the per-mode energy scale E_SCALE defaults to the
+zero-point level and may be set below it for sub-ZPE sampling; criterion
+program scripts/check_samp_wigner.f90). `qmmicro` is not
+carried over (old-library defect variant, dropped by C5-R4).
 
-Present (migrated from the former interface_distributions/ in this same rebuild,
-E14): `dist_boltzmann` ('boltzmann'), `dist_ebk` ('ebk'), `dist_incident`
-('incident'). The remaining 9 members arrive at C5: surface_oscillator,
-rotation, j (rotational-J temperature), barrier_excitation, thermostat,
-glo_target, thermalize, normalmode, qmmicro.
+## The inc_* incident family (2026-09-28 split) + beam_laws
+
+The incident channel is THREE members, one per assembly paradigm, registered
+under paradigm guards (exactly one armed per process): `inc_surface`
+(`incident_surface` — one PROJECTILE fragment + substrate carriers; drop site
+N_AIM 0/1/2, the fixed site AIM_X/AIM_Y [A, POSCAR frame]; on-site B_MAX = 0
+under N_B = 0; A_LAT/cell commensurability check; full COM velocity - the
+surface is the momentum sink), `inc_pair` (`incident_pair` — the gas-pair
+branch verbatim, reduced-mass split), `inc_single` (`incident_single` — the
+trivial no-op for single-fragment gas; the sampler dispatches uniformly).
+The shared stochastic law (orientation/azimuth/aiming/energy draws, parameter
+validation, COM placement/velocity assignment) lives in the level-2 component
+`beam_laws.f90` (a `beam_t` instance per member — registry-family members never
+depend on each other). Criterion programs: scripts/check_inc_surface.f90,
+check_inc_pair.f90, check_inc_single.f90.
 
 Reference material (old library, read-only): the MQC propagation sites in
 venus2026/src_VENUS/*.f — citation pass during C-phase implementation, no

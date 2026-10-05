@@ -2,20 +2,20 @@
 ! propagator.f90 - closed family of nuclear propagators (verlet/symple/radau + prop_step dispatch)
 ! Design:
 !   Pure integrators: all forces come through force_eval(sta, e_tot) - the eV ->
-!   internal-unit conversion lives in force_facade; frame output and termination
+!   internal-unit conversion lives in force_interface; frame output and termination
 !   are the driver's affair. Contract: prop_step returns only after the endpoint
 !   force at the returned sta%q has been evaluated. Members hold module-private
-!   staging (Beeman force history, symple coefficient cache, radau cross-sequence
+!   buffer (Beeman force history, symple coefficient cache, radau cross-sequence
 !   carry), rebuilt on a fresh trajectory / size change / step-size change and
 !   cleared on member switch. Units: time [10 fs], length [A]; masses from the
-!   roster, expanded per atom over its three components.
+!   list_atoms, expanded per atom over its three components.
 !=====================================================================
 module propagator
    use state,         only: state_t
    use config,        only: prop_cfg => propagator   ! alias: the config instance 'propagator'
                                                       ! clashes with the module name
-   use config_roster, only: roster
-   use force_facade,  only: force_eval               ! the pure force entry (sta, e_tot)
+   use config_atoms, only: list_atoms
+   use force_interface,  only: force_eval               ! the pure force entry (sta, e_tot)
    implicit none
    private
    public :: prop_reg, prop_step
@@ -38,11 +38,11 @@ module propagator
    type(integ_entry_t) :: reg_tbl(max_integ)  ! registry (module-private)
    integer :: n_reg = 0                       ! registered row count [row]
 
-   ! Beeman force history: the staged F(t) of the previous order=2 step + readiness flag
-   real(8), allocatable :: f_prev(:)          ! staged F(t-dt) of the upcoming Beeman step
+   ! Beeman force history: the buffered F(t) of the previous order=2 step + readiness flag
+   real(8), allocatable :: f_prev(:)          ! buffered F(t-dt) of the upcoming Beeman step
                                               ! (sta%f units)
    logical :: f_prev_ok = .false.             ! history usable [flag]
-   real(8) :: dt_staged = 0.0d0               ! step size the staged f_prev is spaced at [10 fs]
+   real(8) :: dt_staged = 0.0d0               ! step size the buffered f_prev is spaced at [10 fs]
                                               ! (a dt change re-boots the equal-spacing AM corrector)
 
    ! symple composition cache: coefficient table a(0:2N), stage count N, order key
@@ -62,7 +62,7 @@ module propagator
    real(8) :: rad_ra(21) = 0.0d0              ! triangle: difference recursion = 1/(node diffs)
    logical :: rad_const_ok = .false.          ! constants loaded [flag]
 
-   ! radau cross-sequence carry: the B-coefficient staging of the upcoming sequence
+   ! radau cross-sequence carry: the B-coefficient buffer of the upcoming sequence
    ! (trajectory state, carried across prop_step calls, rebuilt on every boot)
    real(8), allocatable :: rad_bb(:, :)       ! monomial B coefficients (7, n_dof)
    real(8), allocatable :: rad_ee(:, :)       ! binomial extrapolation onto the next scale
@@ -117,7 +117,7 @@ contains
       type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
       integer :: k
       real(8) :: dt, e
-      real(8) :: f_tm1(size(sta%q))         ! F(t-dt) of this Beeman step (saved across restaging)
+      real(8) :: f_tm1(size(sta%q))         ! F(t-dt) of this Beeman step (saved across the swap)
       e = 0.0d0                             ! force_eval fills it; the integrator does not consume it
       dt = prop_cfg%dt
 
@@ -132,7 +132,7 @@ contains
       case (2)                              ! 2. third-order Beeman
          if (beeman_boot_needed(sta)) then
             ! FIRST-STEP BOOT: no usable history - run the velocity-Verlet sequence,
-            ! staging its left-end force as the next step's history
+            ! buffer its left-end force as the next step's history
             call beeman_forget()
             call force_eval(sta, e)         ! F(t): left end, evaluated afresh (endpoint contract)
             allocate (f_prev(size(sta%f)))
@@ -142,16 +142,16 @@ contains
             call vv_advance(sta, dt)
             sta%t = sta%t + dt
          else
-            f_tm1 = f_prev                  ! F(t-dt): the staged history, saved before restaging
+            f_tm1 = f_prev                  ! F(t-dt): the buffered history, saved before the swap
             call force_eval(sta, e)         ! F(t): left end, evaluated afresh (header contract)
             f_prev = sta%f                  ! stage F(t) as the next step's history
-            do k = 1, size(roster%mass)
+            do k = 1, size(list_atoms%mass)
                ! position predictor (third-order): q += (p/m)dt + dt^2(4F(t)-F(t-dt))/(6m)
-               sta%q(3*k-2:3*k) = sta%q(3*k-2:3*k) + sta%p(3*k-2:3*k)*(dt/roster%mass(k)) &
-                  + (4.0d0*sta%f(3*k-2:3*k) - f_tm1(3*k-2:3*k))*((dt*dt)/(6.0d0*roster%mass(k)))
+               sta%q(3*k-2:3*k) = sta%q(3*k-2:3*k) + sta%p(3*k-2:3*k)*(dt/list_atoms%mass(k)) &
+                  + (4.0d0*sta%f(3*k-2:3*k) - f_tm1(3*k-2:3*k))*((dt*dt)/(6.0d0*list_atoms%mass(k)))
             end do
             call force_eval(sta, e)         ! F(t+dt) at the predicted (final) q - the endpoint
-            do k = 1, size(roster%mass)
+            do k = 1, size(list_atoms%mass)
                ! momentum corrector (two-step Adams-Moulton): p += dt(5F(t+dt)+8F(t)-F(t-dt))/12
                ! (q untouched - positions stay on the predictor)
                sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) &
@@ -187,15 +187,15 @@ contains
 
       do i = 0, sym_n - 1                   ! 1. alternating loop: kick a(2i), drift a(2i+1)
          call force_eval(sta, e)            ! F at the current q, before the kick
-         do k = 1, size(roster%mass)
+         do k = 1, size(list_atoms%mass)
             sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) + sta%f(3*k-2:3*k)*(dt*sym_a(2*i))
          end do
-         do k = 1, size(roster%mass)
-            sta%q(3*k-2:3*k) = sta%q(3*k-2:3*k) + sta%p(3*k-2:3*k)*(dt*sym_a(2*i + 1)/roster%mass(k))
+         do k = 1, size(list_atoms%mass)
+            sta%q(3*k-2:3*k) = sta%q(3*k-2:3*k) + sta%p(3*k-2:3*k)*(dt*sym_a(2*i + 1)/list_atoms%mass(k))
          end do
       end do
       call force_eval(sta, e)               ! 2. the final beat's force site = the endpoint q
-      do k = 1, size(roster%mass)
+      do k = 1, size(list_atoms%mass)
          sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) + sta%f(3*k-2:3*k)*(dt*sym_a(2*sym_n))
       end do
       sta%t = sta%t + dt
@@ -206,7 +206,7 @@ contains
    ! Boot as needed, then ONE accepted sequence per call: q/p/t advance by the
    ! sequence length tt, the close-out evaluates the endpoint force explicitly
    ! (sta%f on return is the force at the returned sta%q), and the B-carry/next
-   ! length are staged for the following call. p is written back from the folded
+   ! length are buffered for the following call. p is written back from the folded
    ! working velocity at close-out.
    subroutine radau_step(sta)
       type(state_t), intent(inout) :: sta   ! physical state (q/p/t advanced; f is the force workspace)
@@ -219,7 +219,7 @@ contains
       e = 0.0d0                             ! force_eval fills it; the integrator does not consume it
 
       ! 1. order = the accuracy exponent (ss = 10^-order); dt gives the direction and the
-      !    first-sequence seed - both illegal values are named loud-stops
+      !    first-sequence seed - both illegal values are named aborts
       if (prop_cfg%order < 1 .or. prop_cfg%order > 15) then
          call stop_propi('radau_step', 'illegal propagator order for radau', prop_cfg%order, &
                          '(1..15 - the accuracy exponent of ss = 10^-order)')
@@ -239,7 +239,7 @@ contains
       if (radau_boot_needed(sta)) call radau_boot(sta)
       nq = size(sta%q)
       do k = 1, nq                          ! re-fold the working velocity from sta%p
-         rad_v(k) = sta%p(k)/roster%mass((k + 2)/3)
+         rad_v(k) = sta%p(k)/list_atoms%mass((k + 2)/3)
       end do
       ni = 6                                ! first sequence iterates six times,
       if (rad_seq_ok) ni = 2                ! later sequences twice (the B-carry)
@@ -281,7 +281,7 @@ contains
                call force_eval(sta, e)
                do k = 1, nq
                   sta%q(k) = qs(k)
-                  fj(k) = sta%f(k)/roster%mass((k + 2)/3)
+                  fj(k) = sta%f(k)/list_atoms%mass((k + 2)/3)
                end do
                do k = 1, nq
                   ! corrector: difference the folded substep force against the head value,
@@ -310,7 +310,7 @@ contains
                end do
                hv = hv*rad_w(7)/tval**7
                ! diverged-trial guard: hv non-finite (NaN or Inf) or beyond the
-               ! divergence bound 1e30 loud-stops - a diverged trial under a dt_min
+               ! divergence bound 1e30 aborts with a named error - a diverged trial under a dt_min
                ! floor would otherwise clamp back up to the trial length and accept
                ! garbage through the equality path, unnamed (legitimate measured hv
                ! peaks near 9e8, so the bound keeps >20 decades of margin)
@@ -335,7 +335,7 @@ contains
          rad_tp = 0.8d0*rad_tp              ! case - in the unclamped world tp == tt is
          call rad_clamp(rad_tp, dir)        ! measure-zero, so >= is the published >)
          nrst = nrst + 1                    ! termination guard: a diverging trial never
-         if (nrst > 10) then                ! accepts - a named loud-stop beats a silent spin
+         if (nrst > 10) then                ! accepts - a named abort beats a silent spin
             call stop_prop('radau_step', & ! forever
                            'first sequence failed to accept after 10 restarts (the'// &
                            ' error estimate diverges - the dt seed is too large for'// &
@@ -344,7 +344,7 @@ contains
          ni = 6                             ! the retry runs the full iteration count
          call force_eval(sta, e)            ! head force afresh at the same origin
          do k = 1, nq                       ! (the retry's f1; the state never advanced)
-            rad_f1(k) = sta%f(k)/roster%mass((k + 2)/3)
+            rad_f1(k) = sta%f(k)/list_atoms%mass((k + 2)/3)
          end do
       end do
 
@@ -361,7 +361,7 @@ contains
       end do
 
       ! ---- close-out state guard (per component, no reduction): non-finite or
-      ! physically-absurd values loud-stop - the max()-reduced hv estimate cannot
+      ! physically-absurd values abort with a named error - the max()-reduced hv estimate cannot
       ! catch NaN components (Fortran max with a NaN argument is
       ! processor-dependent). Bounds: |q| > 1e8 A or |v| > 1e10 A/(10 fs)
       ! (legitimate runs peak |q| ~ 5, |v| ~ 50; p = m*v rides the v test) ----
@@ -381,8 +381,8 @@ contains
       rad_ns = rad_ns + 1
       call force_eval(sta, e)               ! the endpoint force (endpoint contract)
       do k = 1, nq
-         rad_f1(k) = sta%f(k)/roster%mass((k + 2)/3)   ! next sequence's head acceleration
-         sta%p(k) = rad_v(k)*roster%mass((k + 2)/3)    ! p written back from the working velocity
+         rad_f1(k) = sta%f(k)/list_atoms%mass((k + 2)/3)   ! next sequence's head acceleration
+         sta%p(k) = rad_v(k)*list_atoms%mass((k + 2)/3)    ! p written back from the working velocity
       end do
 
       ! ---- 5. adaptive length of the next sequence: (ss/hv)^(1/9), growth-limited
@@ -434,28 +434,28 @@ contains
       real(8) :: e
       e = 0.0d0
       call force_eval(sta, e)               ! F(t): left end, evaluated afresh
-      do k = 1, size(roster%mass)
+      do k = 1, size(list_atoms%mass)
          sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) + sta%f(3*k-2:3*k)*(0.5d0*dt)
       end do
-      do k = 1, size(roster%mass)
-         sta%q(3*k-2:3*k) = sta%q(3*k-2:3*k) + sta%p(3*k-2:3*k)*(dt/roster%mass(k))
+      do k = 1, size(list_atoms%mass)
+         sta%q(3*k-2:3*k) = sta%q(3*k-2:3*k) + sta%p(3*k-2:3*k)*(dt/list_atoms%mass(k))
       end do
       call force_eval(sta, e)               ! F(t+dt): the endpoint (header contract)
-      do k = 1, size(roster%mass)
+      do k = 1, size(list_atoms%mass)
          sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) + sta%f(3*k-2:3*k)*(0.5d0*dt)
       end do
    end subroutine vv_advance
 
-   ! beeman_forget() - clear the staged Beeman history (boot hygiene / VV mode switch)
+   ! beeman_forget() - clear the buffered Beeman history (boot hygiene / VV mode switch)
    subroutine beeman_forget()
       if (allocated(f_prev)) deallocate (f_prev)
       f_prev_ok = .false.
       dt_staged = 0.0d0                     ! the flag, the array, and its spacing move together
    end subroutine beeman_forget
 
-   ! beeman_boot_needed(sta) - the boot condition: no usable history (nothing staged,
+   ! beeman_boot_needed(sta) - the boot condition: no usable history (nothing buffered,
    ! a size change of the state) or a fresh trajectory (sta%t = 0). Own function so
-   ! size(f_prev) is evaluated only when the staging flag says the array is allocated
+   ! size(f_prev) is evaluated only when the buffer flag says the array is allocated
    ! (Fortran does not guarantee short-circuit .or.; a size() on an unallocated
    ! array is nonconforming)
    logical function beeman_boot_needed(sta)
@@ -463,13 +463,13 @@ contains
       beeman_boot_needed = .true.
       if (f_prev_ok) then
          ! the dt key: a dt swap re-boots - the equal-spacing AM quadrature would
-         ! silently degrade on history staged at another spacing
+         ! silently degrade on history buffered at another spacing
          beeman_boot_needed = (size(f_prev) /= size(sta%q) .or. sta%t == 0.0d0 &
                                .or. prop_cfg%dt /= dt_staged)
       end if
    end function beeman_boot_needed
 
-   ! symple_load(order) - fill the composition cache for one order (4/6/8; loud-stop
+   ! symple_load(order) - fill the composition cache for one order (4/6/8; named abort
    ! otherwise). The half table a(0..N) is literal and the second half mirror-copied
    ! (a(2N-k) = a(k)) - Schlier's 1999 sets, verified bit-level by the check program;
    ! the cache reloads on a change of the order key (a pure function of order)
@@ -572,7 +572,7 @@ contains
       rad_const_ok = .true.
    end subroutine radau_load
 
-   ! radau_boot(sta) - first-call staging: zero the B-carry, fold the working velocity
+   ! radau_boot(sta) - first-call buffer: zero the B-carry, fold the working velocity
    ! from p, seed the sequence length from dt (clamped), and evaluate the head force
    ! at the current geometry. A positive dt_min/dt_max pair with dt_min > dt_max is
    ! contradictory - named here
@@ -599,15 +599,15 @@ contains
       rad_tp = prop_cfg%dt                  ! the seed (clamped - a bound on lengths)
       call rad_clamp(rad_tp, dir)
       do k = 1, size(sta%q)                 ! fold the working velocity
-         rad_v(k) = sta%p(k)/roster%mass((k + 2)/3)
+         rad_v(k) = sta%p(k)/list_atoms%mass((k + 2)/3)
       end do
       call force_eval(sta, e)               ! head force at the boot geometry
       do k = 1, size(sta%q)
-         rad_f1(k) = sta%f(k)/roster%mass((k + 2)/3)
+         rad_f1(k) = sta%f(k)/list_atoms%mass((k + 2)/3)
       end do
    end subroutine radau_boot
 
-   ! radau_boot_needed(sta) - the boot condition: no staging yet, a size change of the
+   ! radau_boot_needed(sta) - the boot condition: no buffer yet, a size change of the
    ! state, or a fresh trajectory (sta%t = 0). allocated() is unconditionally safe;
    ! the size probe runs only under it
    logical function radau_boot_needed(sta)
@@ -618,7 +618,7 @@ contains
       end if
    end function radau_boot_needed
 
-   ! rad_forget() - clear the radau cross-sequence staging (member-switch hygiene):
+   ! rad_forget() - clear the radau cross-sequence buffer (member-switch hygiene):
    ! deallocating rad_bb drives radau_boot_needed back to true; the carry counters
    ! reset with it (a switch 3 -> 1/2 -> 3 at t /= 0 must boot afresh, not resume a
    ! stale carry)
@@ -637,11 +637,11 @@ contains
       if (prop_cfg%dt_min > 0.0d0 .and. abs(tp) < prop_cfg%dt_min) tp = dir*prop_cfg%dt_min
    end subroutine rad_clamp
 
-   ! loud-stop channel (name the caller; value variant; STOP 1)
+   ! named-abort channel (name the caller; value variant; STOP 1)
    subroutine stop_prop(who, msg)
       character(len=*), intent(in) :: who, msg
       write (0, '(a)') trim(who)//': propagator error: '//trim(msg)
-      write (0, '(a)') trim(who)//': loud-stop (the state is not advanced)'
+      write (0, '(a)') trim(who)//': fatal (the state is not advanced)'
       stop 1
    end subroutine stop_prop
 
@@ -649,7 +649,7 @@ contains
       character(len=*), intent(in) :: who, msg, tail
       integer, intent(in) :: ival
       write (0, '(a,a,1x,i0,a,a)') trim(who)//': ', trim(msg), ival, ' ', trim(tail)
-      write (0, '(a)') trim(who)//': loud-stop (the state is not advanced)'
+      write (0, '(a)') trim(who)//': fatal (the state is not advanced)'
       stop 1
    end subroutine stop_propi
 

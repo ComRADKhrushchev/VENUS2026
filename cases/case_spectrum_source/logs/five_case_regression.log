@@ -1,0 +1,14 @@
+--- /tmp/reg_case_b_layer_andersen.log exit/summary:
+--- /tmp/reg_case_b_layer_glo.log exit/summary:
+--- /tmp/reg_case_b_layer_thermalize.log exit/summary:
+--- /tmp/reg_case_chain_frequencies_boltz.log exit/summary:
+--- /tmp/reg_case_chain_frequencies_normalmode.log exit/summary:
+--- /tmp/reg_cases_case_harmonic_scatter.log exit/summary:
+outcome counts: scattering=8
+conservation drift: trajectories=8 max|e_fin-e0|=  1.4103E-03 kcal/mol
+--- /tmp/reg_cases_case_radau_conservation.log exit/summary:
+outcome counts: scattering=8
+conservation drift: trajectories=8 max|e_fin-e0|=  1.1369E-13 kcal/mol
+--- /tmp/reg_cases_case_surface_window.log exit/summary:
+outcome counts: none (no classification bound - skipped)
+conservation drift: trajectories=8 max|e_fin-e0|=  6.7252E-04 kcal/mol

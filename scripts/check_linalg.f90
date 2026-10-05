@@ -1,6 +1,6 @@
 !=====================================================================
-! check_linalg.f90 - C1.2 acceptance criteria program (criteria defined FIRST in
-!                    docs/plans/C1.md)
+! check_linalg.f90 - linear-algebra criteria program (criteria defined FIRST in
+!                    this header)
 ! Compile: gfortran -Jbuild src/utils/linalg.f90 scripts/check_linalg.f90 -o build/check_linalg.exe
 ! Criteria:
 !   (a) analytic diagonal 3x3 - known eigenpairs, machine-precision residual

@@ -25,17 +25,19 @@ make clean        # 删整个 build/(两编译器子树)
 
 `scripts/check_*.f90` 为组件级判据程序(头注载编译配方与判据先行声明),探针
 (`probe_glo.exe` / `probe_chain_freq.exe`)链接 build/gfortran 对象集(除 driver.o)。
-改门面/成员后:相关 check 重编重跑 + 双编译器重建 + 五 case 回归对 `results.txt`。
+改接口/成员后:相关 check 重编重跑 + 双编译器重建 + 五 case 回归对 `results.txt`。
 
 ## 契约要点(改代码前必读)
 
-- **E27 组合根**:容器(systems/<sys>/)交付组合好的活性力核 `container_pes_i(q,mass,g,v)`
-  (eV,全赋值);力门面唯一换算点 `ev_kcal*e_conv`(T4);ws 互换已退役。
-- 方法包(电子方法)可居 methods/(通用)或容器文件夹(体系专属,与 H 定义共享私有模块);
+- **E27 物理系统容器**:物理系统容器(systems/<sys>/)交付组合完成的受力计算
+  `container_pes_i(q,mass,g,v)`(eV,全赋值);力接口唯一换算点 `ev_kcal*e_conv`(T4);
+  ws 互换已退役(决定记录:docs/plans/S.md E27)。
+- 方法包(电子方法)可居 methods/(通用)或物理系统容器文件夹(体系专属,与 H 定义共享私有模块);
   注册一律 `method_reg(name, prop, match [, sync])`,装配 `method_bind` 纯名字查找。
 - 成员统计写回:`occ_set(occ)` / `n_hop_set(n)`;读取 getter 供 recorder。
-- 内部单位 Å/amu/(10 fs);换算常数立法于 `globals/consts.f90`,解析侧须用立法对
-  (23.0605×0.04184=0.96485132,V-4 在案),不用 CODATA 重推。
-- 单随机流(rng.f90);演化相随机消费只在 match 成员。
-- 演化环五入口固定:prop_step → elec_prop → mqc_statistic → rec_frame → container_term。
-- 输入 KEYWORD=VALUE 独立语法(E21/E22);成员键经暂存行由各 reg 文件的 `_init` 缝消费。
+- 内部单位 Å/amu/(10 fs);物理常数定于 `globals/consts.f90`(取值按既有决定固定),
+  解析侧须用固定换算对(23.0605×0.04184=0.96485132,V-4 在案),不用 CODATA 重推。
+- 单随机流(rng.f90);演化阶段随机消费只在 match 成员。
+- 演化循环五入口固定:prop_step → elec_prop → mqc_statistic → rec_frame → container_term。
+- 输入 KEYWORD=VALUE 独立语法(E21/E22);成员键经暂存行由各 reg 文件的 `_init`
+  初始化组装机构消费。

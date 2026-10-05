@@ -1,5 +1,5 @@
 !=====================================================================
-! check_facade.f90 - facade-mechanism criteria program (E27 contract):
+! check_facade.f90 - interface-mechanism criteria program (E27 contract):
 !                    the statistics-holder seeding (d) + the force_eval
 !                    delivery chain (e)-(f) + the electronic-phase
 !                    dispatch batch (h)/(j)/(l) + the reference-container
@@ -8,8 +8,8 @@
 !                    bit-level force comparison (criteria defined FIRST
 !                    in this header; this program executes them)
 ! E27 retirement note (2026-09-16 user ruling): the former (a)/(b)/(c)
-!   ws-holder legs, the (g) facade eigen-fold, the (i) step-end ws
-!   reset, the (k) H-form matchmaking loud-stop and the (r) facade-side
+!   ws-holder legs, the (g) interface eigen-fold, the (i) step-end ws
+!   reset, the (k) H-form matchmaking named abort and the (r) interface-side
 !   degenerate equivalence RETIRED with the ws interchange (elec_ws.f90
 !   deleted; force_eval narrowed to the composed-kernel delivery; the
 !   fold physics survives at the module face in (p)). The surviving
@@ -32,25 +32,28 @@
 ! STEP 2 compiles the check (same flags as every sibling check - the
 ! legacy objects join the link as the final inputs):
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
-!            utils/specio.f90 facade/sysdef_facade.f90 input.f90 utils/rng.f90 &
-!            globals/config_roster.f90 globals/state.f90 &
-!            facade/elec_facade.f90 methods/elec_adiabatic.f90 &
-!            methods/reg_adiabatic.f90 utils/linalg.f90 facade/force_facade.f90 &
-!            facade/sampler.f90 utils/geometry.f90 dynamics/propagator.f90 &
-!            methods/dist_boltzmann.f90 methods/dist_ebk.f90 methods/dist_incident.f90 &
-!            methods/dist_j.f90 methods/dist_rotation.f90 methods/dist_surface_oscillator.f90 &
-!            methods/dist_normalmode.f90 methods/dist_barrier_excitation.f90 &
-!            methods/dist_thermostat.f90 methods/dist_glo_target.f90 &
-!            methods/dist_thermalize.f90 methods/seam_cast.f90 &
+!            utils/specio.f90 interface/sysdef_interface.f90 input.f90 utils/rng.f90 &
+!            globals/config_atoms.f90 globals/state.f90 &
+!            interface/elec_interface.f90 methods/elec_adiabatic.f90 &
+!            methods/reg_adiabatic.f90 utils/linalg.f90 utils/spectrum.f90 utils/hessian.f90 &
+!            interface/force_interface.f90 interface/spectrum_interface.f90 &
+!            interface/sampler.f90 interface/bath.f90 utils/geometry.f90 utils/geom_init.f90 dynamics/propagator.f90 &
+!            methods/samp_boltzmann.f90 methods/samp_ebk.f90 methods/beam_laws.f90 methods/inc_surface.f90 methods/inc_pair.f90 methods/inc_single.f90 &
+!            methods/samp_j.f90 methods/samp_rotation.f90 methods/samp_surface_oscillator.f90 &
+!            methods/samp_normalmode.f90 methods/samp_barrier_excitation.f90 &
+!            methods/bath_andersen.f90 methods/samp_glo_target.f90 &
+!            methods/samp_thermalize.f90 methods/samp_wigner.f90 methods/seam_cast.f90 &
 !            methods/reg_prop.f90 &
-!            methods/reg_dist_boltzmann.f90 methods/reg_dist_ebk.f90 &
-!            methods/reg_dist_incident.f90 methods/reg_dist_j.f90 &
-!            methods/reg_dist_rotation.f90 methods/reg_dist_surface_oscillator.f90 &
-!            methods/reg_dist_normalmode.f90 methods/reg_dist_barrier_excitation.f90 &
-!            methods/reg_dist_thermostat.f90 methods/reg_dist_glo_target.f90 &
-!            methods/reg_dist_thermalize.f90 output/final_state.f90 &
+!            methods/reg_samp_boltzmann.f90 methods/reg_samp_ebk.f90 &
+!            methods/reg_inc_surface.f90 methods/reg_inc_pair.f90 methods/reg_inc_single.f90 methods/reg_samp_j.f90 &
+!            methods/reg_samp_rotation.f90 methods/reg_samp_surface_oscillator.f90 &
+!            methods/reg_samp_normalmode.f90 methods/reg_samp_barrier_excitation.f90 &
+!            methods/reg_bath_andersen.f90 methods/reg_samp_glo_target.f90 &
+!            methods/reg_samp_thermalize.f90 methods/reg_samp_wigner.f90 &
+!            output/final_state.f90 &
 !            ../systems/reference/reference_pot.f90 &
 !            ../systems/reference/reference_box.f90 &
+!            interface/container_sched.f90 &
 !            ../systems/reference/reg_reference.f90 &
 !            build/gfortran/registry_gen.f90 ../scripts/check_facade.f90 &
 !            -Ibuild/old_xcheck build/old_xcheck/venus_params.o &
@@ -74,19 +77,20 @@
 !   procedure of this check; none of it ever enters src/. Criterion
 !   (h)/(j) dispatch the REAL registered 'adiabatic' row through the two
 !   electronic-phase entries on that same bound force chain (real calls,
-!   not stub invocations). Loud-stop verification approach (same scheme
+!   not stub invocations). Named-abort verification approach (same scheme
 !   as the sibling checks): criterion (l) runs as CHILD PROCESSES - the
 !   check re-spawns itself with a mode argument (execute_command_line,
 !   stderr redirected to build/); the child drives the real stop path and
 !   must print a naming message on stderr and exit nonzero. The batch-4
 !   real-container criteria ((m)/(n)) run as children for a second
 !   reason: the parent's single PES slot is already bound check-side for
-!   (e)-(j) (one container per process - the bind face loud-stops on a
+!   (e)-(j) (one container per process - the bind face aborts with a named error on a
 !   second bind), so every different container gets a fresh process; the
-!   (o) children run with cwd = build/ because the container parameter
-!   file is run-directory material. The acceptance batch rides the same
+!   (o) children run with cwd = build/ because their obox_input.txt case
+!   input is run-directory material (the container keys ride the
+!   program input). The acceptance batch rides the same
 !   respawn scheme: its (q)/(s) children each bind ONE potential per
-!   fresh process (the single class-A slot), and its (s) children
+!   fresh process (the single force slot), and its (s) children
 !   additionally drive the legacy engine's PES entries in the SAME
 !   process - the bit-level comparison is in-process by design (one
 !   executable, one floating-point arithmetic; a cross-executable
@@ -110,7 +114,7 @@
 !       gradient - the conversion constant cancels) and e_tot decomposes
 !       as t_kin(p) + v_pot(q) via the composed conversion measured by
 !       one calibration call (the eV->internal literal lives only in
-!       force_facade - this check NEVER writes it). [The i_want request
+!       force_interface - this check NEVER writes it). [The i_want request
 !       handshake and the holder read-back halves RETIRED AT E27]
 !   (f) conversion single-site: a recursive scan of every src/ .f90 file
 !       (findstr on a Windows host, grep elsewhere; paths under build/ are
@@ -119,7 +123,7 @@
 !       text contains the conversion literal; each listed file is then
 !       scanned line by line, and exactly ONE occurrence of the literal
 !       sits at EXECUTABLE position (not inside a comment) in the whole
-!       tree - the ev_kcal parameter declaration of force_facade.f90
+!       tree - the ev_kcal parameter declaration of force_interface.f90
 !       (the unit-contract grep requirement, executable face)
 !   (h) electronic-phase dispatch reachable + no-op-safe: with the real
 !       'adiabatic' package bound and the force chain live, the pair
@@ -133,8 +137,8 @@
 !       match member leaves untouched) and n_hop_get 0 (the run-lifetime
 !       accumulator holding its degenerate value across steps)
 !   (l) unbound-method posture (child): elec_prop / mqc_statistic called
-!       before any method_bind loud-stop, stderr naming the entry and
-!       method_bind (the skeleton's legislation: unbound = loud-stop,
+!       before any method_bind named abort, stderr naming the entry and
+!       method_bind (the skeleton's legislation: unbound = named abort,
 !       never a silent skip). [The former (k) H-form mismatch child
 !       RETIRED AT E27 - the matchmaking died with the ws interchange]
 !   (m) container registry path (child): the harmonic well bound through
@@ -143,7 +147,7 @@
 !       direct bind of (e). The child runs registry_gen_all (which
 !       registers every method package AND binds the reference PES),
 !       registry_gen_init (the assembly
-!       seam, guard-skipped without staged input), container_init
+!       seam, guard-skipped without buffered input), container_init
 !       (green) and then a real force_eval: the force components and the
 !       e_tot decomposition of the default-constant well (K = 0.04
 !       eV/A^2, the numeric anchor) at two geometries through the
@@ -155,18 +159,20 @@
 !       (m)'s registry path) and driven by a real force_eval: the
 !       analytic gradient vs the CENTRAL DIFFERENCE of the module energy
 !       (tolerance 1e-8, step h = 1e-6, component-wise - the analytic-
-!       gradient criterion family), the facade fold reproducing the
+!       gradient criterion family), the interface fold reproducing the
 !       module gradient through the measured conversion (1e-12), and
 !       the e_tot decomposition at the same geometry with momenta
-!   (o) box parameter file (children, cwd = build/): the container's
-!       parameter channel reference_pars.txt read from the RUN directory:
-!       the ABSENT file leaves the default constant and both optional
-!       slots unbound (k = default, term = F, class = F); the GOOD file
-!       (K_HARM/Q_TERM/E_SPLIT) stages the constant and provides both
-!       optional slots (k, term = T, class = T - asserted on the child's
-!       printed marker); the BAD files (unknown keyword, duplicate
-!       keyword, unreadable value, non-positive constant) loud-stop
-!       naming reference_load and carrying the file name + the keyword
+!   (o) box container keys (children, cwd = build/): the container's
+!       parameter channel = the declared input keys of obox_input.txt
+!       (input_declare_keys -> read_input -> pull -> reference_load):
+!       ABSENT container keys leave the default constant and both
+!       optional slots unbound (k = default, term = F, class = F); the
+!       GOOD keys (K_HARM/Q_TERM/E_SPLIT) stage the constant and provide
+!       both optional slots (k, term = T, class = T - asserted on the
+!       child's printed marker, after a clean input_audit_declared);
+!       the BAD inputs (unknown key, duplicate key, unreadable value,
+!       non-positive constant) named abort at their owning site
+!       (read_input / pull / reference_load) naming the key
 !   (p) the leps diabatic full-matrix delivery (module face, in
 !       process): leps_diab at a fixed geometry delivers H symmetric and
 !       EVERY dh face symmetric (bitwise, both triangles); the analytic
@@ -178,7 +184,7 @@
 !       gradient (1e-12): the n_surf = 1 diab-vs-scalar degenerate
 !       equivalence, made executable at the module face. [This leg is
 !       where the fold physics survives after the E27 retirement of the
-!       facade-side (g)/(r)]
+!       interface-side (g)/(r)]
 !   (q) gradient self-consistency, the full sweep (children, one
 !       potential per process): EACH of the three reference potentials
 !       x three constructed geometries (an asymmetric point, a
@@ -188,7 +194,7 @@
 !       vs the CENTRAL DIFFERENCE of the module energy (h = 1e-6,
 !       tolerance 1e-8 relative with floor 1 eV/A, component-wise - the
 !       (n) criterion family extended to harm and to multi-geometry),
-!       then through a real force_eval the facade fold reproducing the
+!       then through a real force_eval the interface fold reproducing the
 !       module gradient via the measured conversion (1e-12) at EVERY
 !       geometry, and the e_tot = T + V decomposition with momenta at
 !       the first geometry (1e-12). The harm child rides the CONTAINER
@@ -204,7 +210,7 @@
 !       and into force_eval (same potential, same parameters: the
 !       module defaults 4.746 eV / 1.401 A / 1.028 1/A / 0.164 for
 !       morse and leps on both sides; for harm the legacy well constant
-!       staged through ITS OWN keyword channel at 0.04 eV/A^2 against
+!       buffered through ITS OWN keyword channel at 0.04 eV/A^2 against
 !       the container's default well), at p = 0 (T = 0 exactly, so
 !       e_tot carries the potential channel alone): assert
 !       max|dF| = max|dE| = 0 BITWISE - same double arithmetic, the
@@ -214,7 +220,7 @@
 !       (a port error is fixed in the port; a benign arithmetic-order
 !       difference is recorded with its value and cause and falls back
 !       to 1e-15 with the archive note). The legacy side is driven
-!       through its own call convention - the keyword file staged by
+!       through its own call convention - the keyword file buffered by
 !       the parent, load_input, POTPRE, then per-geometry POT0 /
 !       DPESHON on the live coordinate array; the geometry set is the
 !       (q) sweep (asymmetric / symmetric-degenerate / stretched-wide
@@ -223,16 +229,18 @@
 program check_facade
    use consts,        only: e_conv
    use state,         only: state_t, state_create, state_destroy
-   use config_roster, only: roster
-   use elec_facade,   only: occ_get, n_hop_get, method_bind, &
+   use config_atoms, only: list_atoms
+   use elec_interface,   only: occ_get, n_hop_get, method_bind, &
                             elec_prop, mqc_statistic
-   use force_facade,  only: force_eval, container_bind_pes, container_init
+   use force_interface,  only: force_eval, container_bind_pes, container_init
    use reg_adiabatic, only: reg_adiabatic_all
    use linalg,        only: eig_sym
-   use registry_gen,  only: registry_gen_all, registry_gen_init
+   use registry_gen,  only: registry_gen_all, registry_gen_init, registry_gen_keys
    use reference_pot, only: harm_vg, morse_vg, leps_vg, leps_diab
-   use reference_box, only: reference_load, reference_k, reference_term_on, &
-                            reference_class_on
+   use reference_box, only: reference_params_t, reference_keys, reference_load, &
+                           reference_k, reference_term_on, &
+                           reference_class_on
+   use input,        only: read_input, input_declare_keys, input_audit_declared, pull
    implicit none
    integer, allocatable :: occ_req(:)      ! the held occupation set (occ_get)
    integer :: nfail = 0
@@ -259,7 +267,7 @@ program check_facade
    real(8) :: qref(6), pref(6), fref(6)    ! the state-invariance references
    real(8) :: tref                         ! (ditto - the time member)
    real(8), parameter :: dtv = 0.05d0      ! the dt channel value [10 fs] fed to elec_prop
-                                           ! (the fixed staged step's stand-in; the degenerate
+                                           ! (the fixed buffered step's stand-in; the degenerate
                                            ! member ignores it - the criterion needs the channel
                                            ! CARRIED, not consumed)
 
@@ -284,13 +292,13 @@ program check_facade
    real(8), parameter :: pm3(9) = [ 0.3d0,-0.2d0, 0.1d0, 0.4d0,-0.3d0, 0.2d0, &
                                    -0.1d0, 0.5d0,-0.4d0 ]                        ! 3-atom momenta
 
-   ! ---------- child dispatch: one loud-stop case per spawn (criteria (k)/(l)) ----------
+   ! ---------- child dispatch: one named abort case per spawn (criteria (k)/(l)) ----------
    ! the child drives the real stop path; if the chain ever RETURNS, the child
    ! prints the bug witness and exits 0 - the parent's exitstat check fails
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       if (trim(mode) == 'unbound-prop') then
-         ! (l): elec_prop before any method_bind - no row bound, loud-stop
+         ! (l): elec_prop before any method_bind - no row bound, named abort
          call state_create(st1, 1)
          call elec_prop(st1, dtv)
          call state_destroy(st1)
@@ -310,7 +318,7 @@ program check_facade
          call child_npot(trim(mode) == 'nmorse', trim(mode))
       else if (trim(mode) == 'obox') then
          ! (o): the parameter-file child (cwd = build/ - the file the parent
-         ! staged there); good posture prints the marker, bad files loud-stop
+         ! buffered there); good posture prints the marker, bad files named abort
          call child_obox()
       else if (mode(1:2) == 'q-') then
          ! (q): the gradient-sweep child (one potential per process)
@@ -345,16 +353,16 @@ program check_facade
    end if
 
    ! ---------- (e) end-to-end delivery chain ----------
-   ! assembly check-side: the roster masses, a 2-atom state, and the local
+   ! assembly check-side: the atom list masses, a 2-atom state, and the local
    ! analytic container bound through the PUBLIC assembly face (one slot,
    ! bound once)
-   allocate (roster%mass(2))
-   roster%mass = [ 1.0d0, 4.0d0 ]
+   allocate (list_atoms%mass(2))
+   list_atoms%mass = [ 1.0d0, 4.0d0 ]
    call state_create(sa, 2)
    call container_bind_pes(check_pes)
    ! calibration: one force_eval at a known single-dof offset (p = 0) measures the
-   ! composed conversion constant cal (the eV->internal product the facade applies;
-   ! the literal lives only in force_facade - never written here)
+   ! composed conversion constant cal (the eV->internal product the interface applies;
+   ! the literal lives only in force_interface - never written here)
    sa%q = qe_ctr + ueA
    sa%p = 0.0d0
    call force_eval(sa, ea)
@@ -384,7 +392,7 @@ program check_facade
    end do
    tk = 0.0d0
    do m = 1, 2
-      tk = tk + dot_product(sa%p(3*m - 2:3*m), sa%p(3*m - 2:3*m))/(2.0d0*roster%mass(m))
+      tk = tk + dot_product(sa%p(3*m - 2:3*m), sa%p(3*m - 2:3*m))/(2.0d0*list_atoms%mass(m))
    end do
    tk = tk/e_conv
    if (abs(eb - (tk + 0.5d0*dot_product(keV, (sa%q - qe_ctr)*(sa%q - qe_ctr))*cal/e_conv)) > &
@@ -403,7 +411,7 @@ program check_facade
    ! ---------- (f) conversion single-site ----------
    ! list every src/ file whose text carries the conversion literal, then count the
    ! EXECUTABLE-position occurrences (comment text does not count); the unit contract
-   ! demands exactly one - the facade's conversion-parameter declaration
+   ! demands exactly one - the interface's conversion-parameter declaration
    nfail0 = nfail
    if (windows_host()) then
       cmd = 'findstr /s /m /l /c:"23.0605" *.f90 > build/fcd_grep.txt 2>&1'
@@ -440,10 +448,10 @@ program check_facade
          end if
       end do
       close (v)
-      if (nexec /= 1 .or. index(exec_path, 'force_facade.f90') == 0) then
+      if (nexec /= 1 .or. index(exec_path, 'force_interface.f90') == 0) then
          call fail('(f) conversion single-site violated: '//trim(i2s(nexec))// &
             ' executable-position occurrence(s) in src/, last in "'//trim(exec_path)//'"'// &
-            ' (want exactly 1, in force_facade.f90)')
+            ' (want exactly 1, in force_interface.f90)')
       else
          print '(a)', '(f) conversion single-site: PASS (exactly one executable-position'// &
             ' occurrence of the conversion literal in src/: '//trim(exec_path)//')'
@@ -451,7 +459,7 @@ program check_facade
    end if
 
    ! ---------- (h)/(j): the electronic-phase dispatch batch ----------
-   ! [the former (g) facade eigen-fold + the (i) step-end ws reset RETIRED AT
+   ! [the former (g) interface eigen-fold + the (i) step-end ws reset RETIRED AT
    !  E27; the fold physics survives at the module face in (p)]
    ! cycle 1: a real force_eval (the same chain the driver runs); the
    ! state-invariance references are taken after it
@@ -505,7 +513,7 @@ program check_facade
          ' the dispatch boundary, n_hop = 0 accumulated)'
    end if
 
-   ! ---------- (l): the loud-stop children ----------
+   ! ---------- (l): the named abort children ----------
    call expect_loudstop_at('elec_prop', 'unbound-prop', 'method_bind', '', &
       '(l) unbound elec_prop loud-stop')
    call expect_loudstop_at('mqc_statistic', 'unbound-match', 'method_bind', '', &
@@ -544,7 +552,7 @@ contains
    ! scan_exec_hits(path, nhit) - count this file's EXECUTABLE-position occurrences
    ! of the conversion literal: a hit inside comment text (a '!' at or before the
    ! hit position) does not count; a trailing comment after code counts (conservative
-   ! - the single-site statute fails loudly rather than silently)
+   ! - the single-site rule fails loudly rather than silently)
    subroutine scan_exec_hits(path, nhit)
       character(len=*), intent(in) :: path
       integer, intent(out) :: nhit
@@ -571,7 +579,7 @@ contains
       windows_host = (trim(osname) == 'Windows_NT')
    end function windows_host
 
-   ! spawn the child for one loud-stop case and assert the stop: nonzero exit,
+   ! spawn the child for one named abort case and assert the stop: nonzero exit,
    ! stderr names the authority (the stopping entry) and carries the expected
    ! key / extra needle (an empty needle is skipped) - the sibling checks' scheme.
    ! The optional in_build spawns the child with cwd = build/ (run-directory
@@ -598,12 +606,12 @@ contains
          ! cwd = build/ - the exe sits in that same directory; the EXPLICIT
          ! .-relative path spares the shell's executable search (cmd does not
          ! reliably search the cwd; '.' is never on a POSIX PATH)
-         cmd = 'cd build && .'//sep//'check_facade.exe '//trim(cmode)//' 2>facade_err.txt'
+         cmd = 'cd build && .'//sep//'check_facade.exe '//trim(cmode)//' 2>interface_err.txt'
       else
-         cmd = 'build'//sep//'check_facade.exe '//trim(cmode)//' 2>build'//sep//'facade_err.txt'
+         cmd = 'build'//sep//'check_facade.exe '//trim(cmode)//' 2>build'//sep//'interface_err.txt'
       end if
       call execute_command_line(trim(cmd), wait=.true., exitstat=stat)
-      open (newunit=v, file='build/facade_err.txt', status='old', action='read', iostat=ios)
+      open (newunit=v, file='build/interface_err.txt', status='old', action='read', iostat=ios)
       if (ios == 0) then
          do
             read (v, '(a)', iostat=ios) line
@@ -645,38 +653,38 @@ contains
       call expect_ok_child('nleps', 'nleps: OK', '(n) leps module direct bind')
    end subroutine crit_n
 
-   ! crit_o() - (o): the container parameter file (children with cwd = build/):
-   !             the absent-file default posture, the good parse, the four
-   !             named bad channels
+   ! crit_o() - (o): the container's declared input keys (children with
+   !             cwd = build/, reading obox_input.txt): the absent-keys
+   !             default posture, the good parse, the four named bad
+   !             channels (each aborting at its owning site)
    subroutine crit_o()
-      character(len=80) :: lgood(3), lbad1(2), lbad2(2), lbad3(1), lbad4(1)
-      ! absent file: default constant, both optional slots unbound
-      call remove_file('build/reference_pars.txt')
+      character(len=80) :: req(6)
+      req = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 5.0', 'B_MAX = 2.0', &
+              'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = BOLTZMANN' ]
+      ! absent container keys: default constant, both optional slots unbound
+      call write_pars('build/obox_input.txt', req)
       call expect_ok_child_in('obox', 'obox: k='//trim(d2s(4.0d-2))//' term=F class=F', &
-         '(o) box parameter file absent: defaults, slots unbound')
-      ! good file: the constant staged + both optional slots provided
-      lgood = [ character(len=80) :: 'K_HARM = 0.123', 'Q_TERM = 9.5', 'E_SPLIT = 1.5' ]
-      call write_pars('build/reference_pars.txt', lgood)
+         '(o) container keys absent: defaults, slots unbound')
+      ! good keys: the constant buffered + both optional slots provided
+      call write_pars('build/obox_input.txt', [req, [character(len=80) :: &
+         'K_HARM = 0.123', 'Q_TERM = 9.5', 'E_SPLIT = 1.5']])
       call expect_ok_child_in('obox', 'obox: k='//trim(d2s(0.123d0))//' term=T class=T', &
-         '(o) box parameter file good parse')
-      ! bad files: every defect a named loud-stop
-      lbad1 = [ character(len=80) :: 'K_HARM = 0.1', 'FOO = 3.0' ]
-      call write_pars('build/reference_pars.txt', lbad1)
-      call expect_loudstop_at('reference_load', 'obox', 'reference_pars.txt', 'FOO', &
-         '(o) unknown-keyword loud-stop', in_build=.true.)
-      lbad2 = [ character(len=80) :: 'K_HARM = 0.1', 'K_HARM = 0.2' ]
-      call write_pars('build/reference_pars.txt', lbad2)
-      call expect_loudstop_at('reference_load', 'obox', 'reference_pars.txt', 'twice', &
-         '(o) duplicate-keyword loud-stop', in_build=.true.)
-      lbad3 = [ character(len=80) :: 'K_HARM = abc' ]
-      call write_pars('build/reference_pars.txt', lbad3)
-      call expect_loudstop_at('reference_load', 'obox', 'reference_pars.txt', 'unreadable', &
-         '(o) unreadable-value loud-stop', in_build=.true.)
-      lbad4 = [ character(len=80) :: 'K_HARM = -0.5' ]
-      call write_pars('build/reference_pars.txt', lbad4)
-      call expect_loudstop_at('reference_load', 'obox', 'reference_pars.txt', 'positive', &
-         '(o) non-positive-constant loud-stop', in_build=.true.)
-      call remove_file('build/reference_pars.txt')   ! no stale file for later children
+         '(o) container keys good parse')
+      ! bad inputs: every defect a named abort at its owning site
+      call write_pars('build/obox_input.txt', [req, [character(len=80) :: 'FOO = 3.0']])
+      call expect_loudstop_at('read_input', 'obox', 'unknown key FOO', 'FOO', &
+         '(o) unknown-key abort', in_build=.true.)
+      call write_pars('build/obox_input.txt', [req, [character(len=80) :: &
+         'K_HARM = 0.1', 'K_HARM = 0.2']])
+      call expect_loudstop_at('read_input', 'obox', 'duplicate key', 'K_HARM', &
+         '(o) duplicate-key abort', in_build=.true.)
+      call write_pars('build/obox_input.txt', [req, [character(len=80) :: 'K_HARM = abc']])
+      call expect_loudstop_at('pull', 'obox', 'bad real', 'K_HARM', &
+         '(o) unreadable-value abort', in_build=.true.)
+      call write_pars('build/obox_input.txt', [req, [character(len=80) :: 'K_HARM = -0.5']])
+      call expect_loudstop_at('reference_load', 'obox', 'K_HARM must be positive', 'positive', &
+         '(o) non-positive-constant abort', in_build=.true.)
+      call remove_file('build/obox_input.txt')   ! no stale file for later children
    end subroutine crit_o
 
    ! crit_p() - (p): the leps diabatic full-matrix delivery at the module face
@@ -797,15 +805,16 @@ contains
       integer :: i
       ! the drag-in path exactly as the aggregated registry runs it: member
       ! init + the PES bind, the assembly seam (guard-skipped - no input
-      ! staged), assembly, then a real force_eval
+      ! buffered), assembly, then a real force_eval
+      call registry_gen_keys()                    ! the slot handover runs first (the driver order)
       call registry_gen_all()
       call registry_gen_init()
       call container_init()
-      allocate (roster%mass(2))
-      roster%mass = [ 1.0d0, 4.0d0 ]
+      allocate (list_atoms%mass(2))
+      list_atoms%mass = [ 1.0d0, 4.0d0 ]
       call state_create(sb, 2)
       ! calibration: one call at a known offset (p = 0) measures the composed
-      ! conversion constant (the literal lives only in force_facade)
+      ! conversion constant (the literal lives only in force_interface)
       sb%q = ueA
       sb%p = 0.0d0
       call force_eval(sb, ea)
@@ -833,7 +842,7 @@ contains
       end do
       tk = 0.0d0
       do i = 1, 2
-         tk = tk + dot_product(sb%p(3*i - 2:3*i), sb%p(3*i - 2:3*i))/(2.0d0*roster%mass(i))
+         tk = tk + dot_product(sb%p(3*i - 2:3*i), sb%p(3*i - 2:3*i))/(2.0d0*list_atoms%mass(i))
       end do
       tk = tk/e_conv
       if (abs(eb - (tk + 0.5d0*kk*dot_product(sb%q, sb%q)*cal/e_conv)) > &
@@ -848,7 +857,7 @@ contains
    ! child_npot(use_morse, tag) - the (n) child: one module potential
    !                 direct-bound through a transparent adapter, assembled,
    !                 and force_eval'd - analytic gradient vs central
-   !                 difference, facade fold, e_tot decomposition
+   !                 difference, interface fold, e_tot decomposition
    subroutine child_npot(use_morse, tag)
       logical, intent(in) :: use_morse
       character(len=*), intent(in) :: tag
@@ -880,8 +889,8 @@ contains
       ! the real package exactly as the aggregated registry would
       call reg_adiabatic_all()
       call container_init()
-      allocate (roster%mass(nm))
-      roster%mass = 1.0d0
+      allocate (list_atoms%mass(nm))
+      list_atoms%mass = 1.0d0
       call state_create(sb, nm)
       ! the analytic reference from the module face
       if (use_morse) then
@@ -889,7 +898,7 @@ contains
       else
          call leps_vg(nm, qa, va, ga)
       end if
-      ! the facade fold: the measured conversion carries the module gradient
+      ! the interface fold: the measured conversion carries the module gradient
       sb%q(1:nd) = qa(1:nd)
       sb%p = 0.0d0
       call force_eval(sb, ea)
@@ -900,7 +909,7 @@ contains
       end if
       do i = 1, nd
          if (abs(sb%f(i) + ga(i)*cal) > 1.0d-12*max(abs(ga(i)*cal), 1.0d0)) then
-            print '(a)', 'FAIL '//trim(tag)//' child: facade-fold force mismatch, dof '// &
+            print '(a)', 'FAIL '//trim(tag)//' child: interface-fold force mismatch, dof '// &
                trim(i2s(i))
             stop 1
          end if
@@ -937,7 +946,7 @@ contains
       call force_eval(sb, eb)
       tk = 0.0d0
       do i = 1, nm
-         tk = tk + dot_product(sb%p(3*i - 2:3*i), sb%p(3*i - 2:3*i))/(2.0d0*roster%mass(i))
+         tk = tk + dot_product(sb%p(3*i - 2:3*i), sb%p(3*i - 2:3*i))/(2.0d0*list_atoms%mass(i))
       end do
       tk = tk/e_conv
       if (abs(eb - (tk + va*cal/e_conv)) > 1.0d-12*max(abs(eb), 1.0d0)) then
@@ -949,10 +958,19 @@ contains
       stop 0
    end subroutine child_npot
 
-   ! child_obox() - the (o) child: load the container parameter file from the
-   !                run directory (cwd = build/) and print the staged posture
+   ! child_obox() - the (o) child: declare the container keys, read the
+   !                case input obox_input.txt from the run directory
+   !                (cwd = build/), pull the buffered keys, audit the
+   !                consumption, load the module state, print the posture
    subroutine child_obox()
-      call reference_load()
+      type(reference_params_t) :: p
+      call input_declare_keys(reference_keys())
+      call read_input('obox_input.txt')
+      call pull('K_HARM',  p%k_harm)
+      call pull('Q_TERM',  p%q_term,  p%q_term_found)
+      call pull('E_SPLIT', p%e_split, p%e_split_found)
+      call input_audit_declared()
+      call reference_load(p)
       print '(a)', 'obox: k='//trim(d2s(reference_k()))//' term='// &
          merge('T', 'F', reference_term_on())//' class='// &
          merge('T', 'F', reference_class_on())
@@ -972,6 +990,7 @@ contains
    subroutine bind_new_side(kind)
       integer, intent(in) :: kind            ! 1 = harm, 2 = morse, 3 = leps
       if (kind == 1) then
+      call registry_gen_keys()                    ! the slot handover runs first (the driver order)
          call registry_gen_all()
          call registry_gen_init()
       else
@@ -989,7 +1008,7 @@ contains
    !                 three constructed geometries - the module analytic
    !                 gradient vs the CENTRAL DIFFERENCE of the module energy
    !                 at EVERY geometry (h = 1e-6, tol 1e-8 rel with floor
-   !                 1 eV/A), the facade fold through the measured conversion
+   !                 1 eV/A), the interface fold through the measured conversion
    !                 (1e-12), and the e_tot decomposition with momenta at the
    !                 first geometry; one evidence line per geometry
    subroutine child_q(kind)
@@ -1018,8 +1037,8 @@ contains
          nm = 2
       end if
       nd = 3*nm
-      allocate (roster%mass(nm))
-      roster%mass = 1.0d0
+      allocate (list_atoms%mass(nm))
+      list_atoms%mass = 1.0d0
       call state_create(sb, nm)
       cal = 0.0d0
       do j = 1, 3
@@ -1035,7 +1054,7 @@ contains
             qa(1:9) = ql_list(:, j)
             call leps_vg(nm, qa, va, ga)
          end if
-         ! the facade fold at this geometry; the first geometry's call also
+         ! the interface fold at this geometry; the first geometry's call also
          ! measures the composed conversion (one calibration, reused after)
          sb%q(1:nd) = qa(1:nd)
          sb%p = 0.0d0
@@ -1052,7 +1071,7 @@ contains
          do i = 1, nd
             dfmax = max(dfmax, abs(sb%f(i) + ga(i)*cal)/max(abs(ga(i)*cal), 1.0d0))
             if (abs(sb%f(i) + ga(i)*cal) > 1.0d-12*max(abs(ga(i)*cal), 1.0d0)) then
-               print '(a)', 'FAIL '//trim(name)//' child: facade-fold force mismatch,'// &
+               print '(a)', 'FAIL '//trim(name)//' child: interface-fold force mismatch,'// &
                   ' geometry '//trim(i2s(j))//', dof '//trim(i2s(i))
                stop 1
             end if
@@ -1097,7 +1116,7 @@ contains
             call force_eval(sb, eb)
             tk = 0.0d0
             do i = 1, nm
-               tk = tk + dot_product(sb%p(3*i - 2:3*i), sb%p(3*i - 2:3*i))/(2.0d0*roster%mass(i))
+               tk = tk + dot_product(sb%p(3*i - 2:3*i), sb%p(3*i - 2:3*i))/(2.0d0*list_atoms%mass(i))
             end do
             tk = tk/e_conv
             if (abs(eb - (tk + va*cal/e_conv)) > 1.0d-12*max(abs(eb), 1.0d0)) then
@@ -1145,7 +1164,7 @@ contains
          stop 1
       end select
       ! the legacy side first, through its own call convention: the keyword
-      ! file the parent staged, load_input, POTPRE (the PES selection), then
+      ! file the parent buffered, load_input, POTPRE (the PES selection), then
       ! the live-array posture the entries evaluate on
       call load_input(trim(oldfile))
       call potpre()
@@ -1161,8 +1180,8 @@ contains
       allocate (Q(nd), PDOT(nd))
       ! the new side: the same assembly posture as the (q) child
       call bind_new_side(kind)
-      allocate (roster%mass(nm))
-      roster%mass = 1.0d0
+      allocate (list_atoms%mass(nm))
+      list_atoms%mass = 1.0d0
       call state_create(sb, nm)
       do j = 1, 3
          if (kind == 1) then
@@ -1219,7 +1238,7 @@ contains
    end function pot_kind
 
    ! the transparent (n) adapters: the module potentials (v, g signature)
-   ! delivered through the class-A container face (q, mass, g, v) - the module
+   ! delivered through the container force entry (q, mass, g, v) - the module
    ! material itself, bound check-side
    subroutine morse_wrap(q, mass, g, v)
       real(8), intent(in)  :: q(:)     ! coordinates [A]
@@ -1252,9 +1271,9 @@ contains
          sep = '/'
       end if
       cmd = 'build'//sep//'check_facade.exe '//trim(cmode)//' >build'//sep// &
-            'facade_ok.txt 2>&1'
+            'interface_ok.txt 2>&1'
       call execute_command_line(trim(cmd), wait=.true., exitstat=stat)
-      call slurp_local('build/facade_ok.txt', buf)
+      call slurp_local('build/interface_ok.txt', buf)
       if (stat /= 0) then
          print '(a)', 'FAIL '//trim(label)//': the child exited nonzero - '//trim(buf)
          nfail = nfail + 1
@@ -1283,9 +1302,9 @@ contains
       ! cwd = build/ - the exe sits in that same directory; the EXPLICIT
       ! .-relative path spares the shell's executable search (cmd does not
       ! reliably search the cwd; '.' is never on a POSIX PATH)
-      cmd = 'cd build && .'//sep//'check_facade.exe '//trim(cmode)//' >facade_ok.txt 2>&1'
+      cmd = 'cd build && .'//sep//'check_facade.exe '//trim(cmode)//' >interface_ok.txt 2>&1'
       call execute_command_line(trim(cmd), wait=.true., exitstat=stat)
-      call slurp_local('build/facade_ok.txt', buf)
+      call slurp_local('build/interface_ok.txt', buf)
       if (stat /= 0) then
          print '(a)', 'FAIL '//trim(label)//': the child exited nonzero - '//trim(buf)
          nfail = nfail + 1
@@ -1298,7 +1317,7 @@ contains
       end if
    end subroutine expect_ok_child_in
 
-   ! write one container parameter file (one KEYWORD = VALUE per record)
+   ! write one case-input file (one KEYWORD = VALUE per record)
    subroutine write_pars(fname, lines)
       character(len=*), intent(in) :: fname, lines(:)
       integer :: v, j

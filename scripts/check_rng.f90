@@ -1,8 +1,8 @@
 !=====================================================================
-! check_rng.f90 - C1.1 acceptance criteria program (criteria defined FIRST in
-!                 docs/plans/C1.md; this program executes them)
+! check_rng.f90 - random-stream criteria program (criteria defined FIRST in
+!                 this header; this program executes them)
 ! Compile: gfortran scripts/check_rng.f90 src/utils/rng.f90 -o build/check_rng.exe
-! Criteria (C1.md C1.1):
+! Criteria:
 !   (a) determinism  - same seed, two init+draw rounds, 1e6 draws bit-identical
 !   (b) uniformity   - |mean-0.5| < 1e-3; 20-bucket chi-square within df=19 crit 30.14
 !   (c) gaussianity  - |mean| < 5/sqrt(N); |var-1| < 1e-2; 10 equiprobable quantile

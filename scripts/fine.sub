@@ -1,0 +1,25 @@
+#!/bin/bash
+#SBATCH -J fine_ens
+#SBATCH -p mars_l
+#SBATCH -N 1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH -t 12:00:00
+#SBATCH -o fine.log
+cd "$SLURM_SUBMIT_DIR"
+# extract: traj, t_end, C_x, C_y, px, py, pz (from the atom line '1 C x y z px py pz')
+AWKPROG='/^# frame/{ match($0,/traj=[0-9]+/); nt=substr($0,RSTART+5,RLENGTH-5)+0; match($0,/t= *[0-9.E+-]+/); tt=substr($0,RSTART+2,RLENGTH-2)+0; if(nt!=ct && ct>0) printf "%d %.4f %.6f %.6f %.6f %.6f %.6f\n", ct, ctk, cqx, cqy, cp1, cp2, cp3; ct=nt; ctk=tt } /^1 C /{ cp1=$6+0; cp2=$7+0; cp3=$8+0; cqx=$3+0; cqy=$4+0 } END{ printf "%d %.4f %.6f %.6f %.6f %.6f %.6f\n", ct, ctk, cqx, cqy, cp1, cp2, cp3 }'
+DIRS=$(ls -d fine_runs/*/ | sort)
+N=$(echo "$DIRS" | wc -l)
+i=0
+for d in $DIRS; do
+  leg=$(basename "$d")
+  ( cd "$d" && ../../src/build/gfortran/venus.e > stdout_run.txt 2>&1 )
+  awk "$AWKPROG" "$d/trajectories.txt" > "fine_${leg}_fin.txt"
+  cp "$d/hist_thta.dat" "fine_${leg}_thta.dat" 2>/dev/null
+  cp "$d/hist_e_rel.dat" "fine_${leg}_erel.dat" 2>/dev/null
+  rm -f "$d/trajectories.txt"
+  i=$((i+1))
+  echo "$leg ($i/$N) rows: $(wc -l < fine_${leg}_fin.txt)"
+done
+echo FINE_DONE > fine_done.flag
