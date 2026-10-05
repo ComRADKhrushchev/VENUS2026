@@ -1,0 +1,19 @@
+# 构建产物
+build/
+*.mod
+*.obj
+*.o
+*.exe
+*.pdb
+*.ilk
+
+# 运行产物
+fort.*
+stdout*
+stderr*
+trajectories*.txt
+hist_*.dat
+
+__pycache__/
+.zcode/
+.vscode/
