@@ -17,7 +17,7 @@ module reg_samp_boltzmann
    use config_atoms,   only: list_atoms
    use input,          only: buffer_n_rows, buffer_key, buffer_val, buffer_line
    use seam_cast,      only: seam_real
-   use spectrum_export, only: spectrum_frag_w
+   use spectrum_interface, only: spectrum_frag_w
    use samp_boltzmann, only: boltz_draw, boltz_realize, boltz_params_t, boltz_init
    implicit none
    private
@@ -34,10 +34,11 @@ contains
    ! reg_samp_boltzmann_init() - assembly seam: buffered keys -> the
    !                              frequency-table pull -> member init.
    !                              The tables are assembly data: pulled from
-   !                              the spectrum buffer for EVERY carrier
-   !                              fragment (a composition-matched container
-   !                              export first, the generic derivation
-   !                              otherwise), one ragged table per carrier
+   !                              the SPECTRUM_SOURCE-selected producer
+   !                              (the internal derivation on COMPUTE,
+   !                              the spectrum-table file on MANUAL) for
+   !                              EVERY carrier fragment, one ragged
+   !                              table per carrier
    !------------------------------------------------------------------
    subroutine reg_samp_boltzmann_init()
       type(boltz_params_t) :: p          ! member-parameter receiver (field defaults)

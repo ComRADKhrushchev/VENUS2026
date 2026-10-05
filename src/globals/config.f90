@@ -73,6 +73,16 @@ module config
                                        ! no steps - no collisions, no propagation)
      real(8) :: dt_bath = 0.0d0      ! bath-loop step size [10 fs] (DT_BATH; must be positive
                                        ! when N_BATH > 0)
+     integer :: spectrum_src = 1     ! spectrum producer selector (SPECTRUM_SOURCE enum;
+                                       ! 1 = COMPUTE - the internal Hessian derivation, lazy on
+                                       ! first pull at the member seam; 2 = MANUAL - the
+                                       ! spectrum-table file is the only producer; the
+                                       ! container export channel is withdrawn - 2026-10-05
+                                       ! spectrum-source legislation, docs/plans/)
+     character(len=128) :: spectrum_file = '' ! spectrum-table file (SPECTRUM_FILE; MANUAL's
+                                       ! carrier records - composition-keyed mode tables
+                                       ! [cm^-1 face] + optional diatomic constants; a staged
+                                       ! path under COMPUTE is a formal input error)
 
      ! Configuration details (list_atoms/geometry/unit cell) are carried by config_atoms;
      ! Left blank: per-fragment distribution parameters - owned by the dist_* members

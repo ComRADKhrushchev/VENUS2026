@@ -18,7 +18,7 @@ src/
   globals/     consts  state  control  config  config_atoms
                                                   variables and provisions (the root everything else uses)
   interface/      force_interface  elec_interface  sysdef_interface  sampler
-                                                  container_sched  spectrum_export
+                                                  container_sched  spectrum_interface
                                                   the four interface modules (E14 four-entry contract:
                                                   force_eval / elec_prop / mqc_statistic + the
                                                   container_term slot; E13 purely formal authority;
@@ -27,9 +27,12 @@ src/
                                                   retired, a historical term) + system-definition
                                                   contract (discovery / parsing dispatch / list_atoms fill / paradigm
                                                   derivation / sampler hand-off) + sampling framework
-                                                  + the container schedule (container_sched: nine
+                                                  + the container schedule (container_sched: eight
                                                   wiring slots + the initialization-assembly guard,
-                                                  2026-09-22) + assembly-time spectrum exports
+                                                  2026-09-22; the export slot withdrawn 2026-10-05)
+                                                  + the member-seam spectrum producer
+                                                  (spectrum_interface: the SPECTRUM_SOURCE-selected
+                                                  derivation or manual table file, 2026-10-05)
   dynamics/    propagator                    closed family (three integrators; fixed membership -
                                                   E18: the predicate grammar interpreter withdrawn,
                                                   termination is the container-side container_term slot)
@@ -52,7 +55,7 @@ src/
 |---|---|---|
 | L0 control kernel | root driver.f90 | assembly -> evolution -> statistics call sequence, no physics |
 | L1 variables & provisions | globals/ (input stays at root) | physical-state holder, control flow, freezing-derived provisions, list_atoms |
-| L2 interfaces & frameworks | interface/ | the E14 four-entry interface contract (force_eval / elec_prop / mqc_statistic + the container_term termination slot) + method-package registry (method_reg; E13 purely formal authority - name->pointer dispatch, physical-combination legality left to the members; rows may come from methods/ or a systems/ folder alike - E27) + run-lifetime statistics holders (occ / n_hop with member write-back) + system-definition contract sysdef_interface (E14) + sampling framework + the container schedule container_sched (nine wiring slots + the initialization-assembly guard; the container reg's single `reg_<sys>_slots` handover fills them - 2026-09-22) + assembly-time spectrum exports (spectrum_export) |
+| L2 interfaces & frameworks | interface/ | the E14 four-entry interface contract (force_eval / elec_prop / mqc_statistic + the container_term termination slot) + method-package registry (method_reg; E13 purely formal authority - name->pointer dispatch, physical-combination legality left to the members; rows may come from methods/ or a systems/ folder alike - E27) + run-lifetime statistics holders (occ / n_hop with member write-back) + system-definition contract sysdef_interface (E14) + sampling framework + the container schedule container_sched (eight wiring slots + the initialization-assembly guard; the container reg's single `reg_<sys>_slots` handover fills them - 2026-09-22; the registration-time export slot withdrawn 2026-10-05) + the member-seam spectrum producer (spectrum_interface: the SPECTRUM_SOURCE-selected internal derivation or manual spectrum-table file - 2026-10-05 spectrum-source legislation) |
 | L3 closed families | dynamics/ | propagators only (fixed choices, not extension points; E18: the predicate grammar interpreter withdrawn - termination is the container-side container_term slot in force_interface) |
 | L3 method library | methods/ | flat built-in library (E14, rebuilt from the two former interface_* homes): elec_* MQC method packages - parameter-free generic algorithms bound by the config method key (level 1) or consumed as reusable components via use (level 2) - the samp_* initial-state distributions, the inc_* incident-channel members (paradigm-split, paradigm-guarded registration) and their shared beam_laws component; a new method = one file + one thin reg_*.f90 (drag in and it compiles). System-specific members (pes_* PES + termination primitives) are system material, self-contained under systems/ (E12) |
 | L4 recording & post-processing | output/ | trajectory serialization (column registry), final state + the container classification slot (E19)/density of states/plotting (offline-capable) |

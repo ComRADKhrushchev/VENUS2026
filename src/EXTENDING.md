@@ -14,10 +14,11 @@ systems/mysystem/
   my_box.f90        (可选) 参数接收器(键表 + params_t) + 终止/分类判断
   reg_mysystem.f90  拖入件(接线区块模板, 2026-09-22): 唯一公共入口
                     reg_mysystem_slots() 一次交接填满 interface/container_sched
-                    的九个槽; 区体全部私有, 按 declare_keys/load_params(输入),
-                    bind_force/register_method/export_spectrum(常规),
-                    bind_term/arm_method(初始化), bind_classify/register_columns
-                    (输出)分组——空槽合法跳过, 时序与守卫归 container_sched
+                    的八个槽(2026-10-05: 注册期谱导出槽废除); 区体全部私有, 按
+                    declare_keys/load_params(输入), bind_force/register_method
+                    (常规), bind_term/arm_method(初始化),
+                    bind_classify/register_columns(输出)分组——空槽合法跳过,
+                    时序与守卫归 container_sched
   system/           反应物构型(2026-09-22 裁决): 一反应物一文件(.xyz 无晶胞 /
                     .poscar 带晶胞), 只放构型——扫描对未知扩展名即停(文件夹根的
                     .f90/引擎参数文件不进扫描); SYSTEM_DIR 指向此子文件夹
@@ -32,7 +33,6 @@ subroutine reg_mysystem_slots()          ! 唯一公共入口: 一次交接
                              load    =load_params, &     ! pull 暂存键 -> load
                              force   =bind_force, &    ! container_bind_pes(my_pes)
                              method  =register_method, &   ! method_reg(体系专属方法包, 可无)
-                             export  =export_spectrum, &   ! 注册期谱导出(罕见, 可无)
                              term    =bind_term, &     ! 键门控 container_bind_term
                              arm     =arm_method, &      ! 方法包武装(ELEC_METHOD 门控)
                              classify=bind_classify, & ! 键门控 container_bind_classify
@@ -70,6 +70,9 @@ end subroutine
   `plot_pes.py`(python+matplotlib)出 PNG;基几何/质量可取自容器 `system/` 的构型
   值。现成 hook:reference / fh2_leps / h3_bkmp2 / h2ag111(编译配方见 probe 头部;
   cau_* 平均场容器绑 `cau_<sys>_ground` 基态面,文件集见 check_cau_* 配方)。
+- **容器不立法谱**(2026-10-05 谱来源立法):容器不再携带注册期谱导出槽——谱的
+  生产者是程序内部的 Hessian 推导(SPECTRUM_SOURCE=COMPUTE,缺省)或运行输入的
+  谱表文件(SPECTRUM_SOURCE=MANUAL + SPECTRUM_FILE),见 §6。
 
 ## 2. 初始态分布成员(methods/samp_*.f90,B′ 族)
 
@@ -101,6 +104,31 @@ docs/plans/K2.md、S.md)。
 - 记录列:output/recorder.f90 列注册表加行(rec_reg_col;列提取器纯形式)。
 - 结果分类:物理系统容器侧 container_bind_classify(E19 槽)。
 - 直方图类:output/plot_hist.f90 五类族(数据驱动)。
+
+## 6. 谱来源(SPECTRUM_SOURCE,2026-10-05 立法)
+
+采样成员(wigner/normalmode/boltzmann 拉模表, ebk 拉双原子常数)消费的谱由
+**一个键独占选择的生产者**提供(模块 interface/spectrum_interface.f90;容器导出
+通道已废除):
+
+- `SPECTRUM_SOURCE = COMPUTE`(缺省):内部 Hessian 推导,范式中立——表面范式
+  与气相同一推导路径,裁判是跨块衰减门(PES 在探针处的物理行为),不是范式标签。
+  单片段体系的探针=缓冲几何原样;多片段按延展感知间距沿 x 排开(原子间最小距离
+  ≥ r_asym=12 Å 量级)。EBK 双原子常数通道无推导(非谐/转动常数是文献数据),
+  COMPUTE 下拉即命名中止并指引 MANUAL。
+- `SPECTRUM_SOURCE = MANUAL`:`SPECTRUM_FILE` 谱表文件是唯一生产者——被采样
+  载体在文件中必须有记录(缺记录/空文件/文件带错即命名中止,"参数作为输入要求")。
+  `SPECTRUM_FILE` 在场而 SPECTRUM_SOURCE=COMPUTE 是输入层形式错误(无静默忽略)。
+
+谱表文件格式(权威规格:docs/plans/2026-10-05-spectrum-source.md §3):行导向、
+大小写不敏感、`#`/`!` 整行注释;每条记录 `FRAG`(成分键,与 list_atoms 片段
+逐符号大小写不敏感匹配)/`NMODE`(nat=2→1;nat≥3→3nat-5 或 3nat-6)/
+`WVN`(频率[cm⁻¹],每模一行,严格升序)/`COL j`(其后一行恰 3nat 个质量加权
+正交归一系数)/可选 `DIAT w_e w_e·x_e B_e`(仅 nat=2,EBK 通道)。
+
+**模列参考架契约**:列向量表达在**片段缓冲几何(容器 system/ 构型文件)的笛卡尔
+架**中;外部量化程序输出的模列须作者自行旋转到该架(不做自动对齐)。生成器范本
+`scripts/gen_spectrum_tbl.f90`(双原子记录,列出自 stretch_mode 本体)。
 
 ## 演练清单(新扩展件落地后)
 

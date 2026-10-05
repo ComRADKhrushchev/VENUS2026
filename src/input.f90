@@ -13,7 +13,9 @@
 !   only: kind domains, slot widths). Defaults are per-key, never overriding
 !   user-set keys; required keys are those with no system-independent default
 !   (SYSTEM_DIR, E_REL, B_MAX, R_SEP, DT, DIST_SCHEME). GWRITE_LEVEL defaults to 2;
-!   RANDOM_ORIENT defaults to F (the archived five-case stream).
+!   RANDOM_ORIENT defaults to F (the archived five-case stream). SPECTRUM_SOURCE
+!   defaults to COMPUTE (the internal derivation; MANUAL stages the spectrum-table
+!   file - 2026-10-05 spectrum-source legislation).
 !=====================================================================
 module input
    use control, only: task, n_traj, title, i_seed, max_steps
@@ -45,7 +47,8 @@ module input
                                            ! the surface lattice length)
 
    ! enumeration families (which registry a kind_enum/kind_elist key maps through)
-   integer, parameter :: enum_none = 0, enum_task = 1, enum_integ = 2, enum_dist = 3, enum_bath = 4
+   integer, parameter :: enum_none = 0, enum_task = 1, enum_integ = 2, enum_dist = 3, &
+                          enum_bath = 4, enum_spectrum = 5
 
    ! Parse buffer (KEYWORD=VALUE row table - module-private, clean slate per
    ! read_input, read out through the public buffer accessors only)
@@ -100,7 +103,7 @@ module input
    ! DT_MIN/DT_MAX (the adaptive member's sequence-length bounds): kind_real, NOT
    ! kind_posreal - a clamp value <= 0 is the legal unclamped default (0 = off);
    ! consumed by the radau member only (fixed-step members ignore them)
-   type(key_spec_t), parameter :: key_tab(30) = [ &
+   type(key_spec_t), parameter :: key_tab(32) = [ &
       key_spec_t('TASK',         blk_flow,   kind_enum,  enum_task,  .false., 'TRAJECTORY'), &
       key_spec_t('N_TRAJ',       blk_flow,   kind_int,   enum_none,  .false., '1'), &
       key_spec_t('TITLE',        blk_flow,   kind_char,  enum_none,  .false., '', slotw=80), &
@@ -128,6 +131,8 @@ module input
       key_spec_t('BATH',          blk_system, kind_enum, enum_bath,  .false., 'NONE'), &
       key_spec_t('N_BATH',        blk_system, kind_int,  enum_none,  .false., '0'), &
       key_spec_t('DT_BATH',       blk_system, kind_real, enum_none,  .false., '0.0'), &
+      key_spec_t('SPECTRUM_SOURCE', blk_system, kind_enum, enum_spectrum, .false., 'COMPUTE'), &
+      key_spec_t('SPECTRUM_FILE',  blk_system, kind_char, enum_none,  .false., '', slotw=128), &
       key_spec_t('PROJECTILE',   blk_system, kind_char,  enum_none,  .false., '', slotw=64, cond=.true.), &
       key_spec_t('TARGET',       blk_system, kind_char,  enum_none,  .false., '', slotw=64, cond=.true.), &
       key_spec_t('A_LAT',        blk_system, kind_posreal, enum_none, .false., '', cond=.true.) ]
@@ -155,6 +160,12 @@ module input
    ! BATH selector arms the pre-evolution bath loop inside samp_run)
    type(enum_row_t), parameter :: bath_tbl(2) = [ &
       enum_row_t('NONE', 1), enum_row_t('ANDERSEN', 2) ]
+
+   ! spectrum producer words (2026-10-05 spectrum-source legislation: the container
+   ! export slot is withdrawn - the producer is the internal derivation (default) or
+   ! the manual spectrum-table file; the consumer seam is interface/spectrum_interface)
+   type(enum_row_t), parameter :: spectrum_tbl(2) = [ &
+      enum_row_t('COMPUTE', 1), enum_row_t('MANUAL', 2) ]
 
 
    ! GWRITE_LEVEL recording-level set - the formal domain of observables%rec_level
@@ -759,6 +770,13 @@ contains
          case ('DT_BATH')
             reactants%dt_bath = rval                      ! bath-loop step size [10 fs]
 
+         case ('SPECTRUM_SOURCE')                     ! spectrum producer selector (consumed
+            reactants%spectrum_src = ival             ! at the member seam, spectrum_interface)
+         case ('SPECTRUM_FILE')
+            reactants%spectrum_file = sval            ! spectrum-table path (MANUAL's records;
+                                                     ! a staged path under COMPUTE never reaches
+                                                     ! a pull - the cross rule below stops it)
+
          case ('A_LAT', 'PROJECTILE', 'TARGET') ! surface-window / role keys: no slot
             continue                                     ! write here - the values stay buffered and
                                                          ! list_atoms_load pulls them at assembly time
@@ -769,6 +787,15 @@ contains
             return
          end select
       end do
+      ! 1b. formal cross-key rule (formal, no system knowledge): a staged
+      !     SPECTRUM_FILE under COMPUTE would sit unused (no pull happens) - a
+      !     silent unused key is not this grammar's way
+      if (len_trim(reactants%spectrum_file) > 0 .and. reactants%spectrum_src /= 2) then
+         ok = .false.
+         errmsg = 'SPECTRUM_FILE is staged while SPECTRUM_SOURCE is COMPUTE - a '// &
+                  'spectrum-table file requires SPECTRUM_SOURCE=MANUAL'
+         return
+      end if
       ! 2. member-parameter dispatch (central table): a buffered member key must carry a
       ! non-empty value (key + line named on failure - the value semantics themselves
       ! are member-side knowledge; the assembly wiring hands the buffered values to the
@@ -1073,6 +1100,13 @@ contains
                exit
             end if
          end do
+      case (enum_spectrum)
+         do i = 1, size(spectrum_tbl)
+            if (trim(spectrum_tbl(i)%word) == trim(word)) then
+               enum_lookup = spectrum_tbl(i)%code
+               exit
+            end if
+         end do
       end select
    end function enum_lookup
 
@@ -1102,6 +1136,11 @@ contains
          do i = 1, size(bath_tbl)
             if (i > 1) s = trim(s)//', '
             s = trim(s)//trim(bath_tbl(i)%word)
+         end do
+      case (enum_spectrum)
+         do i = 1, size(spectrum_tbl)
+            if (i > 1) s = trim(s)//', '
+            s = trim(s)//trim(spectrum_tbl(i)%word)
          end do
       end select
    end function legal_words

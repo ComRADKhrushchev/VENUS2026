@@ -235,8 +235,8 @@ contains
    end subroutine bath_run
 
    ! probe_wrap(q, f) - the bound container through the interface probe
-   ! (the same channel spectrum_export rides; the unit fold stays at its
-   ! unique site)
+   ! (the same channel spectrum_interface rides; the unit fold stays at
+   ! its unique site)
    subroutine probe_wrap(q, f)
       real(8), intent(in)  :: q(:)
       real(8), intent(out) :: f(:)

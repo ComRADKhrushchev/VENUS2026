@@ -16,7 +16,7 @@ module reg_samp_wigner
    use config,         only: reactants
    use input,          only: buffer_n_rows, buffer_key, buffer_val, buffer_line
    use seam_cast,      only: seam_real
-   use spectrum_export, only: spectrum_frag_w
+   use spectrum_interface, only: spectrum_frag_w
    use samp_wigner,    only: wigner_draw, wigner_realize, wigner_params_t, wigner_init
    implicit none
    private
@@ -32,10 +32,11 @@ contains
    !------------------------------------------------------------------
    ! reg_samp_wigner_init() - assembly seam: buffered keys -> the
    !                          mode-table pull -> member init. The tables
-   !                          are assembly data: pulled from the spectrum
-   !                          buffer for EVERY carrier fragment (a
-   !                          composition-matched container export first,
-   !                          the generic derivation otherwise), one
+   !                          are assembly data: pulled from the
+   !                          SPECTRUM_SOURCE-selected producer (the
+   !                          internal derivation on COMPUTE, the
+   !                          spectrum-table file on MANUAL) for EVERY
+   !                          carrier fragment, one
    !                          ragged table per carrier
    !------------------------------------------------------------------
    subroutine reg_samp_wigner_init()

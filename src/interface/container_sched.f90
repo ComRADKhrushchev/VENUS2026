@@ -1,5 +1,5 @@
 !=====================================================================
-! container_sched.f90 - the container assembly schedule: the nine
+! container_sched.f90 - the container assembly schedule: the eight
 !   wiring slots, their lifecycle order, and the initialization-
 !   assembly guard - written ONCE here so a container's reg file
 !   carries content only (its wiring slots), never choreography
@@ -13,7 +13,10 @@
 !   buffered input (the guard, once) then runs the initialization and
 !   output slots in fixed order. All conditional logic (key gates,
 !   method selection) lives inside the container's own slot bodies -
-!   this module knows time, not content.
+!   this module knows time, not content. (The registration-time export
+!   slot is withdrawn - 2026-10-05 spectrum-source legislation: the
+!   spectrum producers are the internal derivation and the MANUAL
+!   spectrum-table file, interface/spectrum_interface.f90.)
 !=====================================================================
 module container_sched
    use config, only: reactants
@@ -27,15 +30,14 @@ module container_sched
       end subroutine
    end interface
 
-   ! The nine wiring slots: slot 1 input (keys / load), slot 2 regular
-   ! (force / method / export), slot 3 initialization (term / arm),
+   ! The eight wiring slots: slot 1 input (keys / load), slot 2 regular
+   ! (force / method), slot 3 initialization (term / arm),
    ! slot 4 output (classify / columns)
    type :: sched_slots_t
       procedure(slot_i), pointer, nopass :: keys     => null() ! declare the key vocabulary (before the parse)
       procedure(slot_i), pointer, nopass :: load     => null() ! pull the buffered keys + load (at the seam)
       procedure(slot_i), pointer, nopass :: force    => null() ! bind the force slot (registration)
       procedure(slot_i), pointer, nopass :: method   => null() ! register the method rows (registration)
-      procedure(slot_i), pointer, nopass :: export   => null() ! registration-time exports (spectrum)
       procedure(slot_i), pointer, nopass :: term     => null() ! bind the termination slot (seam, key-gated)
       procedure(slot_i), pointer, nopass :: arm      => null() ! arm the method package (seam, selection-gated)
       procedure(slot_i), pointer, nopass :: classify => null() ! bind the classification slot (seam, key-gated)
@@ -49,15 +51,14 @@ contains
    !                 every present slot (the keyword list is the
    !                 author's full menu); an already-filled slot aborts
    !------------------------------------------------------------------
-   subroutine container_sched_bind(keys, load, force, method, export, term, &
+   subroutine container_sched_bind(keys, load, force, method, term, &
                                     arm, classify, columns)
-      procedure(slot_i), optional :: keys, load, force, method, export, term, &
+      procedure(slot_i), optional :: keys, load, force, method, term, &
                                      arm, classify, columns ! the container's slot bodies
       if (present(keys))     call bind_one('keys',     w%keys,     keys)
       if (present(load))     call bind_one('load',     w%load,     load)
       if (present(force))    call bind_one('force',    w%force,    force)
       if (present(method))   call bind_one('method',   w%method,   method)
-      if (present(export))   call bind_one('export',   w%export,   export)
       if (present(term))     call bind_one('term',     w%term,     term)
       if (present(arm))      call bind_one('arm',      w%arm,      arm)
       if (present(classify)) call bind_one('classify', w%classify, classify)
@@ -75,12 +76,11 @@ contains
    !------------------------------------------------------------------
    ! container_sched_all() - run the unconditional slots at
    !                 registration (nothing staged is required:
-   !                 force slot, method rows, registration-time exports)
+   !                 force slot, method rows)
    !------------------------------------------------------------------
    subroutine container_sched_all()
       if (associated(w%force))  call w%force()
       if (associated(w%method)) call w%method()
-      if (associated(w%export)) call w%export()
    end subroutine container_sched_all
 
    !------------------------------------------------------------------

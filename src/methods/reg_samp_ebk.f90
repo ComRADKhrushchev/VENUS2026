@@ -9,8 +9,9 @@
 !   member keys (N_VIB / N_ROT - field-default (0,0) when absent, the
 !   ro-vibrational ground state; J_ROT stays the rotation member's key),
 !   the spectroscopic constants arrive as assembly data through the
-!   spectrum buffer's diatomic record (container-legislated, Herzberg
-!   constants of the record - one shared set serves every carrier, the
+!   spectrum seam's diatomic record (MANUAL spectrum-table DIAT - the
+!   Herzberg constants of the record, literature data with no generic
+!   derivation; one shared set serves every carrier, the
 !   equal-treatment statute; pulled at the first ebk carrier's
 !   composition), and the moment of inertia is derived from that
 !   carrier's buffered equilibrium geometry (mu*r_eq^2, the dist_j
@@ -23,7 +24,7 @@ module reg_samp_ebk
    use config_atoms,   only: list_atoms
    use input,          only: buffer_n_rows, buffer_key, buffer_val, buffer_line
    use seam_cast,      only: seam_int
-   use spectrum_export, only: spectrum_frag_diatomic
+   use spectrum_interface, only: spectrum_frag_diatomic
    use samp_ebk,       only: ebk_draw, ebk_realize, ebk_params_t, ebk_init
    implicit none
    private

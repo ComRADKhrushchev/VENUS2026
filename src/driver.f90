@@ -3,8 +3,10 @@
 ! Design:
 !   Assembly order is binding: registry_gen_keys -> read_input -> rng_init ->
 !   sysdef_load -> list_atoms_load -> state_create -> registry_gen_all ->
-!   registry_gen_init (buffered member keys -> member inits, dt already
-!   final) -> input_audit_declared (every buffered container key was
+!   registry_gen_init (the container seam FIRST - a load-dependent PES must
+!   be computable before any member seam that probes its force, e.g. the
+!   spectrum derivation; then buffered member keys -> member inits, dt
+!   already final) -> input_audit_declared (every buffered container key was
 !   pulled) -> container_init -> rec_select -> hand-off allocation.
 !   The key-declaration aggregate runs BEFORE the parse so the dragged-in
 !   container's parameter vocabulary precedes the parse admission (a
@@ -118,13 +120,17 @@ program venus
    end if
    call registry_gen_all()                         ! 7. registration aggregate (method packages,
                                                    !    distribution members, container bindings,
-                                                   !    and the integrator closed set; the atom list
-                                                   !    is assembled - container spectrum exports
-                                                   !    that read it run safely here)
-   call registry_gen_init()                        ! 8. the assembly: buffered member keys ->
-                                                   !    each member's own init (an unselected
-                                                   !    member skips inside its own guard);
-                                                   !    dt was finalized at step 2, so a member
+                                                   !    and the integrator closed set)
+   call registry_gen_init()                        ! 8. the assembly: the container seam FIRST
+                                                   !    (parameter load / term / classify / arm /
+                                                   !    columns - a load-dependent PES is
+                                                   !    computable from here on), then buffered
+                                                   !    member keys -> each member's own init (an
+                                                   !    unselected member skips inside its own
+                                                   !    guard); the spectrum seams in here may
+                                                   !    probe the bound force (SPECTRUM_SOURCE
+                                                   !    legislation, 2026-10-05); dt was
+                                                   !    finalized at step 2, so a member
                                                    !    reconciling against dt reads the final
                                                    !    value - the assembly order is the contract
    call input_audit_declared()                    ! 9. container-key consumption audit (every
