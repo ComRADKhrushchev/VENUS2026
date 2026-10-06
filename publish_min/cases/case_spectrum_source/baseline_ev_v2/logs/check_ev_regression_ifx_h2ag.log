@@ -1,0 +1,20 @@
+=== ifx h2ag_ebk
+  A2 frame0 eV  old→eV: 9.084574 0.356376 9.440950
+  A2 frame0 eV  new    : 9.084573 0.356374 9.440947
+  A2 rel diff: 1.23e-07 5.75e-06 3.36e-07
+PASS A2: frame0 anchor within 1e-3
+PASS A3: cases/case_spectrum_source/h2ag_ebk/hist_e_rel.dat rows=41 sum=4
+PASS A3: cases/case_spectrum_source/h2ag_ebk/hist_thta.dat rows=41 sum=4
+PASS A4: 1204 frames, per-traj t monotone from 0, last t=150 fs
+INFO A1: conservation drift max|e_fin-e0| = 4.2306E+00 eV (from logs/ev_run_ifx_h2ag_ebk.log)
+== cases/case_spectrum_source/h2ag_ebk: ALL GATES PASS ==
+=== ifx h2ag_wigner
+  A2 frame0 eV  old→eV: 8.672875 0.485255 9.158130
+  A2 frame0 eV  new    : 8.672875 0.485252 9.158127
+  A2 rel diff: 4.27e-09 6.73e-06 3.60e-07
+PASS A2: frame0 anchor within 1e-3
+PASS A3: cases/case_spectrum_source/h2ag_wigner/hist_e_rel.dat rows=41 sum=4
+PASS A3: cases/case_spectrum_source/h2ag_wigner/hist_thta.dat rows=41 sum=4
+PASS A4: 1204 frames, per-traj t monotone from 0, last t=150 fs
+INFO A1: conservation drift max|e_fin-e0| = 5.2213E-01 eV (from logs/ev_run_ifx_h2ag_wigner.log)
+== cases/case_spectrum_source/h2ag_wigner: ALL GATES PASS ==

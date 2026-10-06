@@ -50,8 +50,8 @@ render/
 scripts/drift*.txt
 # literature reference PDFs (not work product; excluded from any publish face)
 docs/literature/
-# stray publish_min copy inside the dev tree (2026-10-05 morning session artifact; cleanup candidate)
-/publish_min/
+# publish_min: 2026-10-06 起正式落档入 dev 树（单位制改基批全量镜像，
+# 历史保全分支 publish_min_ev_rebase；原 2026-10-05 杂散副本规则废止）
 # check-recipe object files at src root
 src/*.o
 # vendor archives
