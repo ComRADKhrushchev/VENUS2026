@@ -1,0 +1,22 @@
+# A0 常数自证：consts.f90 冻结值 vs CODATA 2018 推导复算（awk）
+# A5 审计：旧常数五件套 + [kcal/mol]/[10 fs] 注释在 src/ 应零命中
+
+dyn_ev     frozen=103.6426965d0  derived=103.6426965  rel=2.6e-10   PASS
+ev_dyn     frozen=1.0d0          (参数表达式，一致性由编译器保证)
+hbar_evfs  frozen=0.6582119569d0 derived=0.6582119569  rel=0.0e+00   PASS
+kb_ev      frozen=8.617333262d-5 derived=8.617333262e-05  rel=1.7e-11   PASS
+ev2wvn     frozen=8065.543937d0  derived=8065.543937  rel=4.3e-11   PASS
+wvn2ev     frozen=1.0d0          (参数表达式，一致性由编译器保证)
+
+--- A5 grep 审计 (src/, 期望全部 0):
+e_conv     hits=0
+hbar_code  hits=0
+kb_code    hits=0
+r_kcal     hits=0
+23\.0605   hits=0
+0\.04184   hits=0
+349\.755   hits=0
+0\.063508  hits=0
+0\.083144  hits=0
+[kcal/mol] hits=0
+[10 fs]    hits=0
