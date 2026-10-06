@@ -2,12 +2,12 @@
 ! spectrum.f90 - fragment normal-mode spectrum from a Hessian block:
 !                mass-weighting, eigensolve, zero-mode separation
 ! Design:
-!   Pure mathematics over the internal unit family (amu / A / 10 fs):
-!   with the force folded to internal-per-A (the force interface's unique
-!   fold), the mass-weighted Hessian eigenvalue IS omega^2 in
-!   [rad/(10 fs)] - no conversion literal lives here. The wavenumber
-!   face goes through the shared consts pair e2wvn*hbar_code/e_conv
-!   (numerically 2*pi*c*1e-14, the SI chain). Zero-mode count derives
+!   Pure mathematics over the internal unit family (amu / A / fs):
+!   with the force folded to amu*A/fs^2 (the force interface's unique
+!   ev_dyn fold), the mass-weighted Hessian eigenvalue IS omega^2 in
+!   [rad/fs]^2 - no conversion literal lives here. The wavenumber
+!   face goes through the shared consts pair hbar_evfs*ev2wvn
+!   (the SI chain: nu = omega*hbar/(h*c)). Zero-mode count derives
 !   from geometry linearity (principal moments at the COM: one
 !   vanishing moment = linear, 3N-5 zeros; else 3N-6); the split is
 !   validated by magnitude (a zero that is not small, or a vibrational
@@ -15,7 +15,7 @@
 !   - is a named abort, never a silent wrong table).
 !=====================================================================
 module spectrum
-   use consts, only: e2wvn, hbar_code, e_conv
+   use consts, only: hbar_evfs, ev2wvn, wvn2ev
    use linalg, only: eig_sym
    implicit none
    private
@@ -34,10 +34,10 @@ module spectrum
 contains
    !------------------------------------------------------------------
    ! spectrum_modes(hess, mass, qz, w, c) - one fragment's vibrational
-   !                 spectrum. hess: 3nat x 3nat Cartesian Hessian block
-   !                 [internal/A^2] (destroyed); mass(nat) [amu];
+!                 spectrum. hess: 3nat x 3nat Cartesian Hessian block
+!                 [amu/(fs^2*A)] (destroyed); mass(nat) [amu];
    !                 qz(3nat) the fragment geometry [A] (linearity only).
-   !                 Returns w(n_mode) [rad/(10 fs)] ascending and the
+   !                 Returns w(n_mode) [rad/fs] ascending and the
    !                 matching mass-weighted orthonormal columns
    !                 c(3nat, n_mode). A monoatomic fragment returns an
    !                 allocated-empty table (no evaluation)
@@ -138,18 +138,18 @@ contains
       c(4:6) = u*sqrt(mass(2))*mass(1)/(mt*sqrt(mu))
    end subroutine stretch_mode
 
-   ! w_to_wvn(w) / wvn_to_w(nu) - internal angular frequency [rad/(10 fs)]
+   ! w_to_wvn(w) / wvn_to_w(nu) - internal angular frequency [rad/fs]
    !                 <-> wavenumber [cm^-1] through the shared consts
    pure function w_to_wvn(w) result(nu)
       real(8), intent(in) :: w
       real(8) :: nu
-      nu = e2wvn*hbar_code*w/e_conv
+      nu = hbar_evfs*ev2wvn*w
    end function w_to_wvn
 
    pure function wvn_to_w(nu) result(w)
       real(8), intent(in) :: nu
       real(8) :: w
-      w = nu*e_conv/(e2wvn*hbar_code)
+      w = nu*wvn2ev/hbar_evfs
    end function wvn_to_w
 
    ! stop_spec(msg) - the named-abort channel

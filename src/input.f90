@@ -768,7 +768,7 @@ contains
          case ('N_BATH')
             reactants%n_bath = ival                       ! bath-loop step count
          case ('DT_BATH')
-            reactants%dt_bath = rval                      ! bath-loop step size [10 fs]
+            reactants%dt_bath = rval                      ! bath-loop step size [fs]
 
          case ('SPECTRUM_SOURCE')                     ! spectrum producer selector (consumed
             reactants%spectrum_src = ival             ! at the member seam, spectrum_interface)

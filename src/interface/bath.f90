@@ -17,7 +17,7 @@
 !   around it, and ends with ONE exact whole-system COM-momentum
 !   projection (the collisions inject a random net momentum; the incident
 !   channel prescribes the beam translation, so the residual is stripped).
-!   Units: dt [10 fs]; p [amu*Ang/(10 fs)].
+!   Units: dt [fs]; p [amu*Ang/fs].
 !=====================================================================
 module bath
    use state,      only: state_t
@@ -31,8 +31,10 @@ module bath
    public :: bath_reg, bath_setup, bath_run, bath_armed
 
    integer, parameter :: max_bath = 4     ! species-table capacity [row]
-   real(8), parameter :: sep_tol = 1.0d-6  ! fragment-separation interaction
-                                           ! tolerance [internal ~ eV/Angstrom]
+   real(8), parameter :: sep_tol = 1.0d-8  ! fragment-separation interaction
+                                           ! tolerance [amu*Ang/fs^2] (~1.04e-6 eV/Angstrom;
+                                           ! same physical value as the pre-2026-10-06
+                                           ! 1e-6 in old internal-per-A units)
 
    ! Bath species interface: one collision sweep at step size dt over the
    ! masked atoms (the mask is the BATH_SCOPE resolution - all atoms, or the
@@ -42,7 +44,7 @@ module bath
          import :: state_t
          type(state_t), intent(inout) :: sta  ! physical state (the masked atoms' momenta are
                                              ! reset on collision)
-         real(8), intent(in) :: dt            ! the sweep's step size [10 fs] (the collision
+         real(8), intent(in) :: dt            ! the sweep's step size [fs] (the collision
                                              ! probability is nu*dt)
          logical, intent(in) :: mask(:)       ! per-atom collision scope [flag]
       end subroutine bath_sweep_i
@@ -60,7 +62,7 @@ module bath
    ! Provisioned state (module-private; set by bath_setup)
    procedure(bath_sweep_i), pointer :: sweep_c => null()          ! the bound species sweep
    integer :: n_step_c = 0                    ! provisioned step count [-]
-   real(8) :: dt_c = 0.0d0                    ! provisioned step size [10 fs]
+   real(8) :: dt_c = 0.0d0                    ! provisioned step size [fs]
    logical :: armed = .false.                 ! the BATH provision armed this bath [flag]
    logical :: setup_done = .false.            ! bath_setup ran [flag]
 contains
@@ -110,7 +112,7 @@ contains
          call stop_bathi('bath_setup', 'bath step count n_bath must be >= 0, got', reactants%n_bath)
       end if
       if (reactants%n_bath > 0 .and. reactants%dt_bath <= 0.0d0) then
-         call stop_bathz('bath_setup', 'a positive bath step size dt_bath [10 fs] is required '// &
+         call stop_bathz('bath_setup', 'a positive bath step size dt_bath [fs] is required '// &
             'when n_bath > 0, got', reactants%dt_bath)
       end if
       sweep_c => bath_tbl(row)%sweep

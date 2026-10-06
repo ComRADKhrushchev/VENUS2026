@@ -8,7 +8,7 @@
 !   contributes nothing to any entry.
 !   Members conform to the interface's abstract interfaces, checked at
 !   the method_reg call site in reg_adiabatic.f90.
-! Units: dt in 10 fs internal units.
+! Units: dt in fs internal units.
 !=====================================================================
 module elec_adiabatic
    use state,       only: state_t
@@ -25,7 +25,7 @@ contains
    subroutine ad_prop(sta, dt)
       type(state_t), intent(inout) :: sta  ! physical state (unchanged - no ontic
                                            ! container to advance)
-      real(8), intent(in) :: dt            ! current step [10 fs] (ignored - no hop
+      real(8), intent(in) :: dt            ! current step [fs] (ignored - no hop
                                            ! probability exists under adiabatic)
       ! 1. No-op: single surface, no coupling, no hops - the empty body IS the law
    end subroutine ad_prop

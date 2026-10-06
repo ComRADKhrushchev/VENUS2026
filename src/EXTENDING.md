@@ -170,5 +170,10 @@ docs/plans/K2.md、S.md)。
 
 1. `cd src && make`(如新增 reg:再 make 一次)→ 双编译器绿;
 2. 相关 scripts/check_* 重编重跑;
-3. 五 case 回归对 results.txt(逐字节);
-4. T4/T5 grep 复验(23.0605 仅 force_interface;RANDOM_NUMBER 零命中)。
+3. case 回归走值域判据 `scripts/check_ev_regression.sh`(守恒漂移报告、
+   初帧能量锚对 baseline 旧制换算 ≤1e-3 相对差、直方图分布比对);
+   基线两代:baseline_kcal_v1(旧制,kcal/mol 门面)与 baseline_ev_v2(eV 制)。
+   逐字节等价门已随 2026-10-06 单位改制(eV/Å/amu/fs)废止——浮点舍入路径
+   随单位制改变,位级复现自此不再成立,回归以值域判据为准;
+4. T4/T5 grep 复验(23.0605/0.04184/349.755/0.063508/0.083144 在 src/ 零命中;
+   RANDOM_NUMBER 零命中)。

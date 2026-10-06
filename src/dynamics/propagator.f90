@@ -7,7 +7,7 @@
 !   force at the returned sta%q has been evaluated. Members hold module-private
 !   buffer (Beeman force history, symple coefficient cache, radau cross-sequence
 !   carry), rebuilt on a fresh trajectory / size change / step-size change and
-!   cleared on member switch. Units: time [10 fs], length [A]; masses from the
+!   cleared on member switch. Units: time [fs], length [A]; masses from the
 !   list_atoms, expanded per atom over its three components.
 !=====================================================================
 module propagator
@@ -42,7 +42,7 @@ module propagator
    real(8), allocatable :: f_prev(:)          ! buffered F(t-dt) of the upcoming Beeman step
                                               ! (sta%f units)
    logical :: f_prev_ok = .false.             ! history usable [flag]
-   real(8) :: dt_staged = 0.0d0               ! step size the buffered f_prev is spaced at [10 fs]
+   real(8) :: dt_staged = 0.0d0               ! step size the buffered f_prev is spaced at [fs]
                                               ! (a dt change re-boots the equal-spacing AM corrector)
 
    ! symple composition cache: coefficient table a(0:2N), stage count N, order key
@@ -69,7 +69,7 @@ module propagator
    real(8), allocatable :: rad_bd(:, :)       ! running correction B_converged - ee_previous
    real(8), allocatable :: rad_f1(:)          ! left-end folded acceleration of the sequence
    real(8), allocatable :: rad_v(:)           ! folded velocity (the working representation)
-   real(8) :: rad_tp = 0.0d0                  ! upcoming sequence length [10 fs]
+   real(8) :: rad_tp = 0.0d0                  ! upcoming sequence length [fs]
    logical :: rad_seq_ok = .false.            ! a sequence has been accepted (restart test off)
    integer :: rad_ns = 0                      ! accepted-sequence counter (bd rule: 1st keeps 0)
 contains
@@ -363,14 +363,14 @@ contains
       ! ---- close-out state guard (per component, no reduction): non-finite or
       ! physically-absurd values abort with a named error - the max()-reduced hv estimate cannot
       ! catch NaN components (Fortran max with a NaN argument is
-      ! processor-dependent). Bounds: |q| > 1e8 A or |v| > 1e10 A/(10 fs)
-      ! (legitimate runs peak |q| ~ 5, |v| ~ 50; p = m*v rides the v test) ----
+      ! processor-dependent). Bounds: |q| > 1e8 A or |v| > 1e9 A/fs
+      ! (legitimate runs peak |q| ~ 5, |v| ~ 5; p = m*v rides the v test) ----
       do k = 1, nq
          if (sta%q(k) /= sta%q(k) .or. rad_v(k) /= rad_v(k) &
-             .or. abs(sta%q(k)) > 1.0d8 .or. abs(rad_v(k)) > 1.0d10) then
+             .or. abs(sta%q(k)) > 1.0d8 .or. abs(rad_v(k)) > 1.0d9) then
             call stop_prop('radau_step', 'diverged sequence state: a closed-out'// &
                            ' q/p component is non-finite or beyond the physical-'// &
-                           'absurdity bound (q 1e8 A, v 1e10 A/(10 fs)) - the'// &
+                           'absurdity bound (q 1e8 A, v 1e9 A/fs) - the'// &
                            ' accepted sequence was garbage (the dt seed or the'// &
                            ' dt_min floor exceeds what this force law supports)')
          end if

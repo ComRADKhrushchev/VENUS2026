@@ -18,10 +18,10 @@ module config
   type :: propagator_t
      integer :: id    = 1     ! integrator code (the closed three-member set verlet/symple/radau)
      integer :: order = 0     ! order/variant parameter
-     real(8) :: dt    = 0.01d0 ! step [10 fs]
-     real(8) :: dt_min = 0.0d0 ! adaptive sequence-length lower bound [10 fs] (magnitude
+     real(8) :: dt    = 0.1d0  ! step [fs]
+     real(8) :: dt_min = 0.0d0 ! adaptive sequence-length lower bound [fs] (magnitude
                                ! bound; 0 = unclamped - consumed by the adaptive member only)
-     real(8) :: dt_max = 0.0d0 ! adaptive sequence-length upper bound [10 fs] (magnitude
+     real(8) :: dt_max = 0.0d0 ! adaptive sequence-length upper bound [fs] (magnitude
                                ! bound; 0 = unclamped - consumed by the adaptive member only)
   end type
 
@@ -54,7 +54,7 @@ module config
      integer, allocatable :: dist_scheme(:) ! per-fragment sampling scheme (pointing to dist_* members;
                                             ! arrayed together with list_atoms%frag - allocated at
                                             ! input/assembly, size = n_frag)
-     real(8) :: e_rel  = 0.0d0       ! collision energy (relative-motion distribution) [kcal/mol]
+     real(8) :: e_rel  = 0.0d0       ! collision energy (relative-motion distribution) [eV]
      real(8) :: b_max  = 0.0d0       ! maximum impact parameter [Å]
      real(8) :: r_sep  = 0.0d0       ! initial separation [Å]
      logical :: random_orient = .false. ! universal orientation stage switch (RANDOM_ORIENT;
@@ -71,7 +71,7 @@ module config
                                        ! loop -> orientation -> incident)
      integer :: n_bath = 0            ! bath-loop step count (N_BATH; 0 = the armed bath runs
                                        ! no steps - no collisions, no propagation)
-     real(8) :: dt_bath = 0.0d0      ! bath-loop step size [10 fs] (DT_BATH; must be positive
+     real(8) :: dt_bath = 0.0d0      ! bath-loop step size [fs] (DT_BATH; must be positive
                                        ! when N_BATH > 0)
      integer :: spectrum_src = 1     ! spectrum producer selector (SPECTRUM_SOURCE enum;
                                        ! 1 = COMPUTE - the internal Hessian derivation, lazy on

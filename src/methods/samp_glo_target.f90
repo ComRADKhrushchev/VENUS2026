@@ -8,10 +8,10 @@
 !   sigma_q^2 = kb*t/(m*w^2)) and draws the exact stationary ghost
 !   state (member product via getters; Langevin is dynamics-side).
 !   Units: t_glo [K]; gamma_glo, w_ghost, dt as declared; sigma_p
-!   [amu*Ang/(10 fs)]; sigma_q [Ang]; sigma_noise [amu*Ang/(10 fs)^2].
+!   [amu*Ang/fs]; sigma_q [Ang]; sigma_noise [amu*Ang/fs^2].
 !=====================================================================
 module samp_glo_target
-   use consts,        only: kb_code
+   use consts,        only: kb_act
    use rng,           only: rng_gauss
    use state,         only: state_t
    use config,        only: reactants, prop_cfg => propagator   ! alias to avoid clashing with the module name
@@ -28,8 +28,8 @@ module samp_glo_target
    ! Member-owned parameters
    type :: glo_target_params_t
       real(8) :: t_glo = 0.0d0     ! bath temperature [K]
-      real(8) :: gamma_glo = 0.0d0 ! damping coefficient [1/(10 fs)]
-      real(8) :: w_ghost = 0.0d0   ! ghost oscillator frequency [1/(10 fs)]
+      real(8) :: gamma_glo = 0.0d0 ! damping coefficient [1/fs]
+      real(8) :: w_ghost = 0.0d0   ! ghost oscillator frequency [1/fs]
    end type
 
    ! Derived member state (module-private; rebuilt by every glo_target_init) -
@@ -37,17 +37,17 @@ module samp_glo_target
    type :: carry_t
       integer :: frag = 0             ! carrier list_atoms fragment row [-]
       integer :: nat = 0              ! carrier atom count [-]
-      real(8), allocatable :: sig_noise(:) ! per-atom noise amplitudes [amu*Ang/(10 fs)^2]
-      real(8), allocatable :: sig_p(:)     ! per-atom stationary momentum widths [amu*Ang/(10 fs)]
+      real(8), allocatable :: sig_noise(:) ! per-atom noise amplitudes [amu*Ang/fs^2]
+      real(8), allocatable :: sig_p(:)     ! per-atom stationary momentum widths [amu*Ang/fs]
       real(8), allocatable :: sig_q(:)     ! per-atom stationary coordinate widths [Ang]
       real(8), allocatable :: ghost_q(:)   ! last drawn ghost coordinates [Ang] (3 per target atom)
-      real(8), allocatable :: ghost_p(:)   ! last drawn ghost momenta [amu*Ang/(10 fs)]
+      real(8), allocatable :: ghost_p(:)   ! last drawn ghost momenta [amu*Ang/fs]
    end type carry_t
    type(carry_t), allocatable :: carry(:)  ! carrier rows (list_atoms order)
    real(8) :: t_glo_c = 0.0d0        ! bath temperature [K]
-   real(8) :: gamma_c = 0.0d0        ! damping coefficient [1/(10 fs)]
-   real(8) :: w_c = 0.0d0            ! ghost frequency [1/(10 fs)]
-   real(8) :: dt_c = 0.0d0           ! the propagator step read at init [10 fs]
+   real(8) :: gamma_c = 0.0d0        ! damping coefficient [1/fs]
+   real(8) :: w_c = 0.0d0            ! ghost frequency [1/fs]
+   real(8) :: dt_c = 0.0d0           ! the propagator step read at init [fs]
    logical :: inited = .false.       ! init completed [flag]
 contains
    !------------------------------------------------------------------
@@ -62,15 +62,15 @@ contains
          call stop_gloz('glo_target_init', 'bath temperature t_glo [K] must be positive, got', p%t_glo)
       end if
       if (p%gamma_glo <= 0.0d0) then
-         call stop_gloz('glo_target_init', 'damping coefficient gamma_glo [1/(10 fs)] must be '// &
+         call stop_gloz('glo_target_init', 'damping coefficient gamma_glo [1/fs] must be '// &
             'positive, got', p%gamma_glo)
       end if
       if (p%w_ghost <= 0.0d0) then
-         call stop_gloz('glo_target_init', 'ghost oscillator frequency w_ghost [1/(10 fs)] must '// &
+         call stop_gloz('glo_target_init', 'ghost oscillator frequency w_ghost [1/fs] must '// &
             'be positive, got', p%w_ghost)
       end if
       if (prop_cfg%dt <= 0.0d0) then
-         call stop_gloz('glo_target_init', 'the propagator step dt [10 fs] the bath strengths are '// &
+         call stop_gloz('glo_target_init', 'the propagator step dt [fs] the bath strengths are '// &
             'calibrated against must be positive, got', prop_cfg%dt)
       end if
 
@@ -114,9 +114,9 @@ contains
                    carry(kc)%sig_q(carry(kc)%nat))
          do j = 1, carry(kc)%nat
             associate (m_i => list_atoms%mass(list_atoms%frag(carry(kc)%frag)%list(j)))
-               carry(kc)%sig_noise(j) = sqrt(2.0d0*p%gamma_glo*m_i*kb_code*p%t_glo/prop_cfg%dt)
-               carry(kc)%sig_p(j) = sqrt(m_i*kb_code*p%t_glo)
-               carry(kc)%sig_q(j) = sqrt(kb_code*p%t_glo/(m_i*p%w_ghost**2))
+               carry(kc)%sig_noise(j) = sqrt(2.0d0*p%gamma_glo*m_i*kb_act*p%t_glo/prop_cfg%dt)
+               carry(kc)%sig_p(j) = sqrt(m_i*kb_act*p%t_glo)
+               carry(kc)%sig_q(j) = sqrt(kb_act*p%t_glo/(m_i*p%w_ghost**2))
             end associate
          end do
          allocate (carry(kc)%ghost_q(3*carry(kc)%nat), carry(kc)%ghost_p(3*carry(kc)%nat))

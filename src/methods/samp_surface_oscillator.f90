@@ -8,10 +8,10 @@
 !   positions partition by mass fractions so the COM does not move.
 !   One scalar force constant; the member overwrites (never adds to)
 !   its carrier's q/p components.
-!   Units: k_osc [kcal/mol/Ang^2] via e_conv; E [internal]; omega [rad/(10 fs)]; q [Ang]; p [amu*Ang/(10 fs)].
+!   Units: k_osc [eV/Ang^2] via ev_dyn; E [eV]; omega [rad/fs]; q [Ang]; p [amu*Ang/fs].
 !=====================================================================
 module samp_surface_oscillator
-   use consts,        only: hbar_code, kb_code, e_conv, two_pi
+   use consts,        only: hbar_evfs, kb_ev, ev_dyn, two_pi
    use rng,           only: rng_u
    use state,         only: state_t
    use config,        only: reactants
@@ -27,7 +27,8 @@ module samp_surface_oscillator
       integer :: n_osc = 0         ! energy-law selector: 0 thermal, 1 quantum level [-]
       real(8) :: t_osc = 300.0d0   ! oscillator temperature [K] (mode 0)
       integer :: n_level = 0       ! vibrational quantum number n [-] (mode 1)
-      real(8) :: k_osc = 30.0d0    ! harmonic force constant [kcal/mol/Ang^2]
+      real(8) :: k_osc = 1.30092582d0 ! harmonic force constant [eV/Ang^2] (default = the
+                                      ! pre-2026-10-06 30.0 kcal/mol/Ang^2 re-expressed)
    end type
 
    ! Derived member state (module-private; rebuilt by every surface_oscillator_init) -
@@ -40,13 +41,13 @@ module samp_surface_oscillator
       real(8) :: qz_a(3) = 0.0d0, qz_b(3) = 0.0d0  ! equilibrium positions [Angstrom]
       real(8) :: u_bond(3) = 0.0d0          ! equilibrium bond unit direction (a -> b) [-]
       real(8) :: fr_a = 0.0d0, fr_b = 0.0d0 ! COM partition fractions m_b/m_tot, m_a/m_tot [-]
-      real(8) :: om_c = 0.0d0               ! harmonic frequency [rad/(10 fs)]
-      real(8) :: e_quant = 0.0d0            ! fixed quantum energy (mode 1) [internal]
-      real(8) :: last_e = 0.0d0             ! energy of the last realization [internal]
-      real(8) :: del_s = 0.0d0, vel_s = 0.0d0 ! the drawn stretch/velocity pair (post-draw record) [Ang], [Ang/(10 fs)]
+      real(8) :: om_c = 0.0d0               ! harmonic frequency [rad/fs]
+      real(8) :: e_quant = 0.0d0            ! fixed quantum energy (mode 1) [eV]
+      real(8) :: last_e = 0.0d0             ! energy of the last realization [eV]
+      real(8) :: del_s = 0.0d0, vel_s = 0.0d0 ! the drawn stretch/velocity pair (post-draw record) [Ang], [Ang/fs]
    end type carry_t
    type(carry_t), allocatable :: carry(:)   ! carrier rows (list_atoms order)
-   real(8) :: k_int = 0.0d0                 ! force constant [internal/Ang^2]
+   real(8) :: k_int = 0.0d0                 ! force constant [amu/fs^2] (= k_osc [eV/Ang^2] * ev_dyn)
    real(8) :: t_c = 0.0d0                   ! validated oscillator temperature (mode 0) [K]
    integer :: n_osc_c = 0                   ! validated energy-law selector [-]
    logical :: inited = .false.              ! init completed [flag]
@@ -74,7 +75,7 @@ contains
             '>= 0, got', p%n_level)
       end if
       if (p%k_osc <= 0.0d0) then
-         call stop_soiz('surface_oscillator_init', 'force constant k_osc [kcal/mol/Ang^2] must '// &
+         call stop_soiz('surface_oscillator_init', 'force constant k_osc [eV/Ang^2] must '// &
             'be positive (a silent substitute is not drawn), got', p%k_osc)
       end if
 
@@ -101,7 +102,7 @@ contains
          call stop_sox('surface_oscillator_init', 'no list_atoms fragment carries the '// &
             'surface_oscillator scheme - this member would never be dispatched')
       end if
-      k_int = p%k_osc*e_conv
+      k_int = p%k_osc*ev_dyn
       n_osc_c = p%n_osc
       if (allocated(carry)) deallocate (carry)
       allocate (carry(n_carry))
@@ -133,7 +134,7 @@ contains
             cr%fr_a = cr%m_b/m_tot                ! position partition: r_a shifts by -fr_a*delta
             cr%fr_b = cr%m_a/m_tot                ! r_b shifts by +fr_b*delta
             cr%om_c = sqrt(k_int/cr%mu_c)
-            cr%e_quant = (dble(p%n_level) + 0.5d0)*hbar_code*cr%om_c
+            cr%e_quant = (dble(p%n_level) + 0.5d0)*hbar_evfs*cr%om_c
          end associate
       end do
       t_c = p%t_osc
@@ -162,11 +163,11 @@ contains
          if (n_osc_c == 0) then
             u = rng_u()
             if (u <= 0.0d0) u = 1.0d-300          ! degenerate-draw clamp (idle in practice)
-            e_draw = -kb_code*t_c*log(u)
+            e_draw = -kb_ev*t_c*log(u)
          else
             e_draw = cr%e_quant
          end if
-         amp = sqrt(2.0d0*e_draw/k_int)
+         amp = sqrt(2.0d0*e_draw*ev_dyn/k_int)
          ph = two_pi*rng_u()
          cr%del_s = amp*cos(ph)
          cr%vel_s = -cr%om_c*amp*sin(ph)

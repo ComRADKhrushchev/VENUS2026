@@ -10,7 +10,7 @@
 !   site) and rot_apply writes the state (no RNG - the realize half).
 !=====================================================================
 module geometry
-   use consts, only: pi, two_pi, e_conv
+   use consts, only: pi, two_pi, dyn_ev
    use state,  only: state_t
    use rng,    only: rng_u
    implicit none
@@ -20,7 +20,7 @@ module geometry
    ! Center-of-mass frame workspace (derived quantities do not enter state; rebuilt
    ! by cenmas on every call):
    real(8), allocatable :: q_cm_frm(:)  ! center-of-mass-frame coordinates [Å]
-   real(8), allocatable :: p_cm_frm(:)  ! center-of-mass-frame momenta [amu·Å/(10 fs)]
+   real(8), allocatable :: p_cm_frm(:)  ! center-of-mass-frame momenta [amu·Å/fs]
 contains
    !------------------------------------------------------------------
    ! cenmas(st, mass, list, q_cm, v_cm) - center-of-mass position/velocity computation + separation of
@@ -30,7 +30,7 @@ contains
       real(8), intent(in) :: mass(:)     ! per-atom masses [amu]
       integer, intent(in) :: list(:)     ! fragment atom index list [global atom index]
       real(8), intent(out) :: q_cm(3)    ! center-of-mass coordinates [Å]
-      real(8), intent(out) :: v_cm(3)    ! center-of-mass velocity [Å/(10 fs)]
+      real(8), intent(out) :: v_cm(3)    ! center-of-mass velocity [Å/fs]
       integer :: i, j, j3, j2, j1
       real(8) :: wt
       ! 1. center-of-mass position and velocity sums over the atom list
@@ -163,7 +163,7 @@ contains
       type(state_t), intent(inout) :: st  ! physical state (the in-list q/p components rotated in place)
       real(8), intent(in) :: mass(:)      ! per-atom masses [amu]
       integer, intent(in) :: list(:)      ! fragment atom index list
-      real(8), intent(in) :: j_vec(3)     ! fragment angular momentum vector [amu·Å²/(10 fs)]
+      real(8), intent(in) :: j_vec(3)     ! fragment angular momentum vector [amu·Å²/fs]
       integer, intent(in) :: j_rot        ! rotational quantum number J
       integer, intent(in) :: m_proj       ! projection quantum number M
       real(8) :: xt2, yt2, zt2, xt3, yt3, zt3, xt4, zt4, rxx, rxy, ryx, ryy, rxz, rzx, rzz
@@ -303,7 +303,7 @@ contains
       type(state_t), intent(inout) :: st  ! physical state (the in-list st%p components subtracted in place)
       real(8), intent(in) :: mass(:)      ! per-atom masses [amu]
       integer, intent(in) :: list(:)      ! fragment atom index list
-      real(8), intent(in) :: omega(3)     ! angular velocity [rad/(10 fs)] (from amom)
+      real(8), intent(in) :: omega(3)     ! angular velocity [rad/fs] (from amom)
       integer :: i, j, j3, j2, j1
       ! precondition: cenmas has built the COM-frame workspace
       do i = 1, size(list)
@@ -325,9 +325,9 @@ contains
       type(state_t), intent(in) :: st          ! physical state (read-only; r, p via the COM workspace)
       real(8), intent(in) :: mass(:)           ! per-atom masses [amu]
       integer, intent(in) :: list(:)           ! fragment atom index list
-      real(8), intent(out) :: j_vec(3)         ! angular momentum vector [amu·Å²/(10 fs)]
-      real(8), intent(out) :: e_rot            ! rotational energy [kcal/mol]
-      real(8), intent(out), optional :: omega(3) ! angular velocity [rad/(10 fs)]
+      real(8), intent(out) :: j_vec(3)         ! angular momentum vector [amu·Å²/fs]
+      real(8), intent(out) :: e_rot            ! rotational energy [eV]
+      real(8), intent(out), optional :: omega(3) ! angular velocity [rad/fs]
       real(8) :: aixx, aiyy, aizz, aixy, aixz, aiyz, det, sr
       real(8) :: uxx, uxy, uxz, uyy, uyz, uzz, wx, wy, wz
       integer :: i, j, j3, j2, j1, k
@@ -354,7 +354,7 @@ contains
             end do
             aixx = aixx + sr*mass(list(i))
          end do
-         e_rot = (j_vec(1)**2 + j_vec(2)**2 + j_vec(3)**2)/aixx/2.0d0/e_conv
+         e_rot = (j_vec(1)**2 + j_vec(2)**2 + j_vec(3)**2)/aixx/2.0d0*dyn_ev
          return
       end if
       ! 2. the inertia tensor
@@ -394,11 +394,11 @@ contains
             end do
             aixx = aixx + sr*mass(list(i))
          end do
-         e_rot = (j_vec(1)**2 + j_vec(2)**2 + j_vec(3)**2)/aixx/2.0d0/e_conv
+         e_rot = (j_vec(1)**2 + j_vec(2)**2 + j_vec(3)**2)/aixx/2.0d0*dyn_ev
          return
       end if
       if (present(omega)) omega = (/ wx, wy, wz /)
-      e_rot = (wx*j_vec(1) + wy*j_vec(2) + wz*j_vec(3))/2.0d0/e_conv
+      e_rot = (wx*j_vec(1) + wy*j_vec(2) + wz*j_vec(3))/2.0d0*dyn_ev
    end subroutine amom
 
    !------------------------------------------------------------------

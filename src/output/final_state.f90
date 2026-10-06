@@ -6,12 +6,12 @@
 !   table (gas/surface unified, no system branches). Surface-specific quantities
 !   (the surface mu and the ang(19)/ang(20) pair) follow the resolved projectile
 !   role list_atoms%i_proj; the A/B channel bookkeeping stays positional. Angular
-!   momenta in hbar, energies in kcal/mol, angles in degrees. Also hosts the
+!   momenta in hbar, energies in eV, angles in degrees. Also hosts the
 !   container's single outcome-classification slot (bind + statistics-phase call +
 !   bound query).
 !=====================================================================
 module final_state
-   use consts,        only: hbar_code, e_conv, dtor, two_pi
+   use consts,        only: hbar_act, ev_dyn, dyn_ev, dtor, two_pi
    use state,         only: state_t
    use config,        only: reactants
    use config_atoms, only: list_atoms
@@ -27,27 +27,27 @@ module final_state
 
    ! Final-state quantity receiver type (fin_eval output)
    type :: fin_t
-      real(8) :: e_int_a(3) = 0.0d0   ! fragment-A internal energy [kcal/mol]: (1) internal kinetic
+      real(8) :: e_int_a(3) = 0.0d0   ! fragment-A internal energy [eV]: (1) internal kinetic
                                       ! (2) internal potential - reference (3) total
-      real(8) :: e_int_b(3) = 0.0d0   ! fragment-B internal energy [kcal/mol] (same layout; the atom list%frag(2) row)
+      real(8) :: e_int_b(3) = 0.0d0   ! fragment-B internal energy [eV] (same layout; the atom list%frag(2) row)
       real(8) :: j_a(3)     = 0.0d0   ! fragment-A angular momentum vector [hbar]
       real(8) :: j_mag_a    = 0.0d0   ! fragment-A angular momentum magnitude [hbar]
-      real(8) :: e_rot_a    = 0.0d0   ! fragment-A rotational energy [kcal/mol]
+      real(8) :: e_rot_a    = 0.0d0   ! fragment-A rotational energy [eV]
       real(8) :: j_b(3)     = 0.0d0   ! fragment-B angular momentum vector [hbar]
       real(8) :: j_mag_b    = 0.0d0   ! fragment-B angular momentum magnitude [hbar]
-      real(8) :: e_rot_b    = 0.0d0   ! fragment-B rotational energy [kcal/mol]
-      real(8) :: e_rel      = 0.0d0   ! relative translational energy (radial projection) [kcal/mol]
-      real(8) :: e_rel_sq   = 0.0d0   ! relative translational energy (full velocity) [kcal/mol]
+      real(8) :: e_rot_b    = 0.0d0   ! fragment-B rotational energy [eV]
+      real(8) :: e_rel      = 0.0d0   ! relative translational energy (radial projection) [eV]
+      real(8) :: e_rel_sq   = 0.0d0   ! relative translational energy (full velocity) [eV]
       real(8) :: oam(3)     = 0.0d0   ! orbital angular momentum vector [hbar]
       real(8) :: oam_mag    = 0.0d0   ! orbital angular momentum magnitude [hbar]
       real(8) :: b_fin      = 0.0d0   ! final impact parameter [Å] (= oam_mag/mu/|v_rel|)
-      real(8) :: e_cm       = 0.0d0   ! whole-system center-of-mass translational energy [kcal/mol]
+      real(8) :: e_cm       = 0.0d0   ! whole-system center-of-mass translational energy [eV]
       real(8) :: ang(20)    = 0.0d0   ! scattering-angle family [deg] (1-3 final-value pairs,
                                       ! 4-16 initial-value-dependent combinations, 17-18 surface
                                       ! incident, 19-20 surface scattering)
-      real(8) :: t_life     = 0.0d0   ! trajectory lifetime [fs] (= sta%t*10)
+      real(8) :: t_life     = 0.0d0   ! trajectory lifetime [fs] (= sta%t)
       real(8), allocatable :: q_fin(:) ! final COM-frame coordinate archive [Å] (for normal-mode analysis)
-      real(8), allocatable :: p_fin(:) ! final COM-frame momentum archive [amu·Å/(10 fs)]
+      real(8), allocatable :: p_fin(:) ! final COM-frame momentum archive [amu·Å/fs]
       real(8), allocatable :: q_raw(:) ! final raw system-frame coordinates [Å] (all atoms,
                                       ! as the trajectory left them - the channel-classification
                                       ! and any inter-fragment distance consumer reads THIS,
@@ -88,7 +88,7 @@ contains
       real(8) :: q_cm(3), v_cm(3)         ! one fragment's COM (the cenmas returns)
       real(8) :: ptot(3)                  ! the whole-system linear momentum (per component)
       real(8) :: j_vec(3), e_rot, omg(3)  ! one fragment's angular momentum / energy / omega
-      real(8) :: tkin, e_pot              ! internal kinetic / buffered potential [kcal/mol]
+      real(8) :: tkin, e_pot              ! internal kinetic / buffered potential [eV]
       real(8) :: qr(3), vr(3)             ! relative COM position / velocity
       real(8) :: qr_mag, vr_mag, v_rad    ! their magnitudes + the radial speed
       real(8) :: mu, m_a, m_b             ! reduced / fragment masses [amu]
@@ -158,14 +158,14 @@ contains
             end do
          end do
          if (i == 1) then
-            fin%e_int_a(1) = tkin/e_conv
-            fin%j_a = j_vec/hbar_code
-            fin%j_mag_a = sqrt(dot_product(j_vec, j_vec))/hbar_code
+            fin%e_int_a(1) = tkin*dyn_ev
+            fin%j_a = j_vec/hbar_act
+            fin%j_mag_a = sqrt(dot_product(j_vec, j_vec))/hbar_act
             fin%e_rot_a = e_rot
          else
-            fin%e_int_b(1) = tkin/e_conv
-            fin%j_b = j_vec/hbar_code
-            fin%j_mag_b = sqrt(dot_product(j_vec, j_vec))/hbar_code
+            fin%e_int_b(1) = tkin*dyn_ev
+            fin%j_b = j_vec/hbar_act
+            fin%j_mag_b = sqrt(dot_product(j_vec, j_vec))/hbar_act
             fin%e_rot_b = e_rot
          end if
       end do
@@ -207,7 +207,7 @@ contains
       do d = 1, 3
          ptot(d) = sum(sta%p(d::3))
       end do
-      fin%e_cm = dot_product(ptot, ptot)/(2.0d0*sum(list_atoms%mass))/e_conv
+      fin%e_cm = dot_product(ptot, ptot)/(2.0d0*sum(list_atoms%mass))*dyn_ev
       ! 5. relative motion of the fragment pair (two fragments only)
       if (nf == 2) then
          m_a = list_atoms%frag(1)%mass
@@ -226,14 +226,14 @@ contains
          else
             v_rad = 0.0d0                    ! coincident centers: no radial direction
          end if
-         fin%e_rel = mu*v_rad*v_rad/2.0d0/e_conv
-         fin%e_rel_sq = mu*dot_product(vr, vr)/2.0d0/e_conv
+         fin%e_rel = mu*v_rad*v_rad/2.0d0*dyn_ev
+         fin%e_rel_sq = mu*dot_product(vr, vr)/2.0d0*dyn_ev
          oam_v(1) = mu*(qr(2)*vr(3) - qr(3)*vr(2))
          oam_v(2) = mu*(qr(3)*vr(1) - qr(1)*vr(3))
          oam_v(3) = mu*(qr(1)*vr(2) - qr(2)*vr(1))
          oam_m = sqrt(dot_product(oam_v, oam_v))
-         fin%oam = oam_v/hbar_code
-         fin%oam_mag = oam_m/hbar_code
+         fin%oam = oam_v/hbar_act
+         fin%oam_mag = oam_m/hbar_act
          if (vr_mag >= 1.0d-12) fin%b_fin = oam_m/(mu*vr_mag)
       end if
       ! 6. final-value scattering angles (the family that needs no initial values; the
@@ -271,8 +271,8 @@ contains
             end if
          end if
       end if
-      ! 8. trajectory lifetime (internal time unit 10 fs -> fs)
-      fin%t_life = sta%t*10.0d0
+      ! 8. trajectory lifetime (the internal time unit is fs since 2026-10-06)
+      fin%t_life = sta%t
    end subroutine fin_eval
    !------------------------------------------------------------------
    ! container_bind_classify(proc) - fill the classification slot: store

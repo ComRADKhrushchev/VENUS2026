@@ -16,10 +16,10 @@
 !   Drop-point modes: 0 = origin, 1 = uniform in the unit cell (needs the
 !   buffered cell), 2 = the fixed site (aim_x, aim_y) [Angstrom, the
 !   POSCAR frame] - the surface member's fixed-incidence option.
-! Units: angles [rad]; t_trans [K]; e_rel [kcal/mol] via e_conv; speeds [Ang/(10 fs)]; p [amu*Ang/(10 fs)].
+! Units: angles [rad]; t_trans [K]; e_rel [eV]; speeds [Ang/fs]; p [amu*Ang/fs].
 !=====================================================================
 module beam_laws
-   use consts,       only: pi, two_pi, e_conv, r_kcal
+   use consts,       only: pi, two_pi, ev_dyn, kb_ev
    use rng,          only: rng_u, rng_gamma
    use state,        only: state_t
    use config_atoms, only: list_atoms
@@ -36,8 +36,8 @@ module beam_laws
       integer :: n_e_rel  = 1      ! collision-energy prescription mode [-] (0 = thermal
                                    ! population, 1 = fixed value, 2 = density-weighted)
       real(8) :: t_trans  = 0.0d0  ! translational temperature [K] (mode 0: E_rel =
-                                   ! r_kcal*gamma(2)*t_trans)
-      real(8) :: v_width  = 0.0d0  ! velocity width of the mode-2 density [Angstrom/(10 fs)]
+                                   ! kb_ev*gamma(2)*t_trans)
+      real(8) :: v_width  = 0.0d0  ! velocity width of the mode-2 density [Angstrom/fs]
       integer :: n_thta   = 0      ! polar-angle mode [-] (0 = fixed beam theta = thta_max,
                                    ! 1 = P(theta) prop. to sin(theta) sampling)
       real(8) :: thta_max = 0.0d0  ! polar-angle bound [rad] (fixed value / sampling bound)
@@ -64,14 +64,14 @@ module beam_laws
       real(8) :: cos_tmax = 1.0d0   ! cos(thta_max) (fixed polar value / sampling bound) [-]
       real(8) :: chi_fix = 0.0d0    ! fixed azimuth [rad]
       real(8) :: t_trans_c = 0.0d0  ! translational temperature copy [K]
-      real(8) :: e_rel_i = 0.0d0    ! collision energy [internal] (modes 1 and 2)
+      real(8) :: e_rel_i = 0.0d0    ! collision energy [eV] (modes 1 and 2)
       real(8) :: b_max_c = 0.0d0    ! collision-disk radius [Angstrom]
       real(8) :: r_sep_c = 0.0d0    ! drop height / beam back-off scale [Angstrom]
       real(8) :: mu_eff = 0.0d0     ! effective mass of the relative motion [amu]
-      real(8) :: v0_c = 0.0d0       ! mode-2 center speed [Angstrom/(10 fs)]
-      real(8) :: alpha_c = 0.0d0    ! mode-2 velocity width [Angstrom/(10 fs)]
-      real(8) :: v_star = 0.0d0     ! mode-2 density peak [Angstrom/(10 fs)]
-      real(8) :: v_hi = 0.0d0       ! mode-2 proposal upper bound [Angstrom/(10 fs)]
+      real(8) :: v0_c = 0.0d0       ! mode-2 center speed [Angstrom/fs]
+      real(8) :: alpha_c = 0.0d0    ! mode-2 velocity width [Angstrom/fs]
+      real(8) :: v_star = 0.0d0     ! mode-2 density peak [Angstrom/fs]
+      real(8) :: v_hi = 0.0d0       ! mode-2 proposal upper bound [Angstrom/fs]
       real(8) :: f_star = 0.0d0     ! mode-2 envelope height DENS(v*) [-]
       real(8) :: a1_vec(2) = 0.0d0  ! unit-cell edge a1 [Angstrom]
       real(8) :: a2_vec(2) = 0.0d0  ! unit-cell edge a2 [Angstrom]
@@ -85,7 +85,7 @@ module beam_laws
       real(8) :: phi_s = 0.0d0      ! drawn disk azimuth [rad]
       real(8) :: rx0_s = 0.0d0      ! drawn drop point x [Angstrom]
       real(8) :: ry0_s = 0.0d0      ! drawn drop point y [Angstrom]
-      real(8) :: vv_s = 0.0d0       ! drawn collision speed [Angstrom/(10 fs)]
+      real(8) :: vv_s = 0.0d0       ! drawn collision speed [Angstrom/fs]
    end type
 contains
    !------------------------------------------------------------------
@@ -98,7 +98,7 @@ contains
       type(beam_t), intent(inout) :: b
       type(beam_params_t), intent(in) :: p
       real(8), intent(in) :: mu_eff          ! effective mass [amu] (caller's paradigm)
-      real(8), intent(in) :: e_rel           ! collision energy [kcal/mol]
+      real(8), intent(in) :: e_rel           ! collision energy [eV]
       real(8), intent(in) :: b_max           ! collision-disk radius [Angstrom]
       real(8), intent(in) :: r_sep           ! initial separation [Angstrom]
       character(len=*), intent(in) :: caller ! abort prefix (the member's init name)
@@ -167,7 +167,7 @@ contains
       if ((p%n_e_rel == 1 .or. p%n_e_rel == 2) .and. e_rel <= 0.0d0) then
          dum = e_rel
          call stop_beamz(caller, 'collision-energy modes 1 and 2 require a positive collision '// &
-            'energy e_rel [kcal/mol] in the reactants provision, got', dum)
+            'energy e_rel [eV] in the reactants provision, got', dum)
       end if
       if (b_max < 0.0d0 .or. (b_max == 0.0d0 .and. .not. b_zero_ok)) then
          dum = b_max
@@ -191,7 +191,7 @@ contains
       b%cos_tmax = cos(p%thta_max)
       b%chi_fix = p%chi
       b%t_trans_c = p%t_trans
-      b%e_rel_i = e_conv*e_rel
+      b%e_rel_i = e_rel
       b%b_max_c = b_max
       b%r_sep_c = r_sep
       b%mu_eff = mu_eff
@@ -199,7 +199,7 @@ contains
       b%aim_y_c = p%aim_y
       if (b%mode_e == 2) then
          b%alpha_c = p%v_width
-         b%v0_c = sqrt(2.0d0*b%e_rel_i/mu_eff)
+         b%v0_c = sqrt(2.0d0*b%e_rel_i*ev_dyn/mu_eff)
          b%v_star = 0.5d0*b%v0_c + sqrt(0.25d0*b%v0_c*b%v0_c + 1.5d0*b%alpha_c*b%alpha_c)
          b%v_hi = 5.0d0*b%v_star
          b%f_star = dens(b, b%v_star)
@@ -264,9 +264,9 @@ contains
       ! 4. collision speed per energy mode
       select case (b%mode_e)
       case (0)
-         b%vv_s = sqrt(2.0d0*e_conv*r_kcal*b%t_trans_c*rng_gamma(2)/b%mu_eff)
+         b%vv_s = sqrt(2.0d0*kb_ev*b%t_trans_c*rng_gamma(2)*ev_dyn/b%mu_eff)
       case (1)
-         b%vv_s = sqrt(2.0d0*b%e_rel_i/b%mu_eff)
+         b%vv_s = sqrt(2.0d0*b%e_rel_i*ev_dyn/b%mu_eff)
       case (2)
          do n_try = 1, max_reject
             b%vv_s = b%v_hi*rng_u()

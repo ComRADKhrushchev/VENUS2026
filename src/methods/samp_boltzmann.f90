@@ -6,7 +6,7 @@
 !   the energy shell with a uniform phase, back-transformed about the COM
 ! Design:
 !   One temperature serves every carrier fragment equally (the equal-
-!   treatment statute); the FULL mode tables (frequencies in rad/(10 fs)
+!   treatment statute); the FULL mode tables (frequencies in rad/fs
 !   plus orthonormal mass-weighted columns) arrive as assembly data - one
 !   per carrier - and init validates shape and orthonormality loudly per
 !   carrier (the normalmode member's contract). The draw law keeps the
@@ -17,11 +17,11 @@
 !   exactly on its (n+1/2)*hbar*w shell (QCT standard: the zero point is
 !   included), COM-origin output, zero net momentum (the mode span
 !   excludes translations).
-!   Units: nu [cm^-1], w [rad/(10 fs)], T [K], E [internal]; hbar =
-!   hbar_code; hc/k = 1.43878 cm*K.
+!   Units: nu [cm^-1], w [rad/fs], T [K], E [eV]; hbar =
+!   hbar_evfs; hc/k = 1.43878 cm*K.
 !=====================================================================
 module samp_boltzmann
-   use consts,        only: hbar_code
+   use consts,        only: hbar_evfs, ev_dyn
    use rng,           only: rng_gamma, rng_u
    use state,         only: state_t
    use config,        only: reactants
@@ -41,7 +41,7 @@ module samp_boltzmann
    ! One carrier's mode table (assembly data; fragments carry different
    ! mode counts, so the tables are ragged per carrier)
    type :: mode_tbl_t
-      real(8), allocatable :: w(:)       ! mode frequencies [rad/(10 fs)]
+      real(8), allocatable :: w(:)       ! mode frequencies [rad/fs]
       real(8), allocatable :: c(:,:)     ! (3*nat x n_mode) orthonormal mass-weighted columns
    end type mode_tbl_t
 
@@ -63,7 +63,7 @@ module samp_boltzmann
       integer, allocatable :: list(:)       ! carrier atom index list [global atom index]
       real(8), allocatable :: qz_com(:)     ! COM-shifted seed coordinates [Angstrom]
       real(8), allocatable :: sqm(:)        ! sqrt(mass) per component [sqrt(amu)]
-      real(8), allocatable :: w_c(:)        ! validated frequencies [rad/(10 fs)]
+      real(8), allocatable :: w_c(:)        ! validated frequencies [rad/fs]
       real(8), allocatable :: c_c(:,:)      ! validated eigenvector table
       real(8), allocatable :: dum(:)        ! per-mode geometric step (h*c/k)*nu/T [-]
       integer, allocatable :: n_last(:)     ! last drawn quantum-number table [-]
@@ -105,7 +105,7 @@ contains
          end if
          do i = 1, size(p%tbl(k)%w)
             if (p%tbl(k)%w(i) <= 0.0d0) then
-               call stop_boltz('boltz_init', 'mode frequency w [rad/(10 fs)] must be '// &
+               call stop_boltz('boltz_init', 'mode frequency w [rad/fs] must be '// &
                   'positive; entry =', p%tbl(k)%w(i))
             end if
          end do
@@ -269,8 +269,8 @@ contains
          end if
          allocate (qmode(size(cr%w_c)), pmode(size(cr%w_c)), x_vec(3*cr%nat), y_vec(3*cr%nat))
          do k = 1, size(cr%w_c)
-            e_i = (dble(cr%n_last(k)) + 0.5d0)*hbar_code*cr%w_c(k)
-            amp = sqrt(2.0d0*e_i)/cr%w_c(k)
+            e_i = (dble(cr%n_last(k)) + 0.5d0)*hbar_evfs*cr%w_c(k)
+            amp = sqrt(2.0d0*e_i*ev_dyn)/cr%w_c(k)
             qmode(k) = amp*cos(cr%ph_last(k))
             pmode(k) = -cr%w_c(k)*amp*sin(cr%ph_last(k))
          end do

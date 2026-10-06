@@ -8,11 +8,11 @@
 !   init validates shape and orthonormality loudly per carrier. Sample
 !   places the full energy exactly once per carrier - no angular-momentum
 !   stripping or orientation randomization (the rotation member's channel).
-!   Units: e_vib [kcal/mol] via e_conv; E [internal]; w_mode
-!   [rad/(10 fs)]; q [Angstrom]; p [amu*Ang/(10 fs)]; m [amu].
+!   Units: e_vib [eV]; E [eV]; w_mode
+!   [rad/fs]; q [Angstrom]; p [amu*Ang/fs]; m [amu].
 !=====================================================================
 module samp_normalmode
-   use consts,        only: e_conv, two_pi
+   use consts,        only: ev_dyn, two_pi
    use rng,           only: rng_u, rng_gauss
    use state,         only: state_t
    use config,        only: reactants
@@ -28,13 +28,14 @@ module samp_normalmode
    ! One carrier's mode table (assembly data; fragments carry different
    ! spectra, so the tables are ragged per carrier)
    type :: mode_tbl_t
-      real(8), allocatable :: w(:)       ! mode frequencies [rad/(10 fs)]
+      real(8), allocatable :: w(:)       ! mode frequencies [rad/fs]
       real(8), allocatable :: c(:,:)     ! (3*nat x n_mode) orthonormal mass-weighted columns
    end type mode_tbl_t
 
    ! Member-owned parameters (the mode tables arrive as assembly data)
    type :: normalmode_params_t
-      real(8) :: e_vib = 10.0d0               ! total vibrational energy [kcal/mol] (every carrier)
+      real(8) :: e_vib = 0.43364194d0         ! total vibrational energy [eV] (every carrier;
+                                              ! default = the pre-2026-10-06 10.0 kcal/mol re-expressed)
       type(mode_tbl_t), allocatable :: tbl(:) ! per-carrier mode tables (list_atoms order)
    end type
 
@@ -47,12 +48,12 @@ module samp_normalmode
       integer, allocatable :: list(:)         ! carrier atom index list [global atom index]
       real(8), allocatable :: qz_com(:)       ! COM-shifted seed coordinates [Angstrom]
       real(8), allocatable :: sqm(:)          ! sqrt(mass) replicated per component [sqrt(amu)]
-      real(8), allocatable :: w_c(:)          ! validated frequencies [rad/(10 fs)]
+      real(8), allocatable :: w_c(:)          ! validated frequencies [rad/fs]
       real(8), allocatable :: c_c(:,:)        ! validated eigenvector table
-      real(8), allocatable :: x_s(:), y_s(:)  ! the drawn Cartesian pair (post-draw record) [sqrt(amu)*Ang], [amu*Ang/(10 fs)]
+      real(8), allocatable :: x_s(:), y_s(:)  ! the drawn Cartesian pair (post-draw record) [sqrt(amu)*Ang], [amu*Ang/fs]
    end type carry_t
    type(carry_t), allocatable :: carry(:)     ! carrier rows (list_atoms order)
-   real(8) :: e_tot = 0.0d0                   ! total vibrational energy [internal]
+   real(8) :: e_tot = 0.0d0                   ! total vibrational energy [eV]
    logical :: inited = .false.                ! init completed [flag]
 contains
    !------------------------------------------------------------------
@@ -65,7 +66,7 @@ contains
 
       ! 1. parameter validation (fail-loud, naming field + value)
       if (p%e_vib <= 0.0d0) then
-         call stop_nmz('normalmode_init', 'total vibrational energy e_vib [kcal/mol] must be '// &
+         call stop_nmz('normalmode_init', 'total vibrational energy e_vib [eV] must be '// &
             'positive, got', p%e_vib)
       end if
 
@@ -132,7 +133,7 @@ contains
             end if
             do k = 1, cr%n_mode
                if (p%tbl(kc)%w(k) <= 0.0d0) then
-                  call stop_nmz('normalmode_init', 'mode frequency w_mode [rad/(10 fs)] must be '// &
+                  call stop_nmz('normalmode_init', 'mode frequency w_mode [rad/fs] must be '// &
                      'positive; entry =', p%tbl(kc)%w(k))
                end if
             end do
@@ -176,7 +177,7 @@ contains
             cr%c_c = p%tbl(kc)%c
          end associate
       end do
-      e_tot = p%e_vib*e_conv
+      e_tot = p%e_vib
       inited = .true.
    end subroutine normalmode_init
 
@@ -211,7 +212,7 @@ contains
          end if
          do k = 1, cr%n_mode
             e_i = e_tot*(g_vec(k)/un)**2
-            amp = sqrt(2.0d0*e_i)/cr%w_c(k)
+            amp = sqrt(2.0d0*e_i*ev_dyn)/cr%w_c(k)
             ph = two_pi*rng_u()
             qmode(k) = amp*cos(ph)
             pmode(k) = -cr%w_c(k)*amp*sin(ph)

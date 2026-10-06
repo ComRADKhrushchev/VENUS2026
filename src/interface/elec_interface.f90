@@ -40,7 +40,7 @@ module elec_interface
          ! (its container folder's private modules / level-2 components); writes the
          ! method's declared ontic container (sta%s%a or sta%s%rho; adiabatic/LZSH/MDEF
          ! allocate neither). Forms: amplitude ODE, mapping flow, analytic elimination, no-op
-         real(8), intent(in) :: dt             ! current step [10 fs] (the g_ij(dt)
+         real(8), intent(in) :: dt             ! current step [fs] (the g_ij(dt)
                                               ! hop-probability channel; this member consumes no rng - the stream
                                               ! belongs to the matching member)
       end subroutine elec_prop_i
@@ -248,7 +248,7 @@ contains
       type(state_t), intent(inout) :: sta  ! physical state (sta%q read by the member; the
                                            ! method's declared ontic container sta%s%a /
                                            ! sta%s%rho written)
-      real(8), intent(in) :: dt            ! current step [10 fs] (the g_ij(dt) channel;
+      real(8), intent(in) :: dt            ! current step [fs] (the g_ij(dt) channel;
                                            ! the propagator's actual step, not a config copy)
       ! 1. Assembly-order guard: an unassembled table (i_assembled = 0 - method_bind
       !    not yet run) aborts with a named error (an evolution-phase entry called before assembly)

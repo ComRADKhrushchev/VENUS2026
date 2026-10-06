@@ -15,7 +15,7 @@
 !   B_MAX must NOT be written (ruled 2026-10-01 - lateral placement is
 !   N_AIM's alone; the unwritten default 0 = the on-site beam). The A_LAT key
 !   must be commensurate with the buffered cell (integer ratio, checked).
-! Units: angles [rad]; t_trans [K]; e_rel [kcal/mol] via e_conv; speeds [Ang/(10 fs)]; p [amu*Ang/(10 fs)].
+! Units: angles [rad]; t_trans [K]; e_rel [eV]; speeds [Ang/fs]; p [amu*Ang/fs].
 !=====================================================================
 module inc_surface
    use state,        only: state_t

@@ -14,14 +14,15 @@
 !   composition - the active-surface fold, the member sum, stochastic
 !   laws; an H-shaped container may call the level-2 library components
 !   for the generic eigen-fold). The interface converts once and folds
-!   E = T(P)+V. Members deliver in eV (the exchange unit); the
-!   eV -> internal-unit conversion (23.0605 * e_conv) appears only in
-!   this file. The interface is a purely formal authority
+!   E = T(P)+V. Members deliver in eV (the exchange unit, which since the
+!   2026-10-06 unit ruling IS the internal energy unit); the remaining
+!   fold eV -> dynamical units (*ev_dyn) appears only in this file. The
+!   interface is a purely formal authority
 !   (signatures/units/slots/name dispatch) - physical-combination
 !   legality is member knowledge.
 !=====================================================================
 module force_interface
-   use consts,        only: e_conv
+   use consts,        only: ev_dyn, dyn_ev
    use state,         only: state_t
    use config,        only: electronic
    use config_atoms, only: list_atoms
@@ -31,9 +32,6 @@ module force_interface
    public :: force_eval, container_bind_pes, container_init
    public :: container_bind_term, container_term  ! the termination slot + its evaluation entry
    public :: container_probe_force                ! assembly-time point-force probe (spectra)
-
-   ! eV to kcal/mol conversion (the unit-contract literal; appears only in this file)
-   real(8), parameter :: ev_kcal = 23.0605d0
 
    ! The signature of what the force slot accepts - the type declaration of
    ! the procedure pointer container_pes below (a Fortran implementation
@@ -155,16 +153,16 @@ contains
    !------------------------------------------------------------------
    ! force_eval(sta, e_tot) - the pure force entry (Q,P,s)->(F,E): the
    !                            container delivers the composed kernel ->
-   !                            interface converts (the unique unit-contract
-   !                            point, ev_kcal) -> writes sta%f, e_tot;
+   !                            interface folds (the unique unit-contract
+   !                            point, *ev_dyn) -> writes sta%f, e_tot;
    !                            E = T(P) + V
    !------------------------------------------------------------------
    subroutine force_eval(sta, e_tot)
       type(state_t), intent(inout) :: sta  ! physical state (q/p/s read in; f written out - the composed force)
-      real(8), intent(out) :: e_tot        ! total energy H = T(P)+V [kcal/mol]
+      real(8), intent(out) :: e_tot        ! total energy H = T(P)+V [eV]
       real(8) :: g(size(sta%q))            ! the delivered composed kernel [eV/A]
       real(8) :: v_sum                     ! the delivered potential contribution [eV]
-      real(8) :: v_pot, t_kin              ! energy channels [kcal/mol]
+      real(8) :: v_pot, t_kin              ! energy channels [eV]
       integer :: k
       ! 1. Unbound slot -> named abort (an evolution-phase entry called before
       !    assembly - an assembly-order error, formal)
@@ -177,19 +175,19 @@ contains
       !    the delivery contract fully assigns g and v
       call container_pes(sta%q, list_atoms%mass, g, v_sum)
       ! 3. Unit-contract fulfillment point (unique in the whole library):
-      !    sta%f = -g*ev_kcal*e_conv (the one eV->internal conversion)
+      !    sta%f = -g*ev_dyn (the one eV/A -> amu*A/fs^2 fold)
       sta%f = 0.0d0
-      sta%f = sta%f - g*ev_kcal*e_conv
+      sta%f = sta%f - g*ev_dyn
       ! 4. No electron-law consumption here (that lives in elec_prop /
       !    mqc_statistic in elec_interface)
-      ! 5. Energy [kcal/mol]: v_pot = v_sum*ev_kcal; t_kin = sum p^2/(2*list_atoms%mass)/e_conv
+      ! 5. Energy [eV]: v_pot = v_sum (eV native); t_kin = sum p^2/(2*list_atoms%mass)*dyn_ev
       !    (per-atom fold); e_tot = t_kin + v_pot (H = T + V)
-      v_pot = v_sum*ev_kcal
+      v_pot = v_sum
       t_kin = 0.0d0
       do k = 1, size(list_atoms%mass)
          t_kin = t_kin + dot_product(sta%p(3*k-2:3*k), sta%p(3*k-2:3*k))/(2.0d0*list_atoms%mass(k))
       end do
-      t_kin = t_kin/e_conv
+      t_kin = t_kin*dyn_ev
       e_tot = t_kin + v_pot
    end subroutine force_eval
 
@@ -197,15 +195,15 @@ contains
    ! container_probe_force(q, f) - the assembly-time point-force probe of
    !                 the bound slot: one call through container_pes, the
    !                 result folded EXACTLY like force_eval (f = -g with
-   !                 the unique eV->internal fold staying in this file).
+   !                 the unique eV->dynamical fold staying in this file).
    !                 Consumed by the spectrum derivation (Hessian
-   !                 differencing needs a point force in internal-per-A,
+   !                 differencing needs a point force in amu*A/fs^2,
    !                 not a state); list_atoms masses ride along per the
    !                 container delivery contract
    !------------------------------------------------------------------
    subroutine container_probe_force(q, f)
       real(8), intent(in)  :: q(:)        ! coordinates [A] (all dof, size = 3*list_atoms atoms)
-      real(8), intent(out) :: f(:)        ! forces [internal/A] (the fold of -g [eV/A])
+      real(8), intent(out) :: f(:)        ! forces [amu*A/fs^2] (the fold of -g [eV/A])
       real(8) :: g(size(q)), v
       if (.not. associated(container_pes)) then
          call stop_ff('container_probe_force', 'the force slot is not bound (the probe is'// &
@@ -216,7 +214,7 @@ contains
                       ' atoms exactly (3 per atom)')
       end if
       call container_pes(q, list_atoms%mass, g, v)
-      f = -g*ev_kcal*e_conv
+      f = -g*ev_dyn
    end subroutine container_probe_force
 
    !------------------------------------------------------------------

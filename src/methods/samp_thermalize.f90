@@ -12,10 +12,10 @@
 !   in-run bath coupling, that is the thermostat's face). The member
 !   writes its carriers' owned momenta, swaps the global step to dt_eq
 !   for the run and restores step + time after.
-!   Units: t_eq [K]; dt_eq [10 fs]; p [amu*Ang/(10 fs)]; E [internal].
+!   Units: t_eq [K]; dt_eq [fs]; p [amu*Ang/fs]; E [eV].
 !=====================================================================
 module samp_thermalize
-   use consts,        only: kb_code
+   use consts,        only: kb_act, kb_ev
    use rng,           only: rng_gauss
    use state,         only: state_t
    use config,        only: reactants, prop_cfg => propagator   ! alias to avoid clashing with the module name
@@ -32,7 +32,7 @@ module samp_thermalize
    type :: thermalize_params_t
       real(8) :: t_eq = 0.0d0    ! target temperature [K] (every carrier)
       integer :: n_eq = 0        ! equilibration step count [-] (one shared run)
-      real(8) :: dt_eq = 0.0d0   ! equilibration step size [10 fs]
+      real(8) :: dt_eq = 0.0d0   ! equilibration step size [fs]
    end type
 
    ! Derived member state (module-private; rebuilt by every thermalize_init) -
@@ -40,14 +40,14 @@ module samp_thermalize
    type :: carry_t
       integer :: frag = 0             ! carrier list_atoms fragment row [-]
       integer :: nat = 0              ! carrier atom count [-]
-      real(8), allocatable :: sigma(:) ! per-atom seed widths sqrt(m*kb*t_eq) [amu*Ang/(10 fs)]
-      real(8), allocatable :: p_seed(:) ! the drawn drift-removed seed momenta (3*nat record) [amu*Ang/(10 fs)]
+      real(8), allocatable :: sigma(:) ! per-atom seed widths sqrt(m*kb*t_eq) [amu*Ang/fs]
+      real(8), allocatable :: p_seed(:) ! the drawn drift-removed seed momenta (3*nat record) [amu*Ang/fs]
    end type carry_t
    type(carry_t), allocatable :: carry(:)  ! carrier rows (list_atoms order)
    real(8) :: t_eq_c = 0.0d0        ! target temperature [K]
    integer :: n_eq_c = 0            ! step count [-]
-   real(8) :: dt_eq_c = 0.0d0       ! step size [10 fs]
-   real(8) :: e_expect_c = 0.0d0    ! declared KE expectation, all carriers [internal energy]
+   real(8) :: dt_eq_c = 0.0d0       ! step size [fs]
+   real(8) :: e_expect_c = 0.0d0    ! declared KE expectation, all carriers [eV]
    logical :: inited = .false.      ! init completed [flag]
 contains
    !------------------------------------------------------------------
@@ -67,7 +67,7 @@ contains
             p%n_eq)
       end if
       if (p%dt_eq <= 0.0d0) then
-         call stop_equiz('thermalize_init', 'equilibration step size dt_eq [10 fs] must be '// &
+         call stop_equiz('thermalize_init', 'equilibration step size dt_eq [fs] must be '// &
             'positive, got', p%dt_eq)
       end if
 
@@ -114,9 +114,9 @@ contains
          carry(k)%nat = list_atoms%frag(carry(k)%frag)%nat
          allocate (carry(k)%sigma(carry(k)%nat), carry(k)%p_seed(3*carry(k)%nat))
          do i = 1, carry(k)%nat
-            carry(k)%sigma(i) = sqrt(list_atoms%mass(list_atoms%frag(carry(k)%frag)%list(i))*kb_code*p%t_eq)
+            carry(k)%sigma(i) = sqrt(list_atoms%mass(list_atoms%frag(carry(k)%frag)%list(i))*kb_act*p%t_eq)
          end do
-         e_expect_c = e_expect_c + (3.0d0*dble(carry(k)%nat) - 3.0d0)*kb_code*p%t_eq/2.0d0
+         e_expect_c = e_expect_c + (3.0d0*dble(carry(k)%nat) - 3.0d0)*kb_ev*p%t_eq/2.0d0
       end do
       t_eq_c = p%t_eq
       n_eq_c = p%n_eq

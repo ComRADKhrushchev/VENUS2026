@@ -32,9 +32,9 @@ module state
   type :: state_t            ! purely physical: Q/P/s/F/t - dimensions size-derived,
                              ! statistical fields live in the elec_interface holder
      real(8), allocatable :: q(:) ! coordinates [Å] (size = ndof = 3*natoms)
-     real(8), allocatable :: p(:) ! momenta [amu·Å/(10 fs)] (size = ndof)
-     real(8), allocatable :: f(:) ! forces [internal energy/Å] (size = ndof)
-     real(8) :: t = 0.0d0     ! trajectory time [10 fs] (held by the driver)
+     real(8), allocatable :: p(:) ! momenta [amu·Å/fs] (size = ndof)
+     real(8), allocatable :: f(:) ! forces [amu·Å/fs^2] (size = ndof)
+     real(8) :: t = 0.0d0     ! trajectory time [fs] (held by the driver)
      type(elec_t) :: s        ! electronic ontic state
   end type
 contains

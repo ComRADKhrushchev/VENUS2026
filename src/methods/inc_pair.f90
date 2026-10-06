@@ -12,7 +12,7 @@
 !   keys. The fixed-site drop mode (N_AIM = 2) is a surface-paradigm
 !   option - here the drop point is the origin (0) or the collision-disk
 !   anchor per N_B (1).
-! Units: angles [rad]; t_trans [K]; e_rel [kcal/mol] via e_conv; speeds [Ang/(10 fs)]; p [amu*Ang/(10 fs)].
+! Units: angles [rad]; t_trans [K]; e_rel [eV]; speeds [Ang/fs]; p [amu*Ang/fs].
 !=====================================================================
 module inc_pair
    use state,        only: state_t

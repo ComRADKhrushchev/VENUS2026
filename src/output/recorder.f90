@@ -4,7 +4,7 @@
 !   A column is a registry row (name + extractor); selection is preset level (the
 !   base) plus an appended name list (union). Levels: 0/1 = frame header + energy
 !   line; 2 = + all-atom Q/P section (the bare-input default); 5 = + per-atom
-!   force section. Energy columns report kcal/mol; electronic columns read the
+!   force section. Energy columns report eV; electronic columns read the
 !   elec_interface statistics getters only.
 !=====================================================================
 module recorder
@@ -13,7 +13,7 @@ module recorder
    use config_atoms, only: list_atoms
    use force_interface,  only: force_eval
    use elec_interface,   only: occ_get, n_hop_get
-   use consts,        only: e_conv
+   use consts,        only: dyn_ev
    implicit none
    private
    public :: col_val_i, rec_reg_col, rec_select, rec_frame, rec_final, rec_n_sel
@@ -175,8 +175,8 @@ contains
    ! Frame layout: '# frame traj= step= t=' header; then one 'name=value' line (selection
    ! order); '# sec_qp begin'/per-atom q,p rows/'# sec_qp end' gated at level>=2;
    ! '# sec_frc begin'/per-atom force rows/'# sec_frc end' gated at level>=5. Atom row =
-   ! '<index> <symb> <3 reals> [<3 reals>]'; t = sta%t [10 fs] as held, energies
-   ! [kcal/mol]; flush(unit) only at the final row
+   ! '<index> <symb> <3 reals> [<3 reals>]'; t = sta%t [fs] as held, energies
+   ! [eV]; flush(unit) only at the final row
    !------------------------------------------------------------------
    subroutine rec_frame(sta, unit)
       type(state_t), intent(in) :: sta   ! physical state (read-only post-statistics snapshot)
@@ -408,7 +408,7 @@ contains
    ! framework column extractors (the preregistered set)
    !------------------------------------------------------------------
 
-   ! t_kin - kinetic energy T = sum_atoms p.p/(2 m) / e_conv [kcal/mol] (list_atoms masses)
+   ! t_kin - kinetic energy T = sum_atoms p.p/(2 m) * dyn_ev [eV] (list_atoms masses)
    real(8) function col_tkin(sta) result(v)
       type(state_t), intent(in) :: sta
       integer :: k
@@ -416,10 +416,10 @@ contains
       do k = 1, size(sta%p)/3
          v = v + dot_product(sta%p(3*k-2:3*k), sta%p(3*k-2:3*k))/(2.0d0*list_atoms%mass(k))
       end do
-      v = v/e_conv
+      v = v*dyn_ev
    end function col_tkin
 
-   ! v_pot - potential energy via force_eval [kcal/mol]: V = H - T on a private copy of
+   ! v_pot - potential energy via force_eval [eV]: V = H - T on a private copy of
    ! the snapshot (force_eval takes an inout state; the snapshot stays read-only)
    real(8) function col_vpot(sta) result(v)
       type(state_t), intent(in) :: sta
@@ -431,7 +431,7 @@ contains
       v = e - col_tkin(sta)
    end function col_vpot
 
-   ! e_tot - total energy H = T(P) + V via force_eval [kcal/mol] (same private-copy
+   ! e_tot - total energy H = T(P) + V via force_eval [eV] (same private-copy
    ! pattern as col_vpot)
    real(8) function col_etot(sta) result(v)
       type(state_t), intent(in) :: sta

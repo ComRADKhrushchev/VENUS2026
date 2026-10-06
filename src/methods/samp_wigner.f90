@@ -14,11 +14,11 @@
 !   q/p about the COM origin; the mode span excludes translations, so
 !   the net momentum is zero - no angular-momentum stripping or
 !   orientation randomization (the rotation member's channel).
-!   Units: e_scale [-]; E [internal]; w_mode [rad/(10 fs)]; q [Angstrom];
-!   p [amu*Ang/(10 fs)]; m [amu]; hbar = hbar_code [internal*(10 fs)].
+!   Units: e_scale [-]; E [eV]; w_mode [rad/fs]; q [Angstrom];
+!   p [amu*Ang/fs]; m [amu]; hbar = hbar_evfs [eV*fs].
 !=====================================================================
 module samp_wigner
-   use consts,        only: hbar_code
+   use consts,        only: hbar_evfs, ev_dyn
    use rng,           only: rng_gauss
    use state,         only: state_t
    use config,        only: reactants
@@ -34,7 +34,7 @@ module samp_wigner
    ! One carrier's mode table (assembly data; fragments carry different
    ! spectra, so the tables are ragged per carrier)
    type :: wigner_tbl_t
-      real(8), allocatable :: w(:)       ! mode frequencies [rad/(10 fs)]
+      real(8), allocatable :: w(:)       ! mode frequencies [rad/fs]
       real(8), allocatable :: c(:,:)     ! (3*nat x n_mode) orthonormal mass-weighted columns
    end type wigner_tbl_t
 
@@ -55,8 +55,8 @@ module samp_wigner
       real(8), allocatable :: sqm(:)          ! sqrt(mass) replicated per component [sqrt(amu)]
       real(8), allocatable :: c_c(:,:)        ! validated eigenvector table
       real(8), allocatable :: sig_q(:)        ! per-mode coordinate width [sqrt(amu)*Angstrom]
-      real(8), allocatable :: sig_p(:)        ! per-mode momentum width [amu*Ang/(10 fs)]
-      real(8), allocatable :: x_s(:), y_s(:)  ! the drawn Cartesian pair (post-draw record) [sqrt(amu)*Ang], [amu*Ang/(10 fs)]
+      real(8), allocatable :: sig_p(:)        ! per-mode momentum width [amu*Ang/fs]
+      real(8), allocatable :: x_s(:), y_s(:)  ! the drawn Cartesian pair (post-draw record) [sqrt(amu)*Ang], [amu*Ang/fs]
    end type carry_t
    type(carry_t), allocatable :: carry(:)     ! carrier rows (list_atoms order)
    logical :: inited = .false.                ! init completed [flag]
@@ -138,7 +138,7 @@ contains
             end if
             do k = 1, cr%n_mode
                if (p%tbl(kc)%w(k) <= 0.0d0) then
-                  call stop_wgz('wigner_init', 'mode frequency w_mode [rad/(10 fs)] must be '// &
+                  call stop_wgz('wigner_init', 'mode frequency w_mode [rad/fs] must be '// &
                      'positive; entry =', p%tbl(kc)%w(k))
                end if
             end do
@@ -181,9 +181,9 @@ contains
             end do
             cr%c_c = p%tbl(kc)%c
             do k = 1, cr%n_mode
-               e_mode = p%e_scale*hbar_code*p%tbl(kc)%w(k)/2.0d0   ! E = e_scale*(hbar/2)*w
-               cr%sig_p(k) = sqrt(e_mode)                          ! sigma_p = sqrt(E)
-               cr%sig_q(k) = cr%sig_p(k)/p%tbl(kc)%w(k)            ! sigma_q = sqrt(E)/w
+               e_mode = p%e_scale*hbar_evfs*p%tbl(kc)%w(k)/2.0d0   ! E = e_scale*(hbar/2)*w [eV]
+               cr%sig_p(k) = sqrt(e_mode*ev_dyn)                   ! sigma_p = sqrt(E*ev_dyn) (unit-mass dynamical)
+               cr%sig_q(k) = cr%sig_p(k)/p%tbl(kc)%w(k)            ! sigma_q = sigma_p/w
             end do
          end associate
       end do

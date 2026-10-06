@@ -58,7 +58,7 @@ module spectrum_interface
    real(8), parameter :: r_asym = 12.0d0     ! atom-scale inter-fragment isolation at the probe [A]
    real(8), parameter :: cross_rel = 1.0d-6  ! cross-block gate vs mode curvature [rel]
 
-   ! one mode table: frequencies [rad/(10 fs)] ascending + mass-weighted
+   ! one mode table: frequencies [rad/fs] ascending + mass-weighted
    ! orthonormal columns (3nat x n_mode)
    type :: tab_t
       real(8), allocatable :: w(:), c(:,:)
@@ -90,7 +90,7 @@ contains
    !------------------------------------------------------------------
    ! spectrum_frag_w(frag, w, c) - the member-seam pull: fresh copies
    !                 of fragment frag's mode table from the selected
-   !                 producer. w [rad/(10 fs)], c (3nat x n)
+   !                 producer. w [rad/fs], c (3nat x n)
    !------------------------------------------------------------------
    subroutine spectrum_frag_w(frag, w, c)
       integer, intent(in) :: frag
@@ -408,7 +408,7 @@ contains
          manual_tbl(n_manual)%symb = syms(:nat)
          allocate (manual_tbl(n_manual)%tab%w(nmod), manual_tbl(n_manual)%tab%c(3*nat, nmod))
          do m = 1, nmod
-            manual_tbl(n_manual)%tab%w(m) = wvn_to_w(wvn(m))   ! cm^-1 -> rad/(10 fs),
+            manual_tbl(n_manual)%tab%w(m) = wvn_to_w(wvn(m))   ! cm^-1 -> rad/fs,
          end do                                                  ! the unique channel
          manual_tbl(n_manual)%tab%c = cmat
          manual_tbl(n_manual)%has_diatic = diat_set

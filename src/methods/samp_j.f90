@@ -10,10 +10,10 @@
 !   only (read back via j_last_j) and writes no q/p; dist_rotation
 !   realizes the orientation at a given J, and wiring J between them is
 !   assembly-phase business.
-!   Units: t_rot [K]; I [amu*Ang^2]; hbar_code/kb_code internal.
+!   Units: t_rot [K]; I [amu*Ang^2]; hbar_act/kb_act action-context internal.
 !=====================================================================
 module samp_j
-   use consts,        only: hbar_code, kb_code
+   use consts,        only: hbar_act, kb_act
    use rng,           only: rng_u
    use state,         only: state_t
    use config,        only: reactants
@@ -140,7 +140,7 @@ contains
             end if
 
             ! 4. exponent constant, support scan, envelope (per carrier)
-            cr%c_rot = hbar_code*hbar_code/(2.0d0*i_perp*kb_code*p%t_rot)
+            cr%c_rot = hbar_act*hbar_act/(2.0d0*i_perp*kb_act*p%t_rot)
             p_max = 0.0d0
             j_peak = 0
             cr%j_max = max_support

@@ -8,10 +8,10 @@
 !   wiring a drawn J between them is assembly-phase business. A linear
 !   carrier (smallest inertia eigenvalue ~0) gets L perpendicular to
 !   the molecular axis; translation is the incident channel's business.
-!   Units: q [Ang]; p [amu*Ang/(10 fs)]; |L|/hbar_code internal; omega [rad/(10 fs)]; inertia [amu*Ang^2].
+!   Units: q [Ang]; p [amu*Ang/fs]; |L|/hbar_act internal; omega [rad/fs]; inertia [amu*Ang^2].
 !=====================================================================
 module samp_rotation
-   use consts,        only: hbar_code
+   use consts,        only: hbar_act
    use rng,           only: rng_u, rng_gauss
    use state,         only: state_t
    use config,        only: reactants
@@ -42,7 +42,7 @@ module samp_rotation
       real(8) :: u_s(3) = 0.0d0              ! the drawn isotropic L direction (normalized) [-]
    end type carry_t
    type(carry_t), allocatable :: carry(:)    ! carrier rows (list_atoms order)
-   real(8) :: al_mom = 0.0d0                 ! angular-momentum magnitude |L| [hbar_code unit]
+   real(8) :: al_mom = 0.0d0                 ! angular-momentum magnitude |L| [hbar_act unit]
    logical :: inited = .false.               ! init completed [flag]
 contains
    !------------------------------------------------------------------
@@ -115,7 +115,7 @@ contains
             end if
          end associate
       end do
-      al_mom = sqrt(dble(p%j_rot*(p%j_rot + 1)))*hbar_code
+      al_mom = sqrt(dble(p%j_rot*(p%j_rot + 1)))*hbar_act
       inited = .true.
    end subroutine rotation_init
 

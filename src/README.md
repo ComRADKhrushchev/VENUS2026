@@ -63,7 +63,7 @@ src/
 
 Layering essentials: each layer depends only downward, and registry-family members never depend on each other
 (members may call utils instruments internally);
-the interface is all the physics the control kernel sees; unit conversion happens only at the force_interface boundary;
+the interface is all the physics the control kernel sees; the unique unit fold (eV/A -> amu*A/fs^2, *ev_dyn) lives at the force_interface boundary;
 one single random stream for the whole library (rng.f90).
 
 Call graph (E14, spec §8): the assembly phase chains read_input -> sysdef_load FIRST -> list_atoms_load ->

@@ -10,11 +10,12 @@
 !   the full effective potential. Sample draws r with density prop. to
 !   1/|pr| and writes the carrier's internal q/p only - translation is
 !   the incident channel's business.
-!   Units: w_e/w_ex_e/b_rot [cm^-1]; energies internal; q [Angstrom];
-!   p [amu*Ang/(10 fs)]; hbar = hbar_code.
+!   Units: w_e/w_ex_e/b_rot [cm^-1]; energies [amu*Ang^2/fs^2] (dynamical
+!   family - the WKB momentum quadrature's native units); q [Angstrom];
+!   p [amu*Ang/fs]; hbar = hbar_act.
 !=====================================================================
 module samp_ebk
-   use consts,        only: pi, two_pi, hbar_code, e_conv, wvn2e
+   use consts,        only: pi, two_pi, hbar_act, wvn2ev, ev_dyn
    use rng,           only: rng_u
    use state,         only: state_t
    use config,        only: reactants
@@ -54,9 +55,9 @@ module samp_ebk
       real(8) :: e_perp1(3) = 0.0d0  ! bond-perpendicular triad, first axis [-]
       real(8) :: e_perp2(3) = 0.0d0  ! bond-perpendicular triad, second axis [-]
       real(8) :: a_morse = 0.0d0     ! Morse range parameter [1/Angstrom]
-      real(8) :: d_e = 0.0d0         ! Morse depth from the well bottom [internal]
-      real(8) :: al_mom = 0.0d0      ! rotational moment |L| [hbar_code units]
-      real(8) :: e_lvl = 0.0d0       ! converged level energy [internal]
+      real(8) :: d_e = 0.0d0         ! Morse depth from the well bottom [amu*Ang^2/fs^2]
+      real(8) :: al_mom = 0.0d0      ! rotational moment |L| [hbar_act units]
+      real(8) :: e_lvl = 0.0d0       ! converged level energy [amu*Ang^2/fs^2]
       real(8) :: r_lo = 0.0d0        ! sampled interval lower bound (inset) [Angstrom]
       real(8) :: r_hi = 0.0d0        ! sampled interval upper bound (inset) [Angstrom]
       real(8) :: p_env = 0.0d0       ! rejection envelope = smaller endpoint momentum [-]
@@ -160,14 +161,14 @@ contains
 
          ! 3. Morse derivation from the spectroscopic constants (see the module
          !    header for the construction and its WKB-exactness anchor)
-         cr%d_e = e_conv*wvn2e*(p%w_e*p%w_e/(4.0d0*p%w_ex_e))
-         cr%a_morse = sqrt(2.0d0*cr%mu_red*(e_conv*wvn2e*p%w_ex_e))/hbar_code
-         cr%al_mom = sqrt(dble(p%j_rot*(p%j_rot + 1)))*hbar_code
+         cr%d_e = wvn2ev*ev_dyn*(p%w_e*p%w_e/(4.0d0*p%w_ex_e))
+         cr%a_morse = sqrt(2.0d0*cr%mu_red*(wvn2ev*ev_dyn*p%w_ex_e))/hbar_act
+         cr%al_mom = sqrt(dble(p%j_rot*(p%j_rot + 1)))*hbar_act
 
          ! 4. level seed and WKB quantization by fixed point over the effective
          !    potential (Morse from the well bottom + centrifugal)
          x = dble(p%n_vib) + 0.5d0
-         e_seed = e_conv*wvn2e*(p%w_e*x - p%w_ex_e*x*x + p%b_rot*dble(p%j_rot*(p%j_rot + 1)))
+         e_seed = wvn2ev*ev_dyn*(p%w_e*x - p%w_ex_e*x*x + p%b_rot*dble(p%j_rot*(p%j_rot + 1)))
          hnu = e_seed/x
          cr%e_lvl = e_seed
          do it = 1, max_iter
@@ -390,7 +391,7 @@ contains
       do i = 1, n_quad
          asum = asum + wts(i)*sqrt(max(0.0d0, 2.0d0*cr%mu_red*(e - v_eff(cr, node(i)))))
       end do
-      an = asum/(pi*hbar_code)
+      an = asum/(pi*hbar_act)
    end subroutine quantize_step
 
    ! turn_bounds(cr, e, r1, r2) - classical interval at energy e: coarse scan for

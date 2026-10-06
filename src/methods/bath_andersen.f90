@@ -11,10 +11,10 @@
 !   net-momentum zeroing - the loop's one whole-system drift removal is
 !   bath.f90's business). The sweep signature is the bath-sweep contract
 !   (sta + dt); the loop, provisioning and drift removal live in bath.f90.
-!   Units: t_bath [K]; nu_coll [1/(10 fs)]; sigma [amu*Ang/(10 fs)].
+!   Units: t_bath [K]; nu_coll [1/fs]; sigma [amu*Ang/fs].
 !=====================================================================
 module bath_andersen
-   use consts,        only: kb_code
+   use consts,        only: kb_act
    use rng,           only: rng_u, rng_gauss
    use state,         only: state_t
    use config_atoms, only: list_atoms
@@ -26,14 +26,14 @@ module bath_andersen
    ! Species-owned parameters
    type :: andersen_params_t
       real(8) :: t_bath = 0.0d0   ! bath temperature [K] (every atom)
-      real(8) :: nu_coll = 0.0d0  ! collision frequency [1/(10 fs)]
+      real(8) :: nu_coll = 0.0d0  ! collision frequency [1/fs]
    end type andersen_params_t
 
    ! Derived species state (module-private; rebuilt by every andersen_init)
-   real(8), allocatable :: sig(:)  ! per-atom Maxwell widths sqrt(m*kb*T) [amu*Ang/(10 fs)]
+   real(8), allocatable :: sig(:)  ! per-atom Maxwell widths sqrt(m*kb*T) [amu*Ang/fs]
    integer :: nat_c = 0            ! atom count [-]
    real(8) :: t_bath_c = 0.0d0     ! bath temperature [K]
-   real(8) :: nu_coll_c = 0.0d0    ! collision frequency [1/(10 fs)]
+   real(8) :: nu_coll_c = 0.0d0    ! collision frequency [1/fs]
    logical :: inited = .false.     ! init completed [flag]
 contains
    !------------------------------------------------------------------
@@ -50,7 +50,7 @@ contains
             p%t_bath)
       end if
       if (p%nu_coll <= 0.0d0) then
-         call stop_andz('andersen_init', 'collision frequency nu_coll [1/(10 fs)] must be '// &
+         call stop_andz('andersen_init', 'collision frequency nu_coll [1/fs] must be '// &
             'positive, got', p%nu_coll)
       end if
 
@@ -63,7 +63,7 @@ contains
       if (allocated(sig)) deallocate (sig)
       allocate (sig(nat_c))
       do i = 1, nat_c
-         sig(i) = sqrt(list_atoms%mass(i)*kb_code*p%t_bath)
+         sig(i) = sqrt(list_atoms%mass(i)*kb_act*p%t_bath)
       end do
       t_bath_c = p%t_bath
       nu_coll_c = p%nu_coll
@@ -78,7 +78,7 @@ contains
    !------------------------------------------------------------------
    subroutine andersen_sweep(sta, dt, mask)
       type(state_t), intent(inout) :: sta ! physical state (collided atoms' momenta replaced)
-      real(8), intent(in) :: dt           ! the sweep's step size [10 fs]
+      real(8), intent(in) :: dt           ! the sweep's step size [fs]
       logical, intent(in) :: mask(:)      ! per-atom collision scope [flag]
       integer :: i, i3
       if (.not. inited) then

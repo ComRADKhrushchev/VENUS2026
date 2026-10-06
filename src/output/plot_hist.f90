@@ -36,12 +36,12 @@ module hist
    ! Trajectory row table (aggregation of recorder final-state rows)
    type :: hist_data_t
       integer :: n_traj = 0                    ! trajectory row count [row]
-      real(8), allocatable :: e_rel(:)         ! final relative energy column [kcal/mol]
+      real(8), allocatable :: e_rel(:)         ! final relative energy column [eV]
       real(8), allocatable :: thta(:)          ! scattering-angle column [deg]
       real(8), allocatable :: x0(:)            ! initial drop-point x column [Å]
       real(8), allocatable :: y0(:)            ! initial drop-point y column [Å]
       real(8), allocatable :: z_min(:)         ! minimum-height column [Å]
-      real(8), allocatable :: v_fin(:)         ! final potential-energy column [kcal/mol]
+      real(8), allocatable :: v_fin(:)         ! final potential-energy column [eV]
       integer, allocatable :: n_bnc(:)         ! bounce-count column [count] (-1 = invalid placeholder)
       character(len=3), allocatable :: site(:) ! site column [-]
    end type hist_data_t

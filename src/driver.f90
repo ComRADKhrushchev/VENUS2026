@@ -49,8 +49,8 @@ program venus
                             ! driver loop condition step_i < max_steps)
    logical :: term_flag     ! termination flag for this trajectory (written by the
                             ! container_term call of the step loop - the container's judgment)
-   real(8) :: e0            ! total energy of the initial state [kcal/mol] (drift reference)
-   real(8) :: dt_eff        ! effective step length [10 fs] (buffered once from prop_cfg%dt;
+   real(8) :: e0            ! total energy of the initial state [eV] (drift reference)
+   real(8) :: dt_eff        ! effective step length [fs] (buffered once from prop_cfg%dt;
                             ! consumed by elec_prop - the hop-probability channel g_ij(dt)
                             ! needs the step's dt)
    real(8) :: t_cpu(2)      ! timing pair [s] (printed in the statistics section)
@@ -66,13 +66,13 @@ program venus
    integer :: k             ! scratch index [-]
    integer :: row_outc      ! outcome-table row scratch [-]
    integer :: ios           ! open-status scratch [-] (the recording-unit go-live check below)
-   real(8), allocatable :: e0_traj(:)     ! per-trajectory reference energy [kcal/mol] (the
+   real(8), allocatable :: e0_traj(:)     ! per-trajectory reference energy [eV] (the
                                           ! head force_eval output - the drift reference)
-   real(8), allocatable :: e_fin_traj(:)  ! per-trajectory final e_tot [kcal/mol] (the
+   real(8), allocatable :: e_fin_traj(:)  ! per-trajectory final e_tot [eV] (the
                                           ! recorder final-state row)
-   real(8), allocatable :: vpot_fin_traj(:) ! per-trajectory final v_pot [kcal/mol] (the
+   real(8), allocatable :: vpot_fin_traj(:) ! per-trajectory final v_pot [eV] (the
                                           ! recorder final-state row - the histogram v_fin column)
-   real(8) :: drift_max     ! max |e_fin - e0| over trajectories [kcal/mol]
+   real(8) :: drift_max     ! max |e_fin - e0| over trajectories [eV]
    ! -- data structures handed between phases --
    type(state_t) :: sta                      ! physical state (written exclusively in the
                                              ! evolution phase, read-only in statistics)
@@ -275,7 +275,7 @@ program venus
       write (*, '(a)') ''
    end if
    write (*, '(a,i0,a,es12.4,a)') 'conservation drift: trajectories=', n_traj, &
-      ' max|e_fin-e0|=', drift_max, ' kcal/mol'
+      ' max|e_fin-e0|=', drift_max, ' eV'
    if (n_valid >= 1) then
       ! the two plain histogram kinds over the aggregated columns; range rule
       ! [0, column max + 1) keeps every aggregated row in range by construction
