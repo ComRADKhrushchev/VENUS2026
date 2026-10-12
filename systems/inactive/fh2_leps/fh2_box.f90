@@ -5,9 +5,9 @@
 !               classification
 ! Design:
 !   Atom order (the system-folder contract): atom 1 = F, atoms 2,3 = H.
-!   Parameters: the declared container keys of input_qct.txt (the reg
-!   file declares the vocabulary and pulls the buffered rows into
-!   fh2_params_t at the assembly seam; absent keys keep the legislated
+!   Parameters: the declared container keys of input_qct.txt (the Tier 1
+!   magic-name wrappers declare the vocabulary and pull the buffered rows
+!   into fh2_params_t at the assembly seam; absent keys keep the legislated
 !   defaults of fh2_pot). Keys:
 !     D_FH/R0_FH/BETA_FH, D_HH/R0_HH/BETA_HH  [eV / A / 1/A]
 !     DL0_HH/DL0_FH/AMOD                      [-] (the T-S Sato set;
@@ -26,11 +26,13 @@
 module fh2_box
    use state,       only: state_t
    use final_state, only: fin_t
+   use input,       only: pull
    use fh2_pot,     only: fh2_vg, fh2_set_params, fh2_set_defaults
    implicit none
    private
    public :: fh2_params_t, fh2_keys, fh2_load, fh2_pes, fh2_term, fh2_classify
    public :: fh2_term_on, fh2_class_on
+   public :: pes, keys, load, term, classify   ! Tier 1 magic names (thin wrappers)
 
    ! the parameter receiver: field defaults ARE the container defaults (an
    ! absent input key leaves its field untouched at the pull; the found
@@ -174,6 +176,57 @@ contains
          name = 'nonreactive'
       end if
    end function fh2_classify
+
+   !------------------------------------------------------------------
+   ! Tier 1 magic-name wrappers (the auto-weave contract: a reg-less
+   !                 systems/ folder gets these five names woven into
+   !                 registry_gen; each delegates to the public API above,
+   !                 which the check programs and probe hooks keep using)
+   !------------------------------------------------------------------
+   subroutine pes(q, mass, g, v)
+      real(8), intent(in)  :: q(:), mass(:)
+      real(8), intent(out) :: g(:), v
+      call fh2_pes(q, mass, g, v)
+   end subroutine pes
+
+   function keys() result(kk)
+      character(len=16) :: kk(11)
+      kk = fh2_keys()
+   end function keys
+
+   subroutine load()
+      type(fh2_params_t) :: p
+      call pull('R_TERM',  p%r_term,  p%r_term_found)
+      call pull('R_HF',    p%r_hf,   p%r_hf_found)
+      call pull('D_FH',    p%surf(1), p%surf_found(1))
+      call pull('R0_FH',   p%surf(2), p%surf_found(2))
+      call pull('BETA_FH', p%surf(3), p%surf_found(3))
+      call pull('D_HH',    p%surf(4), p%surf_found(4))
+      call pull('R0_HH',   p%surf(5), p%surf_found(5))
+      call pull('BETA_HH', p%surf(6), p%surf_found(6))
+      call pull('DL0_HH',  p%surf(7), p%surf_found(7))
+      call pull('DL0_FH',  p%surf(8), p%surf_found(8))
+      call pull('AMOD',    p%surf(9), p%surf_found(9))
+      call fh2_load(p)
+   end subroutine load
+
+   logical function term(sta)
+      type(state_t), intent(in) :: sta
+      term = .false.
+      if (fh2_term_on()) term = fh2_term(sta)
+   end function term
+
+   function classify(fin) result(name)
+      type(fin_t), intent(in) :: fin
+      character(len=32) :: name
+      if (fh2_class_on()) then
+         name = fh2_classify(fin)
+      else
+         name = 'nonreactive'   ! the no-R_HF catch-all: the classify body's
+                                ! else-branch channel (no HF criterion can
+                                ! name 'reaction')
+      end if
+   end function classify
 
    !------------------------------------------------------------------
    ! stop_box(who, msg) - the container abort channel (name the caller,
