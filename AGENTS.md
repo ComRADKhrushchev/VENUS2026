@@ -50,6 +50,11 @@ make clean        # removes the whole build/ tree (both compiler subtrees)
   containers double-bind at assembly (STOP 1) — the check_* criterion programs compile
   containers standalone and are unaffected; running venus.e on a tested container requires
   temporarily shelving reference too (or the still-parked selection mechanism).
+- Tier 1 pure-PES containers (2026-10-12): a systems/* folder WITHOUT reg_*.f90 is
+  auto-wired by prebuild from ten magic names (pes/keys/load/term/classify +
+  prop/match/sync/arm/method_name) - no reg file at all; a reg_*.f90 present disables
+  the weave (reg authoritative). Ruling: docs/plans/2026-10-12-auto-pes-container.md;
+  fixture systems/inactive/auto_sample; criterion check_auto_pes.f90 + drill_auto_pes.sh.
 
 ## Architecture rules that matter for edits
 

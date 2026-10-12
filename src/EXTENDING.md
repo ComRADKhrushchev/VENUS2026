@@ -1,10 +1,46 @@
 # EXTENDING.md — 新程序扩展点(E27 后契约)
 
-每类扩展 = **新文件 + 薄 reg 文件**,拖入即编译(Makefile wildcard + prebuild 聚合),
-**零触碰现有文件**(T2 演练在案:docs/plans/S.md 验收区)。登记迟滞:新增 reg 后第二次
-make 即全绿(depend.mk 单轮迟滞,Makefile 头注在案)。
+接一个自定义势能面（含可选非绝热方法包）的**最短路径是 Tier 1**：一个文件夹、
+若干 .f90、零 reg 文件。需要更复杂的接线（多方法包、自定义记录列、复杂参数体）
+时升级 Tier 2（§1b 的 reg 三件套——reg 在场则自动接线静默退出，pot 侧魔数名
+函数全部可被 reg 直接复用，升级零迁移）。
 
-## 1. 物理系统容器(systems/<system>/)——体系专属代码的组合点
+## 1a. Tier 1 纯势容器——十魔数名词表（封闭集合）
+
+`systems/<sys>/` 文件夹**不含 reg_\*.f90** 即 Tier 1 容器。文件夹内 .f90 暴露
+下列魔数名（名字即约定，签名即既有接口，编译期核对；裁决记录
+docs/plans/2026-10-12-auto-pes-container.md）：
+
+**势能面组**
+
+| 魔数名 | 形 | 必备性 | 说明 |
+|---|---|---|---|
+| `pes(q, mass, g, v)` | subroutine | 恰一个 | E27 力交付：q[A]/mass[amu] 进（q/g 一维展平 size=3×nat），g[eV/Å]/v[eV] 全赋值出 |
+| `keys()` | function | 可选 | `character(len=16)` 数组容器键词表（parse 前声明） |
+| `load()` | subroutine | 可选 | 无参自持 `pull`；**亦即 seam 期初始化钩子**——读参数文件（NN 权重模式）/分配在此，先于一切力消费者与 arm |
+| `term(sta)` | function | 可选 | 终止判断（键缺席门控用 found 旗标自实现；未绑 = 跑满 MAX_STEPS） |
+| `classify(fin)` | function | 可选 | 通道分类（返回通道名） |
+
+**方法包组**（自定义非绝热方法）
+
+| 魔数名 | 形 | 必备性 | 说明 |
+|---|---|---|---|
+| `prop(sta, dt)` | subroutine | 与 match 成对 | 电子传播成员（`elec_prop_i` 同型） |
+| `match(sta)` | subroutine | 与 prop 成对 | 统计匹配成员（跳变、occ/n_hop 写回） |
+| `sync(s)` | subroutine | 可选随对 | a↔rho 表象换算尾巴 |
+| `arm()` | subroutine | 可选随对 | 选中后初始化（门控归生成代码；参数自持走 keys/load） |
+| `method_name()` | function | 随对必备 | 返回 `character(len=32)` **小写**注册名；`ELEC_METHOD = <名>` 选用 |
+
+规则一句话：势能面组在场即绑；方法组注册无条件、武装有门；reg 在场则十名全忽略
+（reg 权威）；名字须 public；prebuild 对 pes 0/≥2、任一名 ≥2、形不符、prop 与
+match 不成对、method_name 缺对、sync/arm 孤立、双自动文件夹各有一条指名中止。
+
+现成范本：`systems/inactive/auto_sample/`（pot.f90 / io.f90 / tdhf_stub.f90；
+判据 `scripts/check_auto_pes.f90` + 演练 `scripts/drill_auto_pes.sh`）。
+激活 = 文件夹搬回 systems/ 顶层（一次一容器；与 reference 并存会在装配期
+STOP 1——测试时把 reference 暂存 systems/inactive/）。
+
+## 1b. Tier 2 全容器——reg 三件套（体系专属代码的组合点）
 
 一个文件夹 = 一个体系,自足材料:
 

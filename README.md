@@ -39,6 +39,8 @@ container as composition point; the ws interchange is retired — historical ter
 docs/plans/S.md E27). The five-case set is green and reproducible
 (same-ISEED byte-identical); the old chain cross-check holds bitwise
 (max|dF| = max|dE| = 0, dual compiler).
+自定义 PES 接入新增 Tier 1 快通道——单文件魔数名容器零 reg 接入
+（docs/plans/2026-10-12-auto-pes-container.md）。
 
 ## Notes
 

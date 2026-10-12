@@ -20,6 +20,9 @@ make clean        # 删整个 build/(两编译器子树)
   `-module:` 冒号形态),无需手工干预。
 - 运行:`cd cases/<name> && ../../src/build/gfortran/venus.e`——驱动器硬读 cwd 的
   `input_qct.txt`;产物 `trajectories.txt` / `hist_*.dat`(gitignored)。
+- Tier 1 纯势容器：无 reg 文件夹由 prebuild 按十魔数名自动接线（判据
+  scripts/check_auto_pes.f90 + scripts/drill_auto_pes.sh；裁决
+  docs/plans/2026-10-12-auto-pes-container.md）。
 
 ## 判据体系(scripts/)
 
