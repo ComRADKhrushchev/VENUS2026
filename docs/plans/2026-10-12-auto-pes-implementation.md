@@ -71,7 +71,7 @@ contains
    end function keys
 
    !------------------------------------------------------------------
-   ! pes(q, mass, g, v) - the force entry (E27 delivery, flat dof)
+   ! pes(q, mass, g, v) - the force entry (the container force delivery, flat dof)
    !------------------------------------------------------------------
    subroutine pes(q, mass, g, v)
       real(8), intent(in)  :: q(:)      ! coordinates [A] (3*nat, flattened)
@@ -207,11 +207,12 @@ contains
    ! arm() - the selected-package witness (writes the drill's file once)
    !------------------------------------------------------------------
    subroutine arm()
+      integer :: u                        ! witness unit (newunit, the repo convention)
       if (armed) return
       armed = .true.
-      open (20, file='auto_arm_witness.txt', status='replace', action='write')
-      write (20, '(a)') 'auto_tdhf armed'
-      close (20)
+      open (newunit=u, file='auto_arm_witness.txt', status='replace', action='write')
+      write (u, '(a)') 'auto_tdhf armed'
+      close (u)
    end subroutine arm
 end module auto_sample_met
 ```
