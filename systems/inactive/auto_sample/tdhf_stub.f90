@@ -50,10 +50,11 @@ contains
    ! arm() - the selected-package witness (writes the drill's file once)
    !------------------------------------------------------------------
    subroutine arm()
+      integer :: u                        ! witness unit (newunit, the repo convention)
       if (armed) return
       armed = .true.
-      open (20, file='auto_arm_witness.txt', status='replace', action='write')
-      write (20, '(a)') 'auto_tdhf armed'
-      close (20)
+      open (newunit=u, file='auto_arm_witness.txt', status='replace', action='write')
+      write (u, '(a)') 'auto_tdhf armed'
+      close (u)
    end subroutine arm
 end module auto_sample_met

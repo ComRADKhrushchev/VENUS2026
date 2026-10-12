@@ -28,7 +28,7 @@ contains
    end function keys
 
    !------------------------------------------------------------------
-   ! pes(q, mass, g, v) - the force entry (E27 delivery, flat dof)
+   ! pes(q, mass, g, v) - the force entry (the container force delivery, flat dof)
    !------------------------------------------------------------------
    subroutine pes(q, mass, g, v)
       real(8), intent(in)  :: q(:)      ! coordinates [A] (3*nat, flattened)
