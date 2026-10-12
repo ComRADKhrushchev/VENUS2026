@@ -192,6 +192,7 @@ fi
    echo "   use container_sched, only: container_sched_keys, container_sched_all, &"
    echo "                              container_sched_init"
    if [ -n "$auto_dir" ]; then
+      echo "   use container_sched, only: container_sched_bind"
       [ -n "${auto_mod[term]:-}" ] && echo "   use force_interface, only: container_bind_pes, container_bind_term"
       [ -z "${auto_mod[term]:-}" ] && echo "   use force_interface, only: container_bind_pes"
       [ -n "${auto_mod[classify]:-}" ] && echo "   use final_state,     only: container_bind_classify"
