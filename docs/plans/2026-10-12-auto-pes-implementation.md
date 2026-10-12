@@ -327,24 +327,24 @@ if [ -n "$auto_dir" ]; then
       auto_mod[$nm]=$mod
    done
    n_pm=0
-   [ -n "${auto_mod[prop]}" ] && n_pm=$((n_pm+1))
-   [ -n "${auto_mod[match]}" ] && n_pm=$((n_pm+1))
+   [ -n "${auto_mod[prop]:-}" ] && n_pm=$((n_pm+1))
+   [ -n "${auto_mod[match]:-}" ] && n_pm=$((n_pm+1))
    if [ "$n_pm" -eq 1 ]; then
       auto_fatal "prop and match must be defined together in $auto_dir (a half package is not a method)"
    fi
    [ "$n_pm" -eq 2 ] && auto_pair=yes
    if [ "$auto_pair" = yes ]; then
-      [ -z "${auto_mod[method_name]}" ] && auto_fatal "prop+match are defined but method_name is missing in $auto_dir (the registration name is author data)"
+      [ -z "${auto_mod[method_name]:-}" ] && auto_fatal "prop+match are defined but method_name is missing in $auto_dir (the registration name is author data)"
    else
-      [ -n "${auto_mod[sync]}" ] && auto_fatal "sync is defined but prop+match are not (a lone sync member is not a package) in $auto_dir"
-      [ -n "${auto_mod[arm]}" ] && auto_fatal "arm is defined but prop+match are not (a lone arm is not a package) in $auto_dir"
-      [ -n "${auto_mod[method_name]}" ] && auto_fatal "method_name is defined but prop+match are not in $auto_dir"
+      [ -n "${auto_mod[sync]:-}" ] && auto_fatal "sync is defined but prop+match are not (a lone sync member is not a package) in $auto_dir"
+      [ -n "${auto_mod[arm]:-}" ] && auto_fatal "arm is defined but prop+match are not (a lone arm is not a package) in $auto_dir"
+      [ -n "${auto_mod[method_name]:-}" ] && auto_fatal "method_name is defined but prop+match are not in $auto_dir"
    fi
-   [ -z "${auto_mod[pes]}" ] && auto_fatal "$auto_dir is installed (folder present, no reg_*.f90) but wires nothing: expose exactly one 'pes' entry, or write a reg_*.f90 full container"
+   [ -z "${auto_mod[pes]:-}" ] && auto_fatal "$auto_dir is installed (folder present, no reg_*.f90) but wires nothing: expose exactly one 'pes' entry, or write a reg_*.f90 full container"
 fi
 ```
 
-（`read -r kind _ mod _`：got 行形如 `s pes auto_sample_pot`——第二字段是名、第三字段是归属模块。）
+（`read -r kind _ mod _`：got 行形如 `s pes auto_sample_pot`——第二字段是名、第三字段是归属模块。所有 `${auto_mod[...]}` 读取都带 `:-` 缺省——脚本 `set -u` 下未设键的裸读取会先于有名中止以 unbound variable 炸掉，`:-` 是 prebuild 既有 `${mod_owner[$u]:-}` 同款惯用法。）
 
 - [ ] **Step 3: 织入 emission 块（`{ ... } > "$BLD/registry_gen.f90.tmp"` 内三处插入）**
 
@@ -352,18 +352,18 @@ fi
 
 ```bash
    if [ -n "$auto_dir" ]; then
-      [ -n "${auto_mod[term]}" ] && echo "   use force_interface, only: container_bind_pes, container_bind_term"
-      [ -z "${auto_mod[term]}" ] && echo "   use force_interface, only: container_bind_pes"
-      [ -n "${auto_mod[classify]}" ] && echo "   use final_state,     only: container_bind_classify"
-      [ -n "${auto_mod[keys]}" ] && echo "   use input,           only: input_declare_keys"
+      [ -n "${auto_mod[term]:-}" ] && echo "   use force_interface, only: container_bind_pes, container_bind_term"
+      [ -z "${auto_mod[term]:-}" ] && echo "   use force_interface, only: container_bind_pes"
+      [ -n "${auto_mod[classify]:-}" ] && echo "   use final_state,     only: container_bind_classify"
+      [ -n "${auto_mod[keys]:-}" ] && echo "   use input,           only: input_declare_keys"
       if [ "$auto_pair" = yes ]; then
          echo "   use elec_interface,  only: method_reg"
-         [ -n "${auto_mod[arm]}" ] && echo "   use config,          only: electronic"
+         [ -n "${auto_mod[arm]:-}" ] && echo "   use config,          only: electronic"
       fi
       for m in $(printf '%s\n' "${auto_mod[@]}" | sort -u); do
          names=""; first=1
          for nm in pes keys load term classify prop match sync arm method_name; do
-            if [ "${auto_mod[$nm]}" = "$m" ]; then
+            if [ "${auto_mod[$nm]:-}" = "$m" ]; then
                if [ "$first" -eq 1 ]; then names="$nm"; first=0; else names="$names, $nm"; fi
             fi
          done
@@ -377,13 +377,13 @@ fi
 ```bash
    if [ -n "$auto_dir" ]; then
       args=""
-      [ -n "${auto_mod[keys]}" ]     && args="$args keys"
-      [ -n "${auto_mod[load]}" ]     && args="$args load"
+      [ -n "${auto_mod[keys]:-}" ]     && args="$args keys"
+      [ -n "${auto_mod[load]:-}" ]     && args="$args load"
       args="$args force"
       [ "$auto_pair" = yes ]         && args="$args method"
-      [ -n "${auto_mod[term]}" ]     && args="$args term"
-      [ -n "${auto_mod[arm]}" ]      && args="$args arm"
-      [ -n "${auto_mod[classify]}" ] && args="$args classify"
+      [ -n "${auto_mod[term]:-}" ]     && args="$args term"
+      [ -n "${auto_mod[arm]:-}" ]      && args="$args arm"
+      [ -n "${auto_mod[classify]:-}" ] && args="$args classify"
       echo "   subroutine auto_slots()"
       ia=0
       for a in $args; do
@@ -396,10 +396,10 @@ fi
       done
       echo ")"
       echo "   end subroutine auto_slots"
-      [ -n "${auto_mod[keys]}" ] && { echo "   subroutine auto_keys()"
+      [ -n "${auto_mod[keys]:-}" ] && { echo "   subroutine auto_keys()"
          echo "      call input_declare_keys(keys())"
          echo "   end subroutine auto_keys"; }
-      [ -n "${auto_mod[load]}" ] && { echo "   subroutine auto_load()"
+      [ -n "${auto_mod[load]:-}" ] && { echo "   subroutine auto_load()"
          echo "      call load()"
          echo "   end subroutine auto_load"; }
       echo "   subroutine auto_force()"
@@ -407,17 +407,17 @@ fi
       echo "   end subroutine auto_force"
       if [ "$auto_pair" = yes ]; then
          echo "   subroutine auto_method()"
-         if [ -n "${auto_mod[sync]}" ]; then echo "      call method_reg(method_name(), prop, match, sync)"
+         if [ -n "${auto_mod[sync]:-}" ]; then echo "      call method_reg(method_name(), prop, match, sync)"
          else echo "      call method_reg(method_name(), prop, match)"; fi
          echo "   end subroutine auto_method"
       fi
-      [ -n "${auto_mod[term]}" ] && { echo "   subroutine auto_term()"
+      [ -n "${auto_mod[term]:-}" ] && { echo "   subroutine auto_term()"
          echo "      call container_bind_term(term)"
          echo "   end subroutine auto_term"; }
-      [ -n "${auto_mod[arm]}" ] && { echo "   subroutine auto_arm()"
+      [ -n "${auto_mod[arm]:-}" ] && { echo "   subroutine auto_arm()"
          echo "      if (trim(electronic%method) == method_name()) call arm()"
          echo "   end subroutine auto_arm"; }
-      [ -n "${auto_mod[classify]}" ] && { echo "   subroutine auto_classify()"
+      [ -n "${auto_mod[classify]:-}" ] && { echo "   subroutine auto_classify()"
          echo "      call container_bind_classify(classify)"
          echo "   end subroutine auto_classify"; }
    fi
@@ -429,11 +429,14 @@ fi
    [ -n "$auto_dir" ] && echo "      call auto_slots()"
 ```
 
-emission 头注（文件头 `! registry_gen.f90 - BUILD-GENERATED...` 注记块末）追加两行：
+emission 头注（文件头 `! registry_gen.f90 - BUILD-GENERATED...` 注记块末）追加两行
+（**须裹 auto_dir 守卫**——无自动容器时一个字节都不能多，字节同一硬约束优先）：
 
 ```bash
-   echo "! An auto container's weave (auto_slots) enters here when a reg-less"
-   echo "! systems/ folder is present - Tier 1, docs/plans/2026-10-12-auto-pes-container.md."
+   if [ -n "$auto_dir" ]; then
+      echo "! An auto container's weave (auto_slots) enters here when a reg-less"
+      echo "! systems/ folder is present - Tier 1, docs/plans/2026-10-12-auto-pes-container.md."
+   fi
 ```
 
 - [ ] **Step 4: 正面验证（fixture 激活 → 织入内容断言 → 基线回归）**
