@@ -282,16 +282,31 @@ for d in "$SRC/../systems"/*/; do
    auto_dir="$d"
 done
 
-# magic-name scan: emits "kind name module" per definition (kind s/f)
+# magic-name scan: emits "kind name module" per definition (kind s/f).
+# Comment tails are stripped and the keyword may sit behind a type/purity
+# prefix - "logical function term(sta)" is the idiomatic declaration form
+# (reference_box writes it; a line-start anchor would silently MISS it).
+# "end subroutine pes" never matches: the name must carry the argument paren.
+# A wrong-kind hit (subroutine keys / function pes) emits its actual kind -
+# the caller's form check fatals on it.
 auto_scan_file() { # $1 = source path
    awk '
       BEGIN { split("pes load prop match sync arm", sa); for (i in sa) sk[sa[i]] = 1
               split("keys term classify method_name", fa); for (i in fa) fk[fa[i]] = 1 }
-      /^[[:space:]]*module[[:space:]]+[a-zA-Z_]/ { if ($2 != "procedure") mod = $2 }
-      /^[[:space:]]*(subroutine|function)[[:space:]]+[a-zA-Z_]/ {
-         nm = tolower($2); sub(/\(.*/, "", nm)
-         if (nm in sk) print "s", nm, mod
-         else if (nm in fk) print "f", nm, mod
+      {
+         line = $0
+         sub(/!.*/, "", line)                       # strip the comment tail
+         sub(/^[[:space:]]+/, "", line)             # normalize the lead
+         if (line ~ /^module[[:space:]]+[a-zA-Z_]/) {
+            split(line, mw, /[[:space:]]+/)
+            if (mw[2] != "procedure") mod = mw[2]
+         }
+         if (match(line, /(subroutine|function)[[:space:]]+[a-zA-Z_]/)) {
+            if (RSTART > 1 && substr(line, 1, RSTART - 1) ~ /end[[:space:]]*$/) next
+            split(substr(line, RSTART), w, /[[:space:]]+/)
+            kw = w[1]; nm = tolower(w[2]); sub(/\(.*/, "", nm)
+            if (nm in sk || nm in fk) print (kw == "subroutine" ? "s" : "f"), nm, mod
+         }
       }' "$1"
 }
 
@@ -819,8 +834,8 @@ Expected: 六行 PASS + `check_auto_pes: ALL PASS`。
 - [ ] **Step 3: Commit**
 
 ```bash
-git add scripts/check_auto_pes.f90
-git commit -m "check_auto_pes.f90 判据程序入库(Tier 1 物理数学面): 五判据——(a) 弹簧井闭式 nat=1..4 电池 max|d|≤1e-12 (b) 中心差分梯度 h=1e-5 ≤1e-8 eV/A (c) keys() 词表恰为 K_SPRING/R_TERM (d) 全赋值(huge 预填被覆写) (e) method_name()=='auto_tdhf' 且小写; 单编三对象(state/pot/met)零 input 链——load/classify/arm 接线面归 drill_auto_pes.sh; 运行 ALL PASS 落盘 check_auto_pes.out"
+git add scripts/check_auto_pes.f90 scripts/check_auto_pes.out
+git commit -m "check_auto_pes.f90 判据程序入库(Tier 1 物理数学面): 五判据——(a) 弹簧井闭式 nat=1..4 电池 max|d|≤1e-12 (b) 中心差分梯度 h=1e-5 ≤1e-8 eV/A (c) keys() 词表恰为 K_SPRING/R_TERM (d) 全赋值(huge 预填被覆写) (e) method_name()=='auto_tdhf' 且小写; 单编三对象(state/pot/met)零 input 链——load/classify/arm 接线面归 drill_auto_pes.sh; 运行 ALL PASS 读数落盘并入库 check_auto_pes.out"
 ```
 
 ---
