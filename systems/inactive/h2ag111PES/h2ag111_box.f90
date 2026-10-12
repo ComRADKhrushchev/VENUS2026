@@ -11,9 +11,9 @@
 !   network parameters are RUN material: h2ag111_load() requires
 !   weights-h2ag.txt / biases-h2ag.txt in the run directory (copy them
 !   from the container folder) and calls pes_init exactly once.
-!   Parameters: the declared container keys of input_qct.txt (the reg
-!   file declares the vocabulary and pulls the buffered rows into
-!   h2ag111_params_t at the assembly seam; absent keys leave both
+!   Parameters: the declared container keys of input_qct.txt (the Tier 1
+!   magic-name wrappers declare the vocabulary and pull the buffered rows
+!   into h2ag111_params_t at the assembly seam; absent keys leave both
 !   optional slots unbound). Keys:
 !     Z_TERM = <v>  termination: BOTH atom heights above [A] (the
 !                  molecule left the surface region; absent -> unbound;
@@ -30,11 +30,13 @@
 module h2ag111_box
    use state,       only: state_t
    use final_state, only: fin_t
+   use input,       only: pull
    implicit none
    private
    public :: h2ag111_params_t, h2ag111_keys, h2ag111_load, h2ag111_pes, &
              h2ag111_term, h2ag111_classify
    public :: h2ag111_term_on, h2ag111_class_on
+   public :: pes, keys, load, term, classify   ! Tier 1 magic names (thin wrappers)
 
    ! the parameter receiver: field defaults ARE the container defaults (an
    ! absent input key leaves its field untouched at the pull; the found
@@ -188,6 +190,48 @@ contains
          name = 'dissociation'
       end if
    end function h2ag111_classify
+
+   !------------------------------------------------------------------
+   ! Tier 1 magic-name wrappers (the auto-weave contract: a reg-less
+   !                 systems/ folder gets these five names woven into
+   !                 registry_gen; each delegates to the public API above,
+   !                 which the check programs and probe hooks keep using)
+   !------------------------------------------------------------------
+   subroutine pes(q, mass, g, v)
+      real(8), intent(in)  :: q(:), mass(:)
+      real(8), intent(out) :: g(:), v
+      call h2ag111_pes(q, mass, g, v)
+   end subroutine pes
+
+   function keys() result(kk)
+      character(len=16) :: kk(2)
+      kk = h2ag111_keys()
+   end function keys
+
+   subroutine load()
+      type(h2ag111_params_t) :: p
+      call pull('Z_TERM', p%z_term, p%z_term_found)
+      call pull('R_H2',   p%r_h2,   p%r_h2_found)
+      call h2ag111_load(p)
+   end subroutine load
+
+   logical function term(sta)
+      type(state_t), intent(in) :: sta
+      term = .false.
+      if (h2ag111_term_on()) term = h2ag111_term(sta)
+   end function term
+
+   function classify(fin) result(name)
+      type(fin_t), intent(in) :: fin
+      character(len=32) :: name
+      if (h2ag111_class_on()) then
+         name = h2ag111_classify(fin)
+      else
+         name = 'dissociation'   ! the no-R_H2 catch-all: the classify
+                                ! body's else-branch channel (no H-H
+                                ! criterion can name 'scattering')
+      end if
+   end function classify
 
    !------------------------------------------------------------------
    ! stop_box(who, msg) - the fatal channel (name the caller, print the
