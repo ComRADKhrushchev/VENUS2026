@@ -8,9 +8,9 @@
 !   atom 3 = the incident H. All three atoms are H - the BKMP2 surface is
 !   permutation symmetric, the labeling matters only to the channel
 !   classification below. Parameters: the declared container keys of
-!   input_qct.txt (the reg file declares the vocabulary and pulls the
-!   buffered rows into bkmp2_params_t at the assembly seam; absent keys
-!   leave both optional slots unbound). Keys:
+!   input_qct.txt (the Tier 1 magic-name wrappers declare the vocabulary
+!   and pull the buffered rows into bkmp2_params_t at the assembly seam;
+!   absent keys leave both optional slots unbound). Keys:
 !     R_TERM = <v>  termination: any pair distance beyond [A] (absent -> unbound)
 !     R_H2   = <v>  classification: H-H bond threshold [A] (absent -> unbound)
 !   Both provided values must be positive (validated at bkmp2_load).
@@ -25,11 +25,13 @@
 module bkmp2_box
    use state,       only: state_t
    use final_state, only: fin_t
+   use input,       only: pull
    use bkmp2_pot,   only: bkmp2_vg
    implicit none
    private
    public :: bkmp2_params_t, bkmp2_keys, bkmp2_load, bkmp2_pes, bkmp2_term, bkmp2_classify
    public :: bkmp2_term_on, bkmp2_class_on
+   public :: pes, keys, load, term, classify   ! Tier 1 magic names (thin wrappers)
 
    ! the parameter receiver: field defaults ARE the container defaults (an
    ! absent input key leaves its field untouched at the pull; the found
@@ -162,6 +164,48 @@ contains
          name = 'dissociation'
       end if
    end function bkmp2_classify
+
+   !------------------------------------------------------------------
+   ! Tier 1 magic-name wrappers (the auto-weave contract: a reg-less
+   !                 systems/ folder gets these five names woven into
+   !                 registry_gen; each delegates to the public API above,
+   !                 which the check programs and probe hooks keep using)
+   !------------------------------------------------------------------
+   subroutine pes(q, mass, g, v)
+      real(8), intent(in)  :: q(:), mass(:)
+      real(8), intent(out) :: g(:), v
+      call bkmp2_pes(q, mass, g, v)
+   end subroutine pes
+
+   function keys() result(kk)
+      character(len=16) :: kk(2)
+      kk = bkmp2_keys()
+   end function keys
+
+   subroutine load()
+      type(bkmp2_params_t) :: p
+      call pull('R_TERM', p%r_term, p%r_term_found)
+      call pull('R_H2',   p%r_h2,   p%r_h2_found)
+      call bkmp2_load(p)
+   end subroutine load
+
+   logical function term(sta)
+      type(state_t), intent(in) :: sta
+      term = .false.
+      if (bkmp2_term_on()) term = bkmp2_term(sta)
+   end function term
+
+   function classify(fin) result(name)
+      type(fin_t), intent(in) :: fin
+      character(len=32) :: name
+      if (bkmp2_class_on()) then
+         name = bkmp2_classify(fin)
+      else
+         name = 'dissociation'   ! the no-R_H2 catch-all: the classify
+                                ! body's final else-branch channel (no
+                                ! H-H criterion exists without R_H2)
+      end if
+   end function classify
 
    !------------------------------------------------------------------
    ! stop_box(who, msg) - the fatal channel (name the caller, print the
