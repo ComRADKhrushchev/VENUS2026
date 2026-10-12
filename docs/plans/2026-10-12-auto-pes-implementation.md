@@ -786,7 +786,8 @@ contains
          q(i) = q(i) + h;  call pes(q, m, gp, v);  v_hi = v
          q(i) = q(i) - 2*h; call pes(q, m, gd, v);  v_lo = v
          q(i) = q(i) + h
-         gfd(i) = -(v_hi - v_lo)/(2*h)          ! g = dV/dq
+         gfd(i) = (v_hi - v_lo)/(2*h)           ! g = dV/dq (the positive gradient;
+                                                 !  the interface folds F = -g)
       end do
       dmax = maxval(abs(g - gfd))
       if (dmax <= 1.0d-8) then
