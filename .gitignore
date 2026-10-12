@@ -59,3 +59,6 @@ src/*.o
 
 # worktree isolation (2026-10-12 Tier 1 auto-PES implementation)
 .worktrees/
+
+# GUI 冒烟截图/测试日志(本地诊断产物,不入库)
+gui/logs/
