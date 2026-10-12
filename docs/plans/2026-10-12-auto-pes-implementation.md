@@ -287,9 +287,14 @@ done
 # Comment tails are stripped and the keyword may sit behind a type/purity
 # prefix - "logical function term(sta)" is the idiomatic declaration form
 # (reference_box writes it; a line-start anchor would silently MISS it).
-# "end subroutine pes" never matches: the name must carry the argument paren.
-# A wrong-kind hit (subroutine keys / function pes) emits its actual kind -
-# the caller's form check fatals on it.
+# Keywords AND names match case-insensitively (design §1: SUBROUTINE PES 也认)
+# - matching runs on a tolower copy while the module name is emitted in its
+# original case (the `use` line keeps the author's spelling).
+# "end subroutine pes" (any case) never matches - the end-prefix check runs
+# on the lowered copy. A paren-less magic-name definition still counts (the
+# paren strip tolerates absence) - loud duplicate/form fatal, never a wrong
+# weave. A wrong-kind hit (subroutine keys / function pes) emits its actual
+# kind - the caller's form check fatals on it.
 auto_scan_file() { # $1 = source path
    awk '
       BEGIN { split("pes load prop match sync arm", sa); for (i in sa) sk[sa[i]] = 1
@@ -298,14 +303,15 @@ auto_scan_file() { # $1 = source path
          line = $0
          sub(/!.*/, "", line)                       # strip the comment tail
          sub(/^[[:space:]]+/, "", line)             # normalize the lead
-         if (line ~ /^module[[:space:]]+[a-zA-Z_]/) {
-            split(line, mw, /[[:space:]]+/)
+         lline = tolower(line)                      # the matching copy (keywords are case-insensitive)
+         if (lline ~ /^module[[:space:]]+[a-z_]/) {
+            split(line, mw, /[[:space:]]+/)         # original case for the emitted use line
             if (mw[2] != "procedure") mod = mw[2]
          }
-         if (match(line, /(subroutine|function)[[:space:]]+[a-zA-Z_]/)) {
-            if (RSTART > 1 && substr(line, 1, RSTART - 1) ~ /end[[:space:]]*$/) next
-            split(substr(line, RSTART), w, /[[:space:]]+/)
-            kw = w[1]; nm = tolower(w[2]); sub(/\(.*/, "", nm)
+         if (match(lline, /(subroutine|function)[[:space:]]+[a-z_]/)) {
+            if (RSTART > 1 && substr(lline, 1, RSTART - 1) ~ /end[[:space:]]*$/) next
+            split(substr(lline, RSTART), w, /[[:space:]]+/)
+            kw = w[1]; nm = w[2]; sub(/\(.*/, "", nm)
             if (nm in sk || nm in fk) print (kw == "subroutine" ? "s" : "f"), nm, mod
          }
       }' "$1"
