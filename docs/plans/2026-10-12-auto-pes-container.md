@@ -19,14 +19,22 @@
 - **D4 方案一 + 魔数名轻量槽**：零 reg 自动接线当选；且 auto 检测除必备 `pes` 外
   再扫可选魔数名（`keys`/`load`/`term`/`classify`），接受检测矩阵复杂化换取
   Tier 1 能力更全（用户在"三层处理 vs 魔数名轻量槽"中选后者）。
+- **D5 非绝热方法包入词表**（同日追加问询）：`prop`/`match`/`sync`/`arm` 四名入表
+  （配对约束见 §1）；注册名**不由模块名/文件名派生**（两条派生规则均被否），由
+  第十个魔数名——显式定名函数 `method_name()`（作者数据，返回
+  `character(len=32)`）提供；生成代码在注册行与 arm 门两处调同一函数，一致性由
+  构造保证。自定义记录列（`rec_reg_col` 多参注册词汇）仍留 Tier 2。
 
-设计分节（契约 / 机械 / 缺省与升级 / 文档判据）均已逐节获用户同意（2026-10-12）。
+设计分节（契约 / 机械 / 缺省与升级 / 文档判据）均已逐节获用户同意，D5 增量
+（四名 + 定名函数）另经专项问询获批（2026-10-12）。
 
-## 1. Tier 1 纯势容器——五名词表（封闭集合）
+## 1. Tier 1 纯势容器——十名词表（封闭集合）
 
 一个 systems/ 顶层文件夹，**无 `reg_*.f90`**，即纯势容器候选。作者面 = 文件夹内
 一个（或多个）.f90，暴露下列**魔数名**中的若干个（名字即约定，签名即 E14/E19/E27
-既有接口，编译期核对）：
+既有接口，编译期核对）。词表分两组：
+
+**势能面组**
 
 | 魔数名 | 形 | 必备性 | 签名要点 | 织入槽位 |
 |---|---|---|---|---|
@@ -36,34 +44,59 @@
 | `term` | function | 可选 0/1 | `term_i` 同型：`(sta) → logical` | term（seam） |
 | `classify` | function | 可选 0/1 | `classify_i` 同型：`(fin) → name(len=32)` | classify（seam） |
 
+**方法包组**（自定义非绝热方法，E27 容器方法包的压扁版）
+
+| 魔数名 | 形 | 必备性 | 签名要点 | 织入 |
+|---|---|---|---|---|
+| `prop` | subroutine | 与 `match` **成对**可选 | `elec_prop_i` 同型：`(sta, dt)` 电子传播成员 | `method_reg` 第二参（registration） |
+| `match` | subroutine | 与 `prop` 成对可选 | `mqc_match_i` 同型：`(sta)` 统计匹配成员（跳变、`occ_set`/`n_hop_set` 写回） | `method_reg` 第三参 |
+| `sync` | subroutine | 可选，须随对 | `sync_proc_i` 同型：`(s)`——a↔rho 表象换算尾巴 | `method_reg` 第四参 |
+| `arm` | subroutine | 可选，须随对 | 无参；运行期初始化（分配/参数落位，参数自持走 `keys`/`load` 通道） | arm 槽（seam），**门控归生成代码** |
+| `method_name` | function | **随对必备** | 返回 `character(len=32)` **小写**名——注册名（作者数据；input_qct.txt 的 `ELEC_METHOD` 值。输入层将键值小写化后查表，input.f90——返回非小写名即查表落空，故定为契约） | 注册行与 arm 门**两处同源调用** |
+
 规则：
 
-- **词表封闭**：不再增名。带注册词汇的扩展（`method_reg(name,prop,match)`、
-  `rec_reg_col`、arm 武装、方法包）不入 Tier 1——那是 Tier 2 全容器的事。
-  边界原则一句话：**Tier 1 = 五个无参槽位体**。
-- **在场即绑（无条件）**；键缺席门控（如 R_TERM 缺席 → 跑满 MAX_STEPS）由模块
-  内部 found 旗标实现（范本示例见 §3）。
-- **名字可居文件夹内任意模块**（检测按名找归属模块；通常全在一个模块）。
+- **词表封闭**：不再增名。边界新表述：十个名字全部是**零参槽位体或固定签名
+  成员**；唯一的注册词汇是方法名，且由魔数函数显式提供。带多参注册词汇的扩展
+  （`rec_reg_col(名, 提取器)`、一个文件夹注册多个方法包）不入 Tier 1——那是
+  Tier 2 全容器的事。
+- **势能面组在场即绑（无条件）**；键缺席门控（如 R_TERM 缺席 → 跑满 MAX_STEPS）
+  由模块内部 found 旗标实现（范本示例见 §3）。
+- **方法包组注册无条件、武装有门**：`method_reg` 行总是注册（名字查表语义，与
+  methods/ 全员注册同理）；生成代码的 arm 门
+  `if (trim(electronic%method) == method_name()) call arm()` 与注册行同源——
+  两处调同一 `method_name()`，不可能不一致。方法组在场而跑绝热参考
+  （ELEC_METHOD 缺省/adiabatic）→ 行惰性、arm 不调（绝热参考面白送）。
+  occ/n_hop 统计由 elec_interface 既有持有者承接（occ_set/n_hop_set 通道）。
+- **名字可居文件夹内任意模块**（检测按名找归属模块；通常全在一个模块；方法组
+  各名亦可跨模块，唯注册名取 `method_name()` 返回值与归属无关）。
 - **公共性**：入口须 public——织入体 `use <mod>, only: <名>` 编译期核对，
   private 即编译错（文档明示预期错误形态）。
-- **reg 权威**：文件夹有 `reg_*.f90` → 五名全部忽略，一切照旧（自动接线静默退出）。
+- **reg 权威**：文件夹有 `reg_*.f90` → 十名全部忽略，一切照旧（自动接线静默退出）。
 
 ### 有名中止（prebuild 期，全部指名）
 
 1. 无 reg 且 `pes` 计数 0 —— "systems/<X> 已安装（文件夹在场）但未接线：暴露一个
    `pes` 入口，或写 `reg_<X>.f90` 走全容器"（比今天"编译过、首次力调用才死"更早更响）；
 2. 任一名计数 ≥2 —— 指名两处定义；
-3. 名命中但形不符（如 `subroutine keys`）—— 指名（把安静失败变有声）；
+3. 名命中但形不符（如 `subroutine keys`、`subroutine method_name`）—— 指名
+   （把安静失败变有声）；
 4. 自动文件夹 ≥2 —— 一进程一容器（2026-09-21 裁决）的构建期前置；
 5. 自动容器与 reference（或其他 reg 容器）并存激活 → 既有排程第二填 STOP 1
-   原样生效（测试自动容器仍需暂存 reference，机制不变）。
+   原样生效（测试自动容器仍需暂存 reference，机制不变）；
+6. `prop` XOR `match` —— 写半个传播器不算包，指名；
+7. 对在场而无 `method_name`，或 `method_name` 在场而无对 —— 指名；
+8. `sync` / `arm` 在场而无 prop+match 对 —— 指名。
 
 ### 零新增监管（既有兜底照管一致性问题）
 
 - `load` 无 `keys`：合法空转（封闭语法本就不放行未声明键，pull 落空保缺省）；
 - `keys` 无 `load`：既有 `input_audit_declared` 兜底中止（buffered 而无人消费）；
 - 签名不符：编译期接口核对即错；
-- 撤掉 `pes`：prebuild 中止 1。
+- 撤掉 `pes`：prebuild 中止 1；
+- `method_name` 返回值与既有方法名撞名（如 'adiabatic' 或 methods/ 包名）：
+  `method_reg` 既有 duplicate 名中止（运行期兜底，elec_interface.f90:170）；
+- 名字字面超 32 字符：编译期错（result 声明 `len=32`，字面超长即报）。
 
 ## 2. 构建机械
 
@@ -82,12 +115,17 @@ module registry_gen
    use force_interface, only: container_bind_pes, container_bind_term   ! 按在场织入
    use final_state,     only: container_bind_classify                   ! classify 在场时
    use input,           only: input_declare_keys                        ! keys 在场时
-   use mysys_pot, only: pes, keys, load, term, classify                 ! 按检测到的名列表；
+   use elec_interface,  only: method_reg                                ! 方法组在场时
+   use config,          only: electronic                                ! arm 在场时
+   use mysys_pot,  only: pes, keys, load, term, classify                ! 按检测到的名列表；
                                                                          ! 名跨多个模块时逐模块各一行 use
+   use mysys_tdhf, only: prop, match, sync, arm, method_name            ! 方法组同规
    ...
 contains
-   subroutine auto_slots()                       ! 织入的纯势手（只填在场槽）
+   subroutine auto_slots()                       ! 织入的自动手（只填在场槽）
       call container_sched_bind(force    = auto_force, &
+                                [method  = auto_method,] &              ! 方法组在场时
+                                [arm     = auto_arm,] &
                                 [keys    = auto_keys,] &                 ! 按在场
                                 [load    = auto_load,] &
                                 [term    = auto_term,] &
@@ -98,6 +136,12 @@ contains
    subroutine auto_load();   call load()                            end subroutine   ! 模块自持
    subroutine auto_term();   call container_bind_term(term)         end subroutine
    subroutine auto_classify(); call container_bind_classify(classify) end subroutine
+   subroutine auto_method()                                  ! 注册行（无条件）
+      call method_reg(method_name(), prop, match [, sync])
+   end subroutine auto_method
+   subroutine auto_arm()                                      ! 武装（门控在此，同源派生）
+      if (trim(electronic%method) == method_name()) call arm()
+   end subroutine auto_arm
 
    subroutine registry_gen_keys()
       call auto_slots()                           ! 一行，置于 zmods 调用之前
@@ -128,7 +172,7 @@ emit_deps 机制自动覆盖。
 | 终止 | 跑满 `MAX_STEPS`（程序键） | `container_term` 未绑定恒 false（force_interface.f90:130-131） |
 | 分类 | 无分类运行 | final_state 既有无绑定形态 |
 | 输入键 | 无容器键，语法封闭如常；PES 参数=源内常数或经 `keys`/`load` 声明拉取 | E28 通道的压扁版 |
-| 电子方法 | 无，绝热参考（ELEC_METHOD 缺省） | method/arm 槽空 |
+| 电子方法 | 方法组缺席 → 绝热参考（ELEC_METHOD 缺省）；在场未选中 → 注册行惰性、arm 不调（既有查表语义） | method/arm 槽 |
 | 谱 | SPECTRUM_SOURCE=COMPUTE 照常（力槽绑定即可算） | 2026-10-05 谱立法 |
 | 几何 | SYSTEM_DIR 输入键指案例侧 system/，或容器自带 system/ 子文件夹（两条既有通道） | 2026-09-22 构型裁决 |
 
@@ -166,18 +210,50 @@ contains
 end module
 ```
 
-### 升级 = 写 reg，pot 五函数全部直接复用
+非绝热方法包（方法组；同文件夹另一模块，需要时才写）：
 
-哪天需要方法包/记录列/更复杂的参数体了：同文件夹加 `reg_<sys>.f90`（+ 可选
-box）——prebuild 见 reg 即静默退出自动接线、reg 权威接管编排。**pot 一字不动**：
-reg 区体直接 `use mysys_pot, only: pes, keys, load, term` 引用同一批函数
-（`container_bind_pes(pes)`、`input_declare_keys(keys())`……）。所谓 box 在
-Tier 1 里被压扁成了 pot 模块自己的 `keys`/`load` 两函数。
+```fortran
+! systems/mysys/tdhf.f90 —— Tier 1 方法包（方法组五名）
+module mysys_tdhf
+   use state, only: state_t, elec_t
+   implicit none
+   private
+   public :: prop, match, sync, arm, method_name
+contains
+   function method_name() result(s)      ! 随对必备：注册名（ELEC_METHOD 的值）
+      character(len=32) :: s
+      s = 'mysys_tdhf'                   ! 任意名字，作者定；两处调用同源
+   end function method_name
+   subroutine prop(sta, dt)              ! 成对必备：电子传播（elec_prop_i 同型）
+      type(state_t), intent(inout) :: sta
+      real(8), intent(in) :: dt
+      ! ...振幅/密度矩阵演化本体...
+   end subroutine prop
+   subroutine match(sta)                 ! 成对必备：统计匹配（mqc_match_i 同型；
+      type(state_t), intent(inout) :: sta  !  跳变与 occ_set/n_hop_set 写回在此）
+   end subroutine match
+   subroutine sync(s)                    ! 可选：a↔rho 表象换算尾巴（sync_proc_i 同型）
+      type(elec_t), intent(inout) :: s
+   end subroutine sync
+   subroutine arm()                      ! 可选：选中后的运行期初始化（门控归生成代码）
+      ! ...分配/参数落位（参数经 keys/load 通道已入模块态）...
+   end subroutine arm
+end module
+```
+
+### 升级 = 写 reg，pot 十名全部直接复用
+
+哪天需要自定义记录列 / 一个文件夹多个方法包 / 更复杂的参数体了：同文件夹加
+`reg_<sys>.f90`（+ 可选 box）——prebuild 见 reg 即静默退出自动接线、reg 权威
+接管编排。**pot 一字不动**：reg 区体直接 `use mysys_pot, only: pes, keys, load, term`
+与 `use mysys_tdhf, only: prop, match, sync, arm, method_name` 引用同一批函数
+（`container_bind_pes(pes)`、`method_reg(method_name(), prop, match, sync)`……）。
+所谓 box 在 Tier 1 里被压扁成了 pot 模块自己的 `keys`/`load` 两函数。
 
 ## 4. 非目标与登记后续件
 
 - **Python/脚本势桥接**（D1 后置）：子进程管道协议 / i-PI socket 方案本轮只留缝
-  （五名词表封闭、外部势另立容器形态另案裁决）。
+  （十名词表封闭、外部势另立容器形态另案裁决）。
 - **能量 only 入口 + 框架差分**：D3 否决，不做。
 - **通用距离终止键**（TERM_R 类，程序级、范式感知——气对按碎片间距/表面按弹射体
   高度）：真正的新裁决（触碰 E14/E19 容器属位），登记为后续件候选，不混本批。
@@ -189,16 +265,22 @@ Tier 1 里被压扁成了 pot 模块自己的 `keys`/`load` 两函数。
    - 正面：范本容器拖入 systems/ → **首次 make 即绿**（首编即绿核验点）→
      `build/<FC>/registry_gen.f90` 织入内容断言（use 行、auto_slots、调用行）→
      MAX_STEPS 安全网跑通一条；`keys`/`load`/`term`（键在场与缺席两分支）/
-     `classify` 路径各覆盖一条；
+     `classify` 路径各覆盖一条；方法组两条——`ELEC_METHOD = <method_name()>` 值
+     选中跑通一条（arm 被调的见证），ELEC_METHOD 缺省（adiabatic）下方法行惰性、
+     arm 未调的见证各一；
    - 负面：pes 0 / pes ≥2 / 任一名 ≥2 / 双自动文件夹 / 形不符（subroutine keys），
-     中止文案逐条断言；
+     以及配对四条——`prop` 无 `match`、对无 `method_name`、`method_name` 无对、
+     `sync`/`arm` 无对——与 `method_name` 返回 'adiabatic' 撞名（method_reg 既有
+     duplicate 中止），中止文案逐条断言；
    - T2 式零触碰演练：拖入 → 判据绿 → 拖出重建 → git tracked 零改动。
 2. **回归**：五案例 results.txt 逐字节一致；双编译器全量重建绿；T4/T5 grep 复验
    （23.0605 仅 force_interface；RANDOM_NUMBER 零命中）。
-3. **文档落点**：EXTENDING.md §1 重写为 Tier 1 领篇（五名词表 + 范本 + 升级注记），
-   现行 8 槽三件套降为 Tier 2 全容器；README.md / src/CLAUDE.md / AGENTS.md
+3. **文档落点**：EXTENDING.md §1 重写为 Tier 1 领篇（十名词表 + 两组范本 + 升级
+   注记），现行 8 槽三件套降为 Tier 2 全容器；README.md / src/CLAUDE.md / AGENTS.md
    注册段同步增补；本文件即裁决记录。
 
 ## 6. 状态
 
-- 2026-10-12：设计定稿，用户逐节批准（D1-D4 裁决链 + 四节设计）。待实现。
+- 2026-10-12：设计定稿，用户逐节批准（D1-D4 裁决链 + 四节设计）；同日 D5 增量
+  批准（方法包四名 + `method_name()` 定名函数，词表五名 → 十名），文档随批修订。
+  待实现。
