@@ -54,7 +54,6 @@
 !            ../systems/reference/reference_pot.f90 &
 !            ../systems/reference/reference_box.f90 &
 !            interface/container_sched.f90 &
-!            ../systems/reference/reg_reference.f90 &
 !            build/gfortran/registry_gen.f90 ../scripts/check_facade.f90 &
 !            -Ibuild/old_xcheck build/old_xcheck/venus_params.o &
 !            build/old_xcheck/venus_data.o build/old_xcheck/input_parser.o &

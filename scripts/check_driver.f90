@@ -31,7 +31,6 @@
 !            ../systems/reference/reference_pot.f90 &
 !            ../systems/reference/reference_box.f90 &
 !            interface/container_sched.f90 &
-!            ../systems/reference/reg_reference.f90 &
 !            build/gfortran/registry_gen.f90 ../scripts/check_driver.f90 &
 !            -o build/check_driver.exe
 ! Run (from src/): build\check_driver.exe
@@ -103,9 +102,14 @@
 !       per trajectory < MAX_STEPS+1 and >= 2, the last frame's t below the
 !       safety-net horizon MAX_STEPS*DT) - the container's termination judgment
 !       observable through the frame count and time
-!   (f) STATISTICS FIRST VERSION: the no-classification run prints the skipped
-!       semantics line 'outcome counts: none (no classification bound -
-!       skipped)' and the conservation-drift summary line; the
+!   (f) STATISTICS FIRST VERSION: the no-E_SPLIT run prints the counted
+!       fallback outcome line 'outcome counts: capture=3' (Tier 1 presence
+!       binding: the weave binds the classification slot whenever the
+!       container exposes the classify magic name, so a key-absent run
+!       counts the wrapper's fallback channel - reference_classify's
+!       else-branch 'capture'; docs/plans/2026-10-12-auto-pes-container.md
+!       §1, ruling 2026-10-12 tier1-convert fix round R-C1) and the
+!       conservation-drift summary line; the
 !       classification-bound run (E_SPLIT = 1.0 in the parameter file) prints
 !       the outcome table over the REAL final-state values: E_REL = 200
 !       kcal/mol leaves the pair's final relative radial energy two orders
@@ -163,15 +167,23 @@
 !            safety-net-only posture)
 !       (j2) bad value (child, the real driver exe): T_GLO = -5 -> nonzero
 !            exit, stderr names glo_target_init and the field t_glo
-!   (k) unbound-classification authority (this check's OWN child mode
+!   (k) presence-bound classification (this check's OWN child mode
 !       'eclass', self-respawn): the full assembly chain in a run directory
-!       WITHOUT the container parameter file (termination and classification
-!       unbound), then container_classify(fin) -> nonzero exit, stderr names
-!       container_classify. (The unbound-PES posture has no criterion any
+!       WITHOUT the container parameter file, then container_classify(fin)
+!       -> exit 0, stdout carries the evidence line 'child eclass:
+!       container_classify returned capture' (Tier 1 presence binding: the
+!       weave binds the slot with no regard to key presence; the wrapper's
+!       key-absent fallback channel answers - the reg-era unbound-call
+!       named abort retired with the reg; docs/plans/2026-10-12-auto-pes-
+!       container.md §1, ruling 2026-10-12 tier1-convert fix round R-C1).
+!       (The unbound-PES posture has no criterion any
 !       more: the verification container is dragged into the build on every
 !       compile, so a container-free registry is no longer instantiable
 !       through the real build - that posture was verified while the tree was
-!       container-free; the classification slot keeps the fail-loud witness.)
+!       container-free; the classify slot's own fail-loud witness now lives
+!       behind the presence binding - a bound wrapper answering is the pass
+!       posture, and final_state keeps the unbound-call abort for any
+!       container that binds nothing.)
 !   (l) HISTOGRAM FILES (the statistics-phase data products): the term+classify
 !       case's run directory carries 'hist_e_rel.dat' and 'hist_thta.dat' (the
 !       driver's registered statistics output names), each 40 bin lines + one
@@ -303,9 +315,11 @@ program check_driver
 contains
    !------------------------------------------------------------------
    ! child_eclass() - the (k) child: the full assembly chain on a system folder
-   !                  WITHOUT container keys (termination and classification
-   !                  unbound), then container_classify - the unbound call must
-   !                  be the named-abort authority
+   !                  WITHOUT container keys (Tier 1 presence binding: the
+   !                  weave binds the classification slot regardless; the
+   !                  wrapper's key-absent fallback channel answers), then
+   !                  container_classify returns the fallback name - the
+   !                  deliberate clean exit carries the evidence line out
    subroutine child_eclass()
       type(state_t) :: stc
       type(fin_t) :: fc
@@ -317,11 +331,16 @@ contains
       call list_atoms_load()
       call state_create(stc, size(list_atoms%mass), 1)   ! the degenerate adiabatic surface count
       call registry_gen_all()
-      call registry_gen_init()     ! container keys absent -> slots stay unbound
+      call registry_gen_init()     ! container keys absent -> the seam keeps the
+                                   ! module defaults (fallback channels armed)
       call input_audit_declared()
       call container_init()
-      nm = container_classify(fc)  ! the unbound call - must named abort here
-      print '(a)', 'child eclass: container_classify returned ', trim(nm)
+      nm = container_classify(fc)  ! the presence-bound call - the wrapper's
+                                   ! key-absent fallback answers
+      print '(a,a)', 'child eclass: container_classify returned ', trim(nm)
+      stop 0                       ! the observation completed: a clean exit is
+                                   ! the pass posture (the harness's stop-2
+                                   ! guard must not fire)
    end subroutine child_eclass
 
    !------------------------------------------------------------------
@@ -746,12 +765,16 @@ contains
    end subroutine crit_e
 
    !------------------------------------------------------------------
-   ! crit_f() - (f): the unbound-classification skipped line + the drift line in
-   !             case_a's stdout; the bound outcome table in case_t's stdout
+   ! crit_f() - (f): the counted fallback outcome line (Tier 1 presence
+   !             binding - key-absent runs count the wrapper's fallback
+   !             channel 'capture'; ruling 2026-10-12 fix round R-C1) + the
+   !             drift line in case_a's stdout; the bound outcome table in
+   !             case_t's stdout
    subroutine crit_f()
-      if (index(obuf_a, 'outcome counts: none (no classification bound - skipped)') == 0) then
-         call fail('(f): the no-classification run must print the skipped-semantics'// &
-                  ' outcome line - got "'//trim(obuf_a)//'"')
+      if (index(obuf_a, 'outcome counts: capture=3') == 0) then
+         call fail('(f): the no-E_SPLIT run must print the counted fallback'// &
+                  ' outcome line capture=3 (Tier 1 presence binding)'// &
+                  ' - got "'//trim(obuf_a)//'"')
          return
       end if
       if (index(obuf_a, 'conservation drift: trajectories=3 max|e_fin-e0|=') == 0) then
@@ -765,7 +788,8 @@ contains
                   trim(obuf_t)//'"')
          return
       end if
-      print '(a)', '(f): PASS - unbound run: skipped line + drift summary; bound run:'// &
+      print '(a)', '(f): PASS - no-E_SPLIT run: counted fallback line (capture=3,'// &
+           ' the Tier 1 presence-binding posture) + drift summary; bound run:'// &
            ' outcome table scattering=2 (the real fin values: the high-energy'// &
            ' pair stays above the split)'
    end subroutine crit_f
@@ -976,10 +1000,12 @@ contains
    end subroutine crit_j2
 
    !------------------------------------------------------------------
-   ! crit_k() - (k): this check's own child runs the unbound-classification chain
+   ! crit_k() - (k): this check's own child runs the presence-bound
+   !             classification chain (no container keys; the wrapper's
+   !             fallback channel answers) - exit 0 + the evidence line
    subroutine crit_k()
       character(len=512) :: cmd
-      character(len=2048) :: ebuf
+      character(len=2048) :: sbuf
       character(len=1) :: sep
       integer :: stat
       if (windows_host()) then
@@ -987,15 +1013,20 @@ contains
       else
          sep = '/'
       end if
-      cmd = 'build'//sep//'check_driver.exe eclass 2>build'//sep//'drv_err.txt'
+      cmd = 'build'//sep//'check_driver.exe eclass >build'//sep// &
+           'drv_eclass.txt 2>build'//sep//'drv_err.txt'
       call execute_command_line(trim(cmd), wait=.true., exitstat=stat)
-      call slurp('build/drv_err.txt', ebuf)
-      if (stat == 0) then
-         call fail('(k): expected a loud-stop, the eclass child exited 0')
-      else if (index(ebuf, 'container_classify') == 0) then
-         call fail('(k): stderr does not name container_classify - got "'//trim(ebuf)//'"')
+      call slurp('build/drv_eclass.txt', sbuf)
+      if (stat /= 0) then
+         call fail('(k): the eclass child must complete cleanly (the'// &
+                  ' presence-bound classify answers the fallback channel)'// &
+                  ' - exit '//i2s(stat))
+      else if (index(sbuf, 'child eclass: container_classify returned capture') == 0) then
+         call fail('(k): the evidence line missing - got "'//trim(sbuf)//'"')
       else
-         print '(a)', '(k): PASS ('//trim(ebuf)//')'
+         print '(a)', '(k): PASS (presence-bound classify: the no-key child'// &
+              ' answers the fallback channel - "child eclass:'// &
+              ' container_classify returned capture")'
       end if
    end subroutine crit_k
 
