@@ -82,8 +82,9 @@
 3. 名命中但形不符（如 `subroutine keys`、`subroutine method_name`）—— 指名
    （把安静失败变有声）；
 4. 自动文件夹 ≥2 —— 一进程一容器（2026-09-21 裁决）的构建期前置；
-5. 自动容器与 reference（或其他 reg 容器）并存激活 → 既有排程第二填 STOP 1
-   原样生效（测试自动容器仍需暂存 reference，机制不变）；
+5. 自动容器与 reg 容器（cau 族）并存激活 → 既有排程第二填 STOP 1 原样生效
+   （测试自动容器时暂存该 reg 容器；两自动文件夹归第 4 条构建期中止——D6 裁决后
+   reference 自身即自动容器）；
 6. `prop` XOR `match` —— 写半个传播器不算包，指名；
 7. 对在场而无 `method_name`，或 `method_name` 在场而无对 —— 指名；
 8. `sync` / `arm` 在场而无 prop+match 对 —— 指名。

@@ -47,7 +47,8 @@ make clean        # removes the whole build/ tree (both compiler subtrees)
   `systems/inactive/` (two levels deep — outside the build glob). `systems/` top level keeps
   only `reference/` (the production container of the five cases); to test a container, move
   its folder to `systems/` top level, `make` twice, test, then move it back. Concurrent
-  containers double-bind at assembly (STOP 1) — the check_* criterion programs compile
+  containers: two AUTO (Tier 1) folders abort at prebuild (2026-10-12 D6 ruling); an auto +
+  a reg container double-bind at assembly (STOP 1) — the check_* criterion programs compile
   containers standalone and are unaffected; running venus.e on a tested container requires
   temporarily shelving reference too (or the still-parked selection mechanism).
 - Tier 1 pure-PES containers (2026-10-12): a systems/* folder WITHOUT reg_*.f90 is
