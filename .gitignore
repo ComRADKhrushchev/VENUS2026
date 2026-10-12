@@ -56,3 +56,6 @@ docs/literature/
 src/*.o
 # vendor archives
 *.rar
+
+# worktree isolation (2026-10-12 Tier 1 auto-PES implementation)
+.worktrees/
