@@ -1,0 +1,6 @@
+PASS: (a) closed form, max|d| =    0.000E+00
+PASS: (b) central difference, max|d| =    4.113E-10
+PASS: (c) keys() vocabulary exact
+PASS: (d) full assignment (garbage overwritten)
+PASS: (e) method_name() == 'auto_tdhf' (lowercase)
+check_auto_pes: ALL PASS
