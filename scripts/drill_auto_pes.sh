@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # drill_auto_pes.sh - the Tier 1 auto-PES container drill (criterion family):
-#   positive legs (clean-tree drag-in first make, woven content, pes-only
-#   partial-shape weave, adiabatic default run with the init witness ABSENT,
+#   reference is itself a Tier 1 auto container now, so it is SHELVED before
+#   the drag (leg 0, ordering only, not a counted leg) - two auto folders on
+#   one tree abort prebuild by design (ruling D6). Then the positive legs
+#   (clean-tree drag-in first make, woven content, pes-only partial-shape
+#   weave, adiabatic default run with the init witness ABSENT,
 #   ELEC_METHOD = auto_tdhf run with the witness PRESENT, R_TERM both
-#   branches, double-run determinism) + the runtime negatives (reference +
-#   auto coexistence STOP 1; a package naming itself 'adiabatic' aborts at
-#   method_reg assembly) + the prebuild negative family (eight named aborts -
-#   the committed spec §5 negative coverage) + the zero-touch close.
+#   branches, double-run determinism) + the negatives (reference + auto
+#   coexistence aborts at PREBUILD - "two auto containers are installed";
+#   the old runtime STOP-1 form is unreachable, the abort is build-time;
+#   a package naming itself 'adiabatic' aborts at method_reg assembly) +
+#   the prebuild negative family (eight named aborts - the committed spec
+#   §5 negative coverage) + the zero-touch close.
 # Leaves the tree as found (trap restores); exits nonzero on any failed leg.
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -31,6 +36,13 @@ trap restore_tree EXIT
 drag() { [ -d "$FIX" ] || mv "$SHELF" "$FIX"; }   # idempotent drag-in
 
 cd "$SRC"
+
+# ---- leg 0 (ordering only, not a counted leg): reference is itself a
+#      Tier 1 auto container now - shelf it BEFORE the drag; reference +
+#      dragged auto_sample would abort prebuild ("two auto containers"),
+#      which is the D6 design and is asserted in the coexistence leg.
+#      The EXIT trap un-shelves on every exit form. ----
+mv "$REF" "$REFSHELF"
 
 # ---- leg 1: drag in, FIRST make green (clean tree - the bootstrap path) ----
 make clean >/tmp/drill_clean.log 2>&1 || { bad "make clean (leg-1 precondition)"; exit 1; }
@@ -88,14 +100,25 @@ mv "$DRILL/park_tdhf.f90" "$FIX/tdhf_stub.f90"
 mv "$DRILL/park_pot.f90" "$FIX/pot.f90"
 (cd "$SRC" && bash ../scripts/prebuild.sh . build/gfortran) >/dev/null 2>&1
 
-# ---- leg 4: runtime coexistence abort (reference + auto = STOP 1 at assembly;
-#      registry_gen_keys runs before the input read, so no input file needed) ----
-"$BLD/venus.e" >/dev/null 2>/tmp/drill_coexist.err
-if grep -q "slot is already filled" /tmp/drill_coexist.err; then ok "coexistence STOP 1"
-else bad "coexistence STOP 1"; cat /tmp/drill_coexist.err; fi
-
-# ---- leg 5: shelve reference, rebuild, scratch-case runs ----
+# ---- leg 4: coexistence abort at PREBUILD (D6): with the fixture dragged,
+#      bring reference back - it is Tier 1 too, so the candidate scan sees
+#      two auto containers and fatals on stderr BEFORE any emission (the
+#      runtime "slot is already filled" STOP 1 is unreachable now: make
+#      itself aborts). The generated registry_gen keeps its last good weave;
+#      re-shelving + the next make regenerate cleanly. ----
+mv "$REFSHELF" "$REF"
+(cd "$SRC" && bash ../scripts/prebuild.sh . build/gfortran) >"$DRILL/coexist.out" 2>"$DRILL/coexist.err"
+rc=$?
+echo "--- coexistence leg, prebuild stderr capture:"
+cat "$DRILL/coexist.err"
+if [ "$rc" -ne 0 ] && grep -qF "two auto containers are installed" "$DRILL/coexist.err"; then
+   ok "coexistence aborts at prebuild (two auto containers)"
+else
+   bad "coexistence aborts at prebuild (two auto containers; rc=$rc, want nonzero exit + the two-auto fatal on stderr)"
+fi
 mv "$REF" "$REFSHELF"
+
+# ---- leg 5: rebuild on the reference-shelved tree, scratch-case runs ----
 make >/dev/null 2>&1 || { bad "shelved-reference rebuild"; exit 1; }
 mkdir -p "$DRILL/system"
 cp "$FIX/system/frag_a.xyz" "$FIX/system/frag_b.xyz" "$DRILL/system/"
@@ -225,8 +248,26 @@ mv "$REFSHELF" "$REF"
 
 # ---- leg 7: zero-touch close ----
 cd "$SRC"; restore_tree; trap - EXIT
-make >/dev/null 2>&1 || { bad "restored rebuild"; exit 1; }
-dirty=$(git -C "$ROOT" status --porcelain | grep -v 'venus2026/' | grep -v '^??')
+# depend-refresh before the close make: the drill's swap sequence leaves
+# depend.mk of the auto_sample flavor (the neg family's aborted prebuilds
+# emit nothing), and container-INTERNAL use edges (reference_box uses
+# reference_pot) live only there - the Makefile's static rule orders
+# registry_gen after the systems objects, not the systems objects among
+# themselves, so a first make on the stale graph can race reference_box
+# ahead of reference_pot (the registered first-make-after-swap window,
+# same in-case form as the edac2d1/7427a9a drag-in notes; the pre-drill
+# choreography dodged it via reference artifacts lingering from its leg-1
+# build, which the leg-0 shelf before make clean removes). One explicit
+# prebuild (the neg-family idiom) refreshes the graph; the make is then a
+# SINGLE green assertion - it cannot silently absorb a real breakage.
+bash ../scripts/prebuild.sh . build/gfortran >/dev/null 2>&1 \
+   || { bad "restored-tree depend refresh"; exit 1; }
+make >/tmp/drill_restore.log 2>&1 || { bad "restored rebuild"; tail -20 /tmp/drill_restore.log; exit 1; }
+# the scan excludes the drill's OWN source file: the leg asserts the drill
+# leaves the tree as found, and the script's uncommitted WIP edits (this
+# rework itself) are not drill residue - a pre-commit drill run must pass
+# without first committing the script under test.
+dirty=$(git -C "$ROOT" status --porcelain | grep -v 'venus2026/' | grep -v '^??' | grep -v 'scripts/drill_auto_pes.sh')
 if [ -z "$dirty" ]; then ok "zero-touch (tracked tree clean, pre-existing deletions excluded)"
 else bad "zero-touch"; echo "$dirty" | head; fi
 echo "drill summary: pass=$pass fail=$fail"
