@@ -396,9 +396,9 @@ fi
       for a in $args; do
          ia=$((ia+1))
          if [ "$ia" -eq 1 ]; then
-            printf '      call container_sched_bind(auto_%s' "$a"
+            printf '      call container_sched_bind(%s = auto_%s' "$a" "$a"
          else
-            printf ', &\n                                auto_%s' "$a"
+            printf ', &\n                                %s = auto_%s' "$a" "$a"
          fi
       done
       echo ")"
@@ -462,8 +462,8 @@ for pat in \
    "if (trim(electronic%method) == method_name()) call arm()" \
    "call auto_slots()" \
    "use container_sched, only: container_sched_bind" \
-   "call container_sched_bind(auto_keys, &" \
-   "auto_force, &"; do
+   "call container_sched_bind(keys = auto_keys, &" \
+   "force = auto_force, &"; do
    grep -qF "$pat" src/build/gfortran/registry_gen.f90 && echo "WOVEN-OK: $pat" || echo "WOVEN-FAIL: $pat"
 done
 mv systems/auto_sample systems/inactive/auto_sample
@@ -621,8 +621,8 @@ call method_reg(method_name(), prop, match, sync)
 if (trim(electronic%method) == method_name()) call arm()
 call auto_slots()
 use container_sched, only: container_sched_bind
-call container_sched_bind(auto_keys, &
-auto_force, &
+call container_sched_bind(keys = auto_keys, &
+force = auto_force, &
 PATS
 
 # ---- leg 3: runtime coexistence abort (reference + auto = STOP 1 at assembly;
@@ -697,7 +697,7 @@ echo "drill summary: pass=$pass fail=$fail"
 cd C:/Users/13614/Desktop/MAIN/01_WORK/dev/venus2026/VENUS2026
 chmod +x scripts/drill_auto_pes.sh && bash scripts/drill_auto_pes.sh 2>&1 | tee /tmp/drill_run.log
 ```
-Expected: 末行 `drill summary: pass=20 fail=0`，退出码 0。失败腿的修复属本任务交付（fixture/织入/输入键三方都可能要动），修完重跑至全绿。
+Expected: 末行 `drill summary: pass=30 fail=0`（终审修复波 P12/P13/P14 后 20→30 腿：pes-only 部分形态织入断言 + 八条 prebuild 负面腿 + 运行期 'adiabatic' 撞名腿），退出码 0。失败腿的修复属本任务交付（fixture/织入/输入键三方都可能要动），修完重跑至全绿。
 
 - [ ] **Step 3: Commit**
 
@@ -1007,7 +1007,7 @@ grep -rn "RANDOM_NUMBER" src/ systems/                            # 期望无输
 
 ```bash
 cd scripts && ./build/check_auto_pes.exe | tail -1        # ALL PASS
-cd .. && bash scripts/drill_auto_pes.sh 2>&1 | tail -1    # drill summary: pass=20 fail=0
+cd .. && bash scripts/drill_auto_pes.sh 2>&1 | tail -1    # drill summary: pass=30 fail=0
 ```
 编辑 docs/plans/2026-10-12-auto-pes-container.md §6 追加：
 

@@ -239,9 +239,9 @@ fi
       for a in $args; do
          ia=$((ia+1))
          if [ "$ia" -eq 1 ]; then
-            printf '      call container_sched_bind(auto_%s' "$a"
+            printf '      call container_sched_bind(%s = auto_%s' "$a" "$a"
          else
-            printf ', &\n                                auto_%s' "$a"
+            printf ', &\n                                %s = auto_%s' "$a" "$a"
          fi
       done
       echo ")"
