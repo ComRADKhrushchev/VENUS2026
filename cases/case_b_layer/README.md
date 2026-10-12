@@ -9,6 +9,10 @@
 > probe_glo.f90 头注——链接 build/gfortran 全部对象但 driver.o，驱动器是唯一其他程序单元）
 > 重跑产物：各子文件夹的 `trajectories.txt`、`hist_e_rel.dat`、`hist_thta.dat`（全文件
 > 不入库，摘录见第 4 节与 `results.txt`）。
+> 2026-10-12 Tier 1 批注（R-C1 裁决，docs/plans/2026-10-12-auto-pes-container.md §6）：
+> reference 容器转 Tier 1（在场即绑）后，三个无 E_SPLIT 腿的结局行由
+> `outcome counts: none (...)` 翻为兜底通道 `outcome counts: capture=32/32/4`
+> （thermalize/andersen/glo 逐腿）；trajectories 不受影响（逐字节复验）。
 > 本 case 用 verlet（与标定一致——radau 下 thermalize 平衡覆盖 ~450× 物理时长，
 > V.1 移交备忘已入 docs/plans/V.md S2；radau 复用需按其步长序列重标定）。
 

@@ -35,10 +35,19 @@ docs/plans/2026-10-12-auto-pes-container.md）：
 （reg 权威）；名字须 public；prebuild 对 pes 0/≥2、任一名 ≥2、形不符、prop 与
 match 不成对、method_name 缺对、sync/init 孤立、双自动文件夹各有一条指名中止。
 
+注（R-C2 裁决，范本 reference_box）：`keys()` 包装可在首调（parse 前的无卫兵
+调用点）惰性预置可计算的缺省常数（如缺省力常数），使缝期之前的一切消费者看到
+已计算的缺省——这是对"`declare_keys` = 纯词表数据"教义的一处**有档变通**
+（registration 期可计算性沿袭；见 docs/plans/2026-10-12-auto-pes-container.md §6）。
+
 现成范本：`systems/inactive/auto_sample/`（pot.f90 / io.f90 / tdhf_stub.f90；
-判据 `scripts/check_auto_pes.f90` + 演练 `scripts/drill_auto_pes.sh`）。
-激活 = 文件夹搬回 systems/ 顶层（一次一容器；与 reference 并存会在装配期
-STOP 1——测试时把 reference 暂存 systems/inactive/）。
+判据 `scripts/check_auto_pes.f90` + 演练 `scripts/drill_auto_pes.sh`）。生产
+容器同步批范本：fh2_leps / h2ag111PES / h3_bkmp2 / reference 四容器已全部为
+Tier 1 魔数名形态（包装法——box 保留全部公有旧名，另暴露五个魔数名薄包装
+pes/keys/load/term/classify，零 reg；判据程序与 probe 钩子零改动）。
+激活 = 文件夹搬回 systems/ 顶层（一次一容器；reference 本身已是 Tier 1 自动
+容器，两个自动文件夹并存 prebuild 即中止——测试时把 reference 暂存
+systems/inactive/）。
 
 ## 1b. Tier 2 全容器——reg 三件套（体系专属代码的组合点）
 
@@ -60,8 +69,8 @@ systems/mysystem/
                     .f90/引擎参数文件不进扫描); SYSTEM_DIR 指向此子文件夹
 ```
 
-容器 reg 骨架(照抄即得, 现成范本 systems/reference/reg_reference.f90 与
-systems/inactive/cau_rst/reg_cau_rst.f90):
+容器 reg 骨架(照抄即得, 现成范本 systems/inactive/cau_rst/reg_cau_rst.f90——
+2026-10-12 同步批后 reg 族仅存的范本):
 
 ```fortran
 subroutine reg_mysystem_slots()          ! 唯一公共入口: 一次交接
@@ -76,6 +85,11 @@ subroutine reg_mysystem_slots()          ! 唯一公共入口: 一次交接
 end subroutine
 ! ---- 以下为私有功能名区体: 每体只做自己的接线 + 自己的门控 ----
 ```
+
+- **现役 Tier 2 容器**: cau 五连(cau_emt2 / cau_emtnn / cau_rst / cau_peri /
+  cau_tab, 均在 systems/inactive/)——自定义记录列(`rec_reg_col` 多参数注册词汇,
+  §1a 词表封闭章程)所迫; fh2_leps / h2ag111PES / h3_bkmp2 与 reference 四容器
+  已于 2026-10-12 同步批全部转为 Tier 1 魔数名形态(§1a)。
 
 - **构型文件随容器**(2026-09-22 裁决): 体系专属容器的反应物构型放容器文件夹的
   `system/` 子文件夹——扫描纯净性所迫(逐文件判据的即停不容代码/参数文件混入),

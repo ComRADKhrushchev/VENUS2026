@@ -7,6 +7,10 @@
 > docs/plans/V.md 验收 4，本 case 不承载 ifx 复验。）
 > 重跑产物：`trajectories.txt`、`hist_e_rel.dat`、`hist_thta.dat`（全文件不入库，
 > 摘录见第 4 节与 `results.txt`）。
+> 2026-10-12 Tier 1 批注（R-C1 裁决，docs/plans/2026-10-12-auto-pes-container.md §6）：
+> reference 容器转 Tier 1（在场即绑）后，本无 E_SPLIT 腿的结局行由
+> `outcome counts: none (...)` 翻为兜底通道 `outcome counts: capture=8`；
+> trajectories 不受影响（逐字节复验）。
 
 ## 1. 验证目的
 

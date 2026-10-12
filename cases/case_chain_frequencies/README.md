@@ -11,6 +11,10 @@
 > 探针不写文件——全部证据行落 stdout（入档 `results.txt`，见第 4 节）；
 > 退出码 0 = 全判据绿。判据主体双写在探针头注（scripts/probe_chain_freq.f90）与本 README
 > 第 3 节，先写后跑。
+> 2026-10-12 Tier 1 批注（R-C1 裁决，docs/plans/2026-10-12-auto-pes-container.md §6）：
+> reference 容器转 Tier 1（在场即绑）后，两个无 E_SPLIT 腿的结局行由
+> `outcome counts: none (...)` 翻为兜底通道 `outcome counts: capture=1/1`
+> （boltz/normalmode 逐腿）；trajectories 不受影响（逐字节复验）。
 
 ## 1. 验证目的
 

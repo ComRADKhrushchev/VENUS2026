@@ -660,10 +660,11 @@ contains
       character(len=80) :: req(6)
       req = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 5.0', 'B_MAX = 2.0', &
               'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = BOLTZMANN' ]
-      ! absent container keys: default constant, both optional slots unbound
+      ! absent container keys: default constant; under Tier 1 presence-binding
+      ! the term/classify wrappers are bound and the found flags gate them off
       call write_pars('build/obox_input.txt', req)
       call expect_ok_child_in('obox', 'obox: k='//trim(d2s(4.0d-2))//' term=F class=F', &
-         '(o) container keys absent: defaults, slots unbound')
+         '(o) container keys absent: defaults, found-flag gates off')
       ! good keys: the constant buffered + both optional slots provided
       call write_pars('build/obox_input.txt', [req, [character(len=80) :: &
          'K_HARM = 0.123', 'Q_TERM = 9.5', 'E_SPLIT = 1.5']])

@@ -295,3 +295,30 @@ end module
   基线逐字节同、当日读数与前树在案读数逐项一致，档案重生成留待独立批次）；T4/T5
   代码域零命中（全域 grep 18/1 命中均为先在停架容器字面量与文档自引，与前树计数
   零差）。状态：已实现。
+- 2026-10-12：**四容器同步批（D6 裁决）**——可转尽转落地（提交 edac2d1 / 43e5d11 /
+  28b8a4d / a76a4e6 / 9132bf1；实施记录 .superpowers/sdd/2026-10-12-tier1-conversion/）：
+  - **转换形态（包装法，四容器同模板）**：reference / fh2_leps / h2ag111PES / h3_bkmp2
+    的 box 保留全部现行公有名（判据程序与 probe 钩子零改动），另暴露五个魔数名薄包装
+    pes/keys/load/term/classify，删 `reg_<sys>.f90` 落入 prebuild 自动织入（无 reg 的
+    systems/ 文件夹 = Tier 1）；拉键序列以原 reg 为准逐字照抄。
+  - **D6（用户裁决）**：可转尽转——四容器全转 Tier 1；两个自动（零 reg）文件夹并存
+    维持 prebuild 中止（"two auto containers are installed"，drill 共存腿随迁）。
+  - **R-C1（用户裁决，结局行翻转）**：Tier 1 在场即绑（auto_classify 无条件
+    container_bind_classify，§1 语义）——六个无 E_SPLIT 的 reference 生产腿
+    （b_layer thermalize/andersen/glo、chain_frequencies boltz/normalmode、
+    surface_window）的统计行从 `outcome counts: none (no classification bound -
+    skipped)` 翻为兜底通道计数 `capture=N`（32/32/4/1/1/8 逐腿）——与谱来源腿
+    dissociation=4 同款语义；验收锚相应收窄（trajectories 逐字节 + stdout 除
+    timing 行、该六腿再除 outcome counts 行）。
+  - **R-C2（用户裁决，惰性缺省预置）**：reg 时代 bind_force 注册期的
+    harm_set_constant(0.04) 预置，织入流以 keys() 包装首调（parse 前无卫兵调用点）
+    惰性预置复刻；pes() 内保留守卫为手持消费者安全网；reference_load 缝期置有效
+    常数后置 staged_default=.true.（防缺省覆写输入覆写的有效 K_HARM）。
+  - **等价证据**：六案例 pre/post 收窄锚全等——trajectories 逐字节 12/12（b_layer
+    ×3/chain×2/harmonic/radau/surface_window/谱来源四腿）+ h3_ebk COMPUTE 中止腿
+    stdout+stderr 两侧同款（合计 14 项逐字节比对，Task 4 口径）；收窄 stdout 全等
+    （harmonic/radau 的 scattering=8 与谱来源四腿 dissociation=4 全行保留）。判据族
+    全绿（check_driver/check_facade/check_final_state/check_auto_pes/
+    check_fh2_leps/check_h2ag111/check_h2ag111_pes/check_h3_bkmp2），drill 30/30，
+    双编译器干净重建绿；cau 五连保持 Tier 2（rec_reg_col 记录列所迫）仅文档标注。
+    状态：已实现（含文档收尾批）。

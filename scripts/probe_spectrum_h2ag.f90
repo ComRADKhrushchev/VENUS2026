@@ -14,7 +14,14 @@
 !     build/gfortran/utils/hessian.o build/gfortran/utils/spectrum.o &
 !     build/gfortran/utils/linalg.o build/gfortran/globals/consts.o &
 !     build/gfortran/globals/config.o build/gfortran/globals/config_atoms.o &
-!     build/gfortran/utils/specio.o
+!     build/gfortran/utils/specio.o &
+!     build/gfortran/input.o build/gfortran/interface/sysdef_interface.o &
+!     build/gfortran/interface/elec_interface.o build/gfortran/globals/control.o &
+!     build/gfortran/globals/state.o build/gfortran/output/final_state.o &
+!     build/gfortran/utils/geometry.o build/gfortran/utils/rng.o
+!     (the last eight module objects resolve the probe's own read_input /
+!     sysdef_load / list_atoms_load chain - the module symbols those calls
+!     pull in; verified 2026-10-12, task-2-3-logs/probe_spectrum_h2ag.log)
 !=====================================================================
 program probe_spectrum_h2ag
    use h2ag111_box,      only: h2ag111_params_t, h2ag111_load, h2ag111_pes
