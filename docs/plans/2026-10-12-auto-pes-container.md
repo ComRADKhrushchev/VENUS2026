@@ -40,7 +40,7 @@
 |---|---|---|---|---|
 | `pes` | subroutine | **恰一个** | `(q, mass, g, v)`：q[A]/mass[amu] 进，g[eV/A]/v[eV] 全赋值出（E27 力交付契约原样） | force（registration） |
 | `keys` | function | 可选 0/1 | `character(len=16)` 数组（`reference_keys` 同型），容器键词表 | keys（parse 前） |
-| `load` | subroutine | 可选 0/1 | 无参；模块**自持 `pull`**（`use input, only: pull`），缺键保缺省 | load（seam） |
+| `load` | subroutine | 可选 0/1 | 无参；模块**自持 `pull`**（`use input, only: pull`），缺键保缺省；**亦即势能面侧的 seam 期初始化钩子**——pull 之后（或无键）就地读参数文件/分配（NN 权重模式：`keys` 声明文件名键 + `load` 读入模块态，cau_emtnn/cau_tab 同款压扁版；无键 `load` = 约定路径的纯初始化，亦合法）。时序保证：load 先于 arm/一切力消费者（container_sched_init 固定序 + 装配立法注记） | load（seam） |
 | `term` | function | 可选 0/1 | `term_i` 同型：`(sta) → logical` | term（seam） |
 | `classify` | function | 可选 0/1 | `classify_i` 同型：`(fin) → name(len=32)` | classify（seam） |
 
@@ -90,7 +90,8 @@
 
 ### 零新增监管（既有兜底照管一致性问题）
 
-- `load` 无 `keys`：合法空转（封闭语法本就不放行未声明键，pull 落空保缺省）；
+- `load` 无 `keys`：合法——无键可拉时作**无输入依赖的纯 seam 期初始化**（读约定
+  路径文件/分配/常量落位）；封闭语法本就不放行未声明键，pull 落空保缺省；
 - `keys` 无 `load`：既有 `input_audit_declared` 兜底中止（buffered 而无人消费）；
 - 签名不符：编译期接口核对即错；
 - 撤掉 `pes`：prebuild 中止 1；
