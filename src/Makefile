@@ -96,13 +96,16 @@ $(BUILD)/sys/%.o: ../systems/%.f90 | $(BUILD)
 # prerequisites are stated STATICALLY: depend.mk is one make-run stale whenever the reg
 # set changes (a freshly dragged-in reg module must compile BEFORE registry_gen, and
 # make evaluates this run's graph against last run's depend.mk - a static rule closes
-# that window; the residual limitation "tree-structure changes need a second make" is
-# confined to non-reg use edges, which the skeleton does not change)
+# that window. The set covers
+# reg objects AND all systems objects: the auto-PES weave (2026-10-12) makes
+# registry_gen `use` NON-reg systems modules (a Tier 1 container's pot/io/met),
+# and those edges must be ordered on the FIRST make after the drag, not the
+# second. Ruling: docs/plans/2026-10-12-auto-pes-container.md §2.
 SRC_REGM := $(wildcard methods/reg_*.f90)
 SRC_REGS := $(wildcard ../systems/*/reg_*.f90)
 OBJ_REG  := $(patsubst %.f90,$(BUILD)/%.o,$(SRC_REGM)) \
             $(patsubst ../systems/%.f90,$(BUILD)/sys/%.o,$(SRC_REGS))
-$(BUILD)/registry_gen.o: $(BUILD)/registry_gen.f90 $(OBJ_REG) | $(BUILD)
+$(BUILD)/registry_gen.o: $(BUILD)/registry_gen.f90 $(OBJ_REG) $(OBJ_SYS) | $(BUILD)
 	$(FC) $(FFLAGS) $< -o $@
 
 $(EXE): $(OBJS)
