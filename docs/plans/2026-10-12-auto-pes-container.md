@@ -38,7 +38,7 @@
 
 | 魔数名 | 形 | 必备性 | 签名要点 | 织入槽位 |
 |---|---|---|---|---|
-| `pes` | subroutine | **恰一个** | `(q, mass, g, v)`：q[A]/mass[amu] 进，g[eV/A]/v[eV] 全赋值出（E27 力交付契约原样） | force（registration） |
+| `pes` | subroutine | **恰一个** | `(q, mass, g, v)`：q[A]/mass[amu] 进（q/g 一维展平，size=3×nat——`container_pes_i` 实际形态，force_interface.f90:49），g[eV/A]/v[eV] 全赋值出（E27 力交付契约原样） | force（registration） |
 | `keys` | function | 可选 0/1 | `character(len=16)` 数组（`reference_keys` 同型），容器键词表 | keys（parse 前） |
 | `load` | subroutine | 可选 0/1 | 无参；模块**自持 `pull`**（`use input, only: pull`），缺键保缺省；**亦即势能面侧的 seam 期初始化钩子**——pull 之后（或无键）就地读参数文件/分配（NN 权重模式：`keys` 声明文件名键 + `load` 读入模块态，cau_emtnn/cau_tab 同款压扁版；无键 `load` = 约定路径的纯初始化，亦合法）。时序保证：load 先于 arm/一切力消费者（container_sched_init 固定序 + 装配立法注记） | load（seam） |
 | `term` | function | 可选 0/1 | `term_i` 同型：`(sta) → logical` | term（seam） |
@@ -189,9 +189,9 @@ module mysys_pot
    real(8) :: k_harm = 5.0d0, r_term = 12.0d0   ! 源内常数即缺省
    logical  :: r_term_found = .false.
 contains
-   subroutine pes(q, mass, g, v)                          ! 必备
-      real(8), intent(in)  :: q(:,:), mass(:)
-      real(8), intent(out) :: g(:,:), v
+   subroutine pes(q, mass, g, v)                          ! 必备（q/g 一维展平，size=3*nat）
+      real(8), intent(in)  :: q(:), mass(:)
+      real(8), intent(out) :: g(:), v
       ! ...物理本体...
    end subroutine pes
    function keys() result(kk)                             ! 可选
