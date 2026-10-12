@@ -285,3 +285,13 @@ end module
 - 2026-10-12：设计定稿，用户逐节批准（D1-D4 裁决链 + 四节设计）；同日 D5 增量
   批准（方法包四名 + `method_name()` 定名函数，词表五名 → 十名），文档随批修订。
   待实现。
+- 2026-10-12：实现落地（实施计划 docs/plans/2026-10-12-auto-pes-implementation.md）——
+  prebuild 织入 + Makefile 静态前提 + auto_sample fixture + check/drill 判据 + 文档四件。
+  收尾回归：双编译器干净重建绿、check_auto_pes ALL PASS、drill 干净树 20/20 全绿；
+  六案例零扰动——surface_window 与 spectrum_source 四腿对在档基线逐字节一致（后者按
+  容器架规程活置 h2ag111PES/h3_bkmp2 跑，trajectories 逐位同），b_layer/
+  chain_frequencies/harmonic/radau 对 results.txt 的分歧均为先在陈档（members 12→11
+  迁移与 2026-10-05 谱来源批 §8.5 在案漂移；本批零 src 源码触碰、registry_gen 对
+  基线逐字节同、当日读数与前树在案读数逐项一致，档案重生成留待独立批次）；T4/T5
+  代码域零命中（全域 grep 18/1 命中均为先在停架容器字面量与文档自引，与前树计数
+  零差）。状态：已实现。
