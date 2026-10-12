@@ -395,9 +395,9 @@ fi
       for a in $args; do
          ia=$((ia+1))
          if [ "$ia" -eq 1 ]; then
-            printf '      call container_sched_bind(%s' "$a"
+            printf '      call container_sched_bind(auto_%s' "$a"
          else
-            printf ', &\n                                %s' "$a"
+            printf ', &\n                                auto_%s' "$a"
          fi
       done
       echo ")"
@@ -459,14 +459,17 @@ for pat in \
    "use config,          only: electronic" \
    "call method_reg(method_name(), prop, match, sync)" \
    "if (trim(electronic%method) == method_name()) call arm()" \
-   "call auto_slots()"; do
+   "call auto_slots()" \
+   "call container_sched_bind(auto_keys, &" \
+   "auto_force, &"; do
    grep -qF "$pat" src/build/gfortran/registry_gen.f90 && echo "WOVEN-OK: $pat" || echo "WOVEN-FAIL: $pat"
 done
 mv systems/auto_sample systems/inactive/auto_sample
 (cd src && bash ../scripts/prebuild.sh . build/gfortran)
 cmp src/build/gfortran/registry_gen.f90 /tmp/registry_gen.baseline && echo BASELINE-IDENTICAL
 ```
-Expected: 八行 `WOVEN-OK` + `BASELINE-IDENTICAL`。
+Expected: 十行 `WOVEN-OK` + `BASELINE-IDENTICAL`（后两条断言 bind 实参必须是
+`auto_*` 包装名——R8 裁决：裸槽名实参曾使织入单元编译失败）。
 
 - [ ] **Step 5: 负面验证（prebuild 中止逐条）**
 
@@ -613,6 +616,8 @@ use auto_sample_met, only: prop, match, sync, arm, method_name
 call method_reg(method_name(), prop, match, sync)
 if (trim(electronic%method) == method_name()) call arm()
 call auto_slots()
+call container_sched_bind(auto_keys, &
+auto_force, &
 PATS
 
 # ---- leg 3: runtime coexistence abort (reference + auto = STOP 1 at assembly;
@@ -687,13 +692,13 @@ echo "drill summary: pass=$pass fail=$fail"
 cd C:/Users/13614/Desktop/MAIN/01_WORK/dev/venus2026/VENUS2026
 chmod +x scripts/drill_auto_pes.sh && bash scripts/drill_auto_pes.sh 2>&1 | tee /tmp/drill_run.log
 ```
-Expected: 末行 `drill summary: pass=17 fail=0`，退出码 0。失败腿的修复属本任务交付（fixture/织入/输入键三方都可能要动），修完重跑至全绿。
+Expected: 末行 `drill summary: pass=19 fail=0`，退出码 0。失败腿的修复属本任务交付（fixture/织入/输入键三方都可能要动），修完重跑至全绿。
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add scripts/drill_auto_pes.sh
-git commit -m "drill_auto_pes.sh 演练脚本入库(Tier 1 判据族): 十七腿——拖入首编即绿/织入内容六断言/双容器并存运行期 STOP 1/暂存 reference 后演练案例(绝热缺省跑 arm 不调+classify 常量出线, 双跑 trajectories 逐字节确定, R_TERM=2.0 早终止分支, ELEC_METHOD=auto_tdhf arm 见证文件在场)/零触碰收尾(tracked 净, 预存旧树删除显式排除); trap 保证任何退出形态还原树"
+git commit -m "drill_auto_pes.sh 演练脚本入库(Tier 1 判据族): 十九腿——拖入首编即绿/织入内容八断言/双容器并存运行期 STOP 1/暂存 reference 后演练案例(绝热缺省跑 arm 不调+classify 常量出线, 双跑 trajectories 逐字节确定, R_TERM=2.0 早终止分支, ELEC_METHOD=auto_tdhf arm 见证文件在场)/零触碰收尾(tracked 净, 预存旧树删除显式排除); trap 保证任何退出形态还原树"
 ```
 
 ---
@@ -996,7 +1001,7 @@ grep -rn "RANDOM_NUMBER" src/ systems/                            # 期望无输
 
 ```bash
 cd scripts && ./build/check_auto_pes.exe | tail -1        # ALL PASS
-cd .. && bash scripts/drill_auto_pes.sh 2>&1 | tail -1    # drill summary: pass=17 fail=0
+cd .. && bash scripts/drill_auto_pes.sh 2>&1 | tail -1    # drill summary: pass=19 fail=0
 ```
 编辑 docs/plans/2026-10-12-auto-pes-container.md §6 追加：
 
@@ -1010,7 +1015,7 @@ cd .. && bash scripts/drill_auto_pes.sh 2>&1 | tail -1    # drill summary: pass=
 
 ```bash
 git add docs/plans/2026-10-12-auto-pes-container.md
-git commit -m "纯势容器(Tier 1)实现收尾: 设计文档状态→已实现; 回归证据——双编译器干净重建绿/六案例 stdout(除 timing/注释行)对 results.txt 逐字节一致/T4(23.0605 仅 force_interface)T5(RANDOM_NUMBER 零命中)复验/check_auto_pes ALL PASS/drill_auto_pes 十七腿全绿"
+git commit -m "纯势容器(Tier 1)实现收尾: 设计文档状态→已实现; 回归证据——双编译器干净重建绿/六案例 stdout(除 timing/注释行)对 results.txt 逐字节一致/T4(23.0605 仅 force_interface)T5(RANDOM_NUMBER 零命中)复验/check_auto_pes ALL PASS/drill_auto_pes 十九腿全绿"
 ```
 
 ---
