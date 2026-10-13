@@ -161,3 +161,74 @@ def test_scheme_combo_wiring():
     # 场景在空态: 切换不崩(无场景可重绘)
     pv.clear()
     pv._scheme.setCurrentIndex(0)
+
+
+# ---------- Task 2(2026-10-13 b 落点修正): b 环/相机中心绑靶 + 2D 取景对称化 ----------
+
+def _pair_scene_roles(i_proj: int, i_targ: int):
+    """手搭双片段场景(带角色): 片段 0 = 靶@近原点, 片段 1 = 弹丸@R_SEP 远处。"""
+    from gui.core.preview import PreviewScene
+    return PreviewScene(
+        symbols=["H", "H", "H", "H"],
+        masses=[1.0, 1.0, 1.0, 1.0],
+        positions=[[0.0, 0.0, 0.0], [0.7, 0.0, 0.0],
+                   [2.5, 2.5, 8.0], [3.2, 2.5, 8.0]],
+        frag_slices=[(0, 2), (2, 4)], frag_names=["t", "p"],
+        frag_coms=[[0.35, 0.0, 0.0], [2.85, 2.5, 8.0]],
+        frag_vels=[[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
+        b_max=2.0, i_proj=i_proj, i_targ=i_targ,
+    )
+
+
+def test_gl_ring_center_binds_target():
+    """GL b 环(72 点圆)质心 = 靶 COM(两序); 角色未解析 → 无环。"""
+    from PyQt6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication([])
+    gl = _Gl3D()
+    for ip, it in ((1, 0), (0, 1)):
+        gl.set_scene(_pair_scene_roles(ip, it))
+        rings = [np.asarray(it_.pos) for it_ in gl._items
+                 if hasattr(it_, "pos") and it_.pos is not None and len(it_.pos) == 72]
+        assert len(rings) == 1, (ip, it)
+        ctr_fit = (rings[0].min(axis=0) + rings[0].max(axis=0)) / 2  # 采样圆圆心
+        assert ctr_fit == pytest.approx(_pair_scene_roles(ip, it).frag_coms[it], abs=0.01)
+    gl.set_scene(_pair_scene_roles(-1, -1))  # 角色缺失: b_max 在场也不画环
+    rings = [it_ for it_ in gl._items
+             if hasattr(it_, "pos") and it_.pos is not None and len(it_.pos) == 72]
+    assert rings == []
+
+
+def test_gl_camera_center_binds_view_center():
+    """相机中心(opts['center']) = view_center(靶 COM); 类型契约(QVector3D)不变。"""
+    from PyQt6.QtWidgets import QApplication
+
+    from gui.core.preview import view_center
+
+    app = QApplication.instance() or QApplication([])
+    gl = _Gl3D()
+    for ip, it in ((1, 0), (0, 1)):
+        sc = _pair_scene_roles(ip, it)
+        gl.set_scene(sc)
+        c = gl.view.opts["center"]
+        assert all(callable(getattr(c, a, None)) for a in ("x", "y", "z"))
+        assert [c.x(), c.y(), c.z()] == pytest.approx(view_center(sc), abs=1e-6)  # QVector3D 单精度
+    sc = _pair_scene_roles(-1, -1)  # 回退: 全原子均值
+    gl.set_scene(sc)
+    c = gl.view.opts["center"]
+    assert [c.x(), c.y(), c.z()] == pytest.approx(
+        np.asarray(sc.positions, dtype=float).mean(axis=0), abs=1e-6)
+
+
+def test_symmetric_window():
+    """2D 取景对称化: 视图中心恒落窗几何中心, 原包围盒仍含于窗内。"""
+    from gui.view3d.preview_view import symmetric_window
+
+    lo = np.array([-1.0, -1.0])
+    hi = np.array([3.0, 2.0])
+    for c in (np.array([0.0, 0.0]), np.array([2.9, -0.5])):  # 含中心贴边的情形
+        nlo, nhi = symmetric_window(lo, hi, c)
+        assert np.allclose((nlo + nhi) / 2, c)
+        assert np.all(nlo <= lo) and np.all(nhi >= hi)
+        half = np.maximum(c - lo, hi - c)
+        assert np.allclose(nhi - nlo, 2 * half)

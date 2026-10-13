@@ -12,6 +12,8 @@
   抽样量(N_B/N_AIM/N_THTA/N_CHI 采样时)以**代表值**代入并在 notes 里
   标注,面板须显示"示意值"字样;入射通道选择 = samp_incident_word 规则
   (表面→surface;分子双片段→pair;单片段→single 不放置)。
+  场景回填 i_proj/i_targ 角色字段;ring_center/view_center 纯派生供视图层
+  取景(b 环/相机中心绑靶 COM——b 定义绕靶,inc_pair.f90:110-114)。
 """
 
 from __future__ import annotations
@@ -98,6 +100,8 @@ class PreviewScene:
     beam: BeamView | None = None
     b_max: float | None = None                # 碰撞盘半径(pair)
     aim_marker: list[float] | None = None     # 瞄准点 (x0+b·cosφ, y0+b·sinφ, 0)
+    i_proj: int = -1                          # 弹丸片段索引(0 基;-1 = 未解析/单片段)
+    i_targ: int = -1                          # 靶片段索引(pair 专属;-1 = 无)
     notes: list[str] = field(default_factory=list)  # "示意值"注记
 
 
@@ -138,6 +142,9 @@ def assemble_preview(
 
     n_frag = len(sysdef.frags)
     channel = incident_word(1 if surf else 0, n_frag)
+    # 角色字段回填(视图层 b 环/取景中心消费;放置公式不变;表面/单片段无靶角色)
+    scene.i_proj = i_proj if 0 <= i_proj < n_frag and channel != "incident_single" else -1
+    scene.i_targ = i_targ if 0 <= i_targ < n_frag and channel == "incident_pair" else -1
     e_rel = num("E_REL")
     r_sep = num("R_SEP")
 
@@ -240,3 +247,34 @@ def assemble_preview(
         if scene.beam.v_targ is not None:
             scene.frag_vels[i_targ] = scene.beam.v_targ
     return scene
+
+
+def ring_center(scene: PreviewScene) -> list[float] | None:
+    """b 碰撞盘环心(纯函数,视图层消费):pair 靶角色已解析 → 靶 COM;否则 None。
+
+    b 定义绕靶 COM(inc_pair.f90:110-114:p_site = 落点 + b 偏移 + R_SEP 退距,
+    靶 COM 移到落点锚)——环心绑靶,不随片段顺序;角色未解析/表面/单片段不画环。
+    """
+    if 0 <= scene.i_targ < len(scene.frag_coms):
+        return list(scene.frag_coms[scene.i_targ])
+    return None
+
+
+def view_center(scene: PreviewScene) -> list[float]:
+    """取景中心(纯函数,视图层消费):pair 已解析 → 靶 COM;表面 → 落点(x,y)
+    + 衬底(非弹丸)原子均值高(无衬底原子的退化表面场景回退全原子均值高);
+    单片段/角色未解析/空场景 → 全原子均值回退。靶恒居画面中心(2026-10-13 修)。
+    """
+    n = len(scene.positions)
+    if n == 0:
+        return [0.0, 0.0, 0.0]
+    if 0 <= scene.i_targ < len(scene.frag_coms):
+        return list(scene.frag_coms[scene.i_targ])
+    if scene.beam is not None and 0 <= scene.i_proj < len(scene.frag_slices):
+        a, b = scene.frag_slices[scene.i_proj]
+        zs = [p[2] for k, p in enumerate(scene.positions) if not a <= k < b]
+        if not zs:
+            zs = [p[2] for p in scene.positions]
+        d = scene.beam.drop
+        return [float(d[0]), float(d[1]), sum(zs) / len(zs)]
+    return [sum(p[c] for p in scene.positions) / n for c in range(3)]

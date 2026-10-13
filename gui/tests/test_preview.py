@@ -102,3 +102,93 @@ def test_dyn_ev_mirror():
     m = re.search(r"dyn_ev\s*=\s*([0-9.]+)d0", text)
     assert m, "consts.f90 未找到 dyn_ev 定义"
     assert preview.DYN_EV == float(m.group(1))
+
+
+# ---------- Task 2(2026-10-13 b 落点修正):角色字段 + 环心/取景中心派生 ----------
+# b 定义绕靶 COM(inc_pair.f90:110-114:p_site = 落点 + b 偏移 + R_SEP 退距,
+# 靶 COM 移到落点锚)——b 环与相机取景中心都应绑靶,视图层经下述纯派生消费。
+
+
+def _pair_scene(i_proj: int, i_targ: int) -> preview.PreviewScene:
+    sd = sysdir.scan_system_dir(ROOT / "cases" / "case_harmonic_scatter" / "system")
+    values = dict(parse_input_file(ROOT / "cases" / "case_harmonic_scatter" / "input_qct.txt"))
+    return preview.assemble_preview(sd, values, i_proj=i_proj, i_targ=i_targ)
+
+
+def test_scene_role_fields_pair_both_orders():
+    """pair 两序:i_proj/i_targ 如实回填;靶 COM=落点锚(原点),弹丸在 p_site。"""
+    for ip, it in ((0, 1), (1, 0)):
+        sc = _pair_scene(ip, it)
+        assert (sc.i_proj, sc.i_targ) == (ip, it)
+        assert sc.beam is not None
+        assert sc.frag_coms[it] == pytest.approx([0.0, 0.0, 0.0])
+        assert sc.frag_coms[ip] == pytest.approx(sc.beam.p_site)
+
+
+def test_scene_role_fields_surface_unresolved_single(tmp_path: Path):
+    """表面:弹丸在场但无靶片段角色(i_targ=-1);未解析/单片段:双 -1。"""
+    d = tmp_path / "system"
+    d.mkdir()
+    (d / "proj.poscar").write_text(
+        "one H in a box\n1.0\n9.0 0.0 0.0\n0.0 9.0 0.0\n0.0 0.0 12.0\nH\n1\nCartesian\n4.5 4.5 1.0\n",
+        encoding="utf-8",
+    )
+    sd = sysdir.scan_system_dir(d)
+    values = {"E_REL": "100.0", "R_SEP": "6.0", "N_B": "0"}
+    sc = preview.assemble_preview(sd, values, i_proj=0)
+    assert (sc.i_proj, sc.i_targ) == (0, -1)
+
+    sc2 = _pair_scene(-1, -1)
+    assert (sc2.i_proj, sc2.i_targ) == (-1, -1) and sc2.beam is None
+
+    sd3 = sysdir.scan_system_dir(ROOT / "cases" / "case_b_layer" / "andersen" / "system")
+    vals3 = dict(parse_input_file(ROOT / "cases" / "case_b_layer" / "andersen" / "input_qct.txt"))
+    sc3 = preview.assemble_preview(sd3, vals3, i_proj=0)
+    assert (sc3.i_proj, sc3.i_targ) == (-1, -1) and sc3.beam is None
+
+
+def test_ring_center_binds_target_com():
+    """b 环心 = 靶 COM(两序同律);角色未解析/表面/单片段 → None(不画环)。"""
+    for ip, it in ((0, 1), (1, 0)):
+        sc = _pair_scene(ip, it)
+        rc = preview.ring_center(sc)
+        assert rc is not None, (ip, it)
+        assert math.dist(rc, sc.frag_coms[it]) == pytest.approx(0.0, abs=1e-12)
+        if it == 0:  # 旧缺陷:硬编码 frag_coms[1] 会把环套在弹丸上
+            assert math.dist(rc, sc.frag_coms[1]) > 0.5
+    assert preview.ring_center(_pair_scene(-1, -1)) is None
+
+
+def test_view_center_policy_pair_and_fallback():
+    """取景中心:pair=靶 COM(两序);未解析/空场景回退全原子均值。"""
+    for ip, it in ((0, 1), (1, 0)):
+        sc = _pair_scene(ip, it)
+        assert preview.view_center(sc) == pytest.approx(sc.frag_coms[it])
+    sc = _pair_scene(-1, -1)
+    mean = [sum(p[c] for p in sc.positions) / len(sc.positions) for c in range(3)]
+    assert preview.view_center(sc) == pytest.approx(mean)
+    assert preview.view_center(preview.PreviewScene()) == [0.0, 0.0, 0.0]
+
+
+def test_view_center_policy_surface_drop(tmp_path: Path):
+    """表面:横向 = 落点(N_AIM=2 定点),高度 = 衬底(非弹丸)原子均值。"""
+    d = tmp_path / "system"
+    d.mkdir()
+    (d / "proj.xyz").write_text("1\n\nH 0 0 0\n", encoding="utf-8")
+    (d / "slab.poscar").write_text(
+        "slab\n1.0\n9.0 0.0 0.0\n0.0 9.0 0.0\n0.0 0.0 12.0\nAg\n2\nCartesian\n"
+        "0.5 0.5 0.5\n1.5 1.5 1.5\n",
+        encoding="utf-8",
+    )
+    sd = sysdir.scan_system_dir(d)
+    assert sd.ok and sd.surface_model == 1
+    values = {"E_REL": "100.0", "R_SEP": "6.0", "N_AIM": "2",
+              "AIM_X": "1.5", "AIM_Y": "2.5", "N_B": "0"}
+    sc = preview.assemble_preview(sd, values, i_proj=0)  # 名序:proj(0) < slab(1)
+    assert (sc.i_proj, sc.i_targ) == (0, -1) and sc.beam is not None
+    vc = preview.view_center(sc)
+    assert vc[:2] == pytest.approx([1.5, 2.5])  # 横向 = 落点
+    a, b = sc.frag_slices[sc.i_proj]  # 高度 = 衬底原子均值(独立复推)
+    zs = [p[2] for k, p in enumerate(sc.positions) if not a <= k < b]
+    assert vc[2] == pytest.approx(sum(zs) / len(zs))
+    assert vc[2] == pytest.approx(1.0)

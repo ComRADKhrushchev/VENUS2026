@@ -7,6 +7,8 @@
   时的后备,也是冒烟测试的可验证渲染路径。坐标笛卡尔 Å,z=表面法向。
   3D 侧浅底渲染(2026-10-13):背景/轴色走 theme 令牌(gl_bg/gl_axis),原子
   球色走 SCHEMES 方案表(工具条"配色"下拉),带尺度 xyz 轴 + 刻度角标。
+  取景恒以靶为中心(2026-10-13 修):b 环心/相机中心/2D 取景窗对称化都绑
+  preview.ring_center/view_center(靶 COM/落点;角色未解析回退全原子均值)。
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ from PyQt6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from pyqtgraph.opengl import GLLinePlotItem, GLScatterPlotItem, GLViewWidget
 
 from .. import theme
-from ..core.preview import PreviewScene
+from ..core.preview import PreviewScene, ring_center, view_center
 
 # 经典 CPK 色(2D 投影后备查表,画布冻结不随方案变)+ 共价半径
 # (成键判据;显示半径 0.45×共价+0.28)
@@ -95,6 +97,16 @@ def nice_step(span: float, target: int = 5) -> float:
         if m * mag >= raw * (1.0 - 1e-12):
             return m * mag
     return 10.0 * mag
+
+
+def symmetric_window(lo, hi, center):
+    """2D 取景窗对称化(纯函数):各轴半宽 = max(center−lo, hi−center)。
+
+    取景中心(view_center:靶 COM/落点)由此恒落面板几何中心,原包围盒仍含于窗内。
+    """
+    c = np.asarray(center, dtype=float)
+    half = np.maximum(c - lo, hi - c)
+    return c - half, c + half
 
 
 def _rgb01(hex_color: str) -> tuple[float, float, float, float]:
@@ -241,12 +253,14 @@ class _Gl3D(QWidget):
             self._seg(m + [-d, 0, 0], m + [d, 0, 0], (1.0, 0.55, 0.1, 1.0), 2.5)
             self._seg(m + [0, -d, 0], m + [0, d, 0], (1.0, 0.55, 0.1, 1.0), 2.5)
         if scene.b_max and scene.b_max > 0:
-            r = float(scene.b_max)
-            ctr = scene.frag_coms[1] if len(scene.frag_coms) > 1 else np.zeros(3)
-            th = np.linspace(0, 2 * np.pi, 72)
-            ring = np.stack([ctr[0] + r * np.cos(th), ctr[1] + r * np.sin(th),
-                             np.full_like(th, ctr[2])], axis=1)
-            self._add(GLLinePlotItem(pos=ring, color=(1.0, 0.55, 0.1, 0.8), width=2.0))
+            rc = ring_center(scene)  # b 环心绑靶 COM(角色缺失不画环)
+            if rc is not None:
+                r = float(scene.b_max)
+                ctr = np.asarray(rc, dtype=float)
+                th = np.linspace(0, 2 * np.pi, 72)
+                ring = np.stack([ctr[0] + r * np.cos(th), ctr[1] + r * np.sin(th),
+                                 np.full_like(th, ctr[2])], axis=1)
+                self._add(GLLinePlotItem(pos=ring, color=(1.0, 0.55, 0.1, 0.8), width=2.0))
         for com, vel in zip(scene.frag_coms, scene.frag_vels):
             v = np.asarray(vel, dtype=float)
             n = float(np.linalg.norm(v))
@@ -262,15 +276,17 @@ class _Gl3D(QWidget):
             w /= np.linalg.norm(w)
             for s in (+1, -1):
                 self._seg(p1, p1 - 0.35 * u + s * 0.18 * w, (0.1, 0.5, 1.0, 1.0), 3.0)
-        # 带尺度 xyz 轴 + 刻度角标(步长 = 场景跨度的整洁值)
+        # 带尺度 xyz 轴 + 刻度角标(步长 = 场景跨度的整洁值;lo/hi 复用到相机取景)
         lo, hi = pos.min(axis=0), pos.max(axis=0)
-        step = nice_step(float(np.linalg.norm(hi - lo)) or 10.0)
+        span = float(np.linalg.norm(hi - lo)) or 10.0
+        step = nice_step(span)
         self._draw_axes(lo, hi, step)
         self._scale_label.setText(f"刻度 {step:g} Å")
         self._scale_label.show()
         self._reposition_scale()
-        ctr = pos.mean(axis=0)
-        span = float(np.linalg.norm(pos.max(axis=0) - pos.min(axis=0))) or 10.0
+        # 相机中心绑取景中心(靶 COM/落点;未解析回退全原子均值)——靶恒居中,
+        # 不再被 R_SEP 远处的弹丸拉偏(2026-10-13 修)
+        ctr = np.asarray(view_center(scene), dtype=float)
         # opts['center'] 须为 QVector3D——pyqtgraph viewMatrix 对其调 .x()/.y()/.z(),
         # ndarray 会让每帧 paintGL 抛 AttributeError(空白视图)
         from pyqtgraph.Qt import QtGui
@@ -320,15 +336,18 @@ class _Projection2D(QWidget):
         if scene.aim_marker is not None:
             extra.append(np.asarray([scene.aim_marker])[..., list(ax)])
         all_pts = np.vstack([pts] + extra) if extra else pts
-        lo = all_pts.min(axis=0) - 1.0
-        hi = all_pts.max(axis=0) + 1.0
+        # 取景窗对称化:取景中心(靶 COM/落点)恒落面板几何中心(2026-10-13 修)
+        vc = np.asarray(view_center(scene), dtype=float)[list(ax)]
+        lo, hi = symmetric_window(all_pts.min(axis=0) - 1.0, all_pts.max(axis=0) + 1.0, vc)
         span = np.maximum(hi - lo, 1e-6)
         scale = min(rect.width() / span[0], rect.height() / span[1])
+        # 内容盒居中落面板(松弛轴两侧均分留白,不再贴左下锚)
+        off = (rect.width() - span[0] * scale) / 2, (rect.height() - span[1] * scale) / 2
 
         def X(q):
             u = (q - lo) / span
-            return QPointF(rect.left() + u[0] * span[0] * scale,
-                           rect.bottom() - u[1] * span[1] * scale)
+            return QPointF(rect.left() + off[0] + u[0] * span[0] * scale,
+                           rect.bottom() - off[1] - u[1] * span[1] * scale)
 
         # 晶胞投影
         if scene.cell is not None:
@@ -347,10 +366,11 @@ class _Projection2D(QWidget):
             p.drawLine(c - QPointF(6, 0), c + QPointF(6, 0))
             p.drawLine(c - QPointF(0, 6), c + QPointF(0, 6))
         if scene.b_max and scene.b_max > 0:
-            ctr = scene.frag_coms[1] if len(scene.frag_coms) > 1 else np.zeros(3)
-            rpx = scene.b_max * scale
-            p.setPen(QPen(QColor(255, 140, 26), 2))
-            p.drawEllipse(X(np.asarray(ctr)[list(ax)]), rpx, rpx)
+            rc = ring_center(scene)  # b 环心绑靶 COM(角色缺失不画环)
+            if rc is not None:
+                rpx = scene.b_max * scale
+                p.setPen(QPen(QColor(255, 140, 26), 2))
+                p.drawEllipse(X(np.asarray(rc, dtype=float)[list(ax)]), rpx, rpx)
         # 键
         p.setPen(QPen(QColor(90, 90, 90), 2))
         for i, j in _bonds(pos, scene):
