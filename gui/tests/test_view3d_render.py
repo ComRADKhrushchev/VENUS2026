@@ -8,6 +8,9 @@
     distance 数值)不变, 背景落 gl_bg 令牌, 轴件在场, 刻度角标文本
     = nice_step 派生值;
   - PreviewView: 配色下拉默认 CPK, 切换后 GL 球色重绘。
+  - Task 5(2026-10-13 真机配色修复): 原子为逐符号单色 GLScatterPlotItem
+    (均匀色元组+标量尺寸+opaque 混合), 每符号一件, 色=方案查表值
+    (未知符号走回退), 两方案都断言。
 """
 import math
 import os
@@ -27,6 +30,7 @@ from gui.view3d.preview_view import (
     SCHEMES,
     PreviewView,
     _Gl3D,
+    _display_radius,
     nice_step,
 )
 
@@ -144,7 +148,7 @@ def test_gl_offscreen_smoke():
 
 
 def test_scheme_combo_wiring():
-    """PreviewView 工具条配色下拉: 默认 CPK; 切换后 GL 球色重绘。"""
+    """PreviewView 工具条配色下拉: 默认 CPK; 切换后逐符号球色随方案重绘。"""
     from PyQt6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
@@ -152,16 +156,80 @@ def test_scheme_combo_wiring():
     assert pv._scheme.count() == len(SCHEMES)
     assert pv._scheme.currentIndex() == 0
     assert pv._scheme.itemData(0) == DEFAULT_SCHEME
-    pv.set_scene(_scene())
-    first_cpk = np.asarray(pv._gl._items[0].color)[0]  # GLScatterPlotItem 球色
-    for i in range(1, pv._scheme.count()):
+    sc = _scene()  # 符号 H/O/H → 逐符号两件
+    pv.set_scene(sc)
+
+    def sym_color(sym: str):
+        for it in _scatter_items(pv._gl):
+            if _item_symbol(it, sc) == sym:
+                return np.asarray(it.color, dtype=float)[:3]
+        raise AssertionError(f"未找到符号 {sym} 的散点件")
+
+    for i in range(pv._scheme.count()):
         pv._scheme.setCurrentIndex(i)
-        other = np.asarray(pv._gl._items[0].color)[0]
-        assert not np.allclose(first_cpk, other), \
-            f"方案 {pv._scheme.itemData(i)} 切换后球色未变"
+        key = pv._scheme.itemData(i)
+        for sym in ("H", "O"):
+            assert sym_color(sym) == pytest.approx(
+                [c / 255.0 for c in SCHEMES[key]["colors"][sym]]), (key, sym)
     # 场景在空态: 切换不崩(无场景可重绘)
     pv.clear()
     pv._scheme.setCurrentIndex(0)
+
+
+# ---------- Task 5(2026-10-13 真机配色修复): 逐符号单色件 ----------
+
+def _scatter_items(gl):
+    """set_scene 后的原子散点件(键/箭头/环是 GLLinePlotItem, 排除)。"""
+    from pyqtgraph.opengl import GLScatterPlotItem
+
+    return [it for it in gl._items if isinstance(it, GLScatterPlotItem)]
+
+
+def _item_symbol(it, scene):
+    """把逐符号散点件映回符号(按其原子位置集合匹配场景符号分组)。"""
+    pts = {tuple(np.round(p, 6)) for p in np.asarray(it.pos, dtype=float)}
+    groups: dict[str, set] = {}
+    for k, s in enumerate(scene.symbols):
+        groups.setdefault(s, set()).add(tuple(np.round(scene.positions[k], 6)))
+    for sym, want in groups.items():
+        if pts == want:
+            return sym
+    return None
+
+
+def test_gl_atoms_per_symbol_items_colors():
+    """原子逐符号单色件: 每符号一件; 色=方案查表值(0-1 均匀元组), 未知符号
+    走回退; 标量尺寸+pxMode=False; 两方案都断言; clear 清场。"""
+    from PyQt6.QtWidgets import QApplication
+
+    from gui.core.preview import PreviewScene
+
+    app = QApplication.instance() or QApplication([])
+    sc = PreviewScene(
+        symbols=["H", "O", "H", "Zz"],  # Zz = 未知符号 → 回退色
+        masses=[1.0, 16.0, 1.0, 100.0],
+        positions=[[0.0, 0.0, 0.0], [2.5, 0.0, 1.0], [0.0, 3.5, 4.2], [4.0, 4.0, 0.0]],
+        frag_slices=[(0, 4)], frag_names=["mix"],
+    )
+    gl = _Gl3D()
+    for key, sch in SCHEMES.items():
+        gl.set_scheme(key)
+        gl.set_scene(sc)
+        scats = _scatter_items(gl)
+        assert len(scats) == 3, (key, len(scats))  # H / O / Zz 各一件
+        seen = set()
+        for it in scats:
+            sym = _item_symbol(it, sc)
+            assert sym is not None, (key, np.asarray(it.pos).tolist())
+            seen.add(sym)
+            want = sch["colors"].get(sym, sch["fallback"])
+            assert np.asarray(it.color) == pytest.approx(
+                [c / 255.0 for c in want] + [1.0]), (key, sym)
+            assert it.size == pytest.approx(_display_radius(sym)), (key, sym)
+            assert it.pxMode is False, (key, sym)
+        assert seen == {"H", "O", "Zz"}, (key, seen)
+    gl.clear()
+    assert _scatter_items(gl) == []
 
 
 # ---------- Task 2(2026-10-13 b 落点修正): b 环/相机中心绑靶 + 2D 取景对称化 ----------

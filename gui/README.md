@@ -60,7 +60,9 @@ objectName(`#SectionHeader` 分组标题色带)或 dynamic property:
 3D 预览视口(2026-10-13 渲染增强):背景/轴色走令牌 `gl_bg`/`gl_axis`
 (浅而不近白, 白系原子可辨), 原子球色查表集中在 `preview_view.py` 的
 SCHEMES 方案表(CPK 经典浅底适配 / Okabe-Ito 色盲安全系衍生, 工具条
-"配色"下拉切换, 默认 CPK), 带尺度 xyz 轴 + "刻度 N Å"角标。
+"配色"下拉切换, 默认 CPK), 带尺度 xyz 轴 + "刻度 N Å"角标。原子为
+逐符号单色件(2026-10-13 真机修复:绕开 pxMode=False 逐点色真机失效路径,
+并改 opaque 混合避免浅底加色饱和);预览摆位恒对心(b 不位移, 范围见 b 环)。
 
 图标为 `gui/assets/icons/` 手绘 SVG(应用/页签/按钮/折叠 chevron),`theme.icon(名)`
 按名取用、缺文件返回空图标不崩。语义红线: 标签文本/tooltip/显隐/收集/折叠契约
@@ -114,5 +116,9 @@ python -m pytest gui/tests -m slow -q  # 慢测(auto_sample 隔离编译 / 生�
   (用户拉窄分栏时滚动条仍作后备)。
 - 预览的抽样量(N_B/N_AIM/N_THTA/N_CHI 采样模式)以代表值代入,视图下方有
   "示意"注记;片段内部几何取体系文件平衡坐标,不含振动/转动采样。
+- 预览恒对心(2026-10-13 用户裁决):弹丸摆位不随 B_MAX 位移(显示取 b=0),
+  b 采样范围由 b 环可视化,瞄准十字=落点。
+- 原子配色真机目验:`python gui/logs/gl_probe_colors.py`(真实窗口渲染多元素
+  场景,逐元素像素色读数落盘 `gui/logs/gl_probe_colors.log`)。
 - 预览默认 3D(OpenGL);个别显卡/驱动不兼容时切换"2D 投影"后备。
 - 编译验证的隔离沙盒默认保留(失败诊断 + build.log 落盘);"清理沙盒"按钮删除。

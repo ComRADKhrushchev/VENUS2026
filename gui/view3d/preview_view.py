@@ -7,6 +7,10 @@
   时的后备,也是冒烟测试的可验证渲染路径。坐标笛卡尔 Å,z=表面法向。
   3D 侧浅底渲染(2026-10-13):背景/轴色走 theme 令牌(gl_bg/gl_axis),原子
   球色走 SCHEMES 方案表(工具条"配色"下拉),带尺度 xyz 轴 + 刻度角标。
+  原子逐符号单色件(2026-10-13 真机修复):pyqtgraph 0.14 pxMode=False 的
+  逐点色(VBO)路径真机不生效(原子全白);且散点默认 additive 混合在浅底
+  gl_bg 上把球色加底饱和成白——每符号一件均匀色元组 + 标量尺寸 + opaque
+  混合(常量顶点属性路径),渲出的即方案色本身。
   取景恒以靶为中心(2026-10-13 修):b 环心/相机中心/2D 取景窗对称化都绑
   preview.ring_center/view_center(靶 COM/落点;角色未解析回退全原子均值)。
 """
@@ -238,12 +242,21 @@ class _Gl3D(QWidget):
         if pos.size == 0:
             return
         sch = SCHEMES[self._scheme]
-        # GL 顶点色须 0.0-1.0(表存 0-255;旧码直传 0-255 会被 GL 钳到全白)
-        colors = [[c / 255.0 for c in sch["colors"].get(s, sch["fallback"])] + [1.0]
-                  for s in scene.symbols]
-        sizes = [_display_radius(s) for s in scene.symbols]
-        self._add(GLScatterPlotItem(pos=pos, size=np.asarray(sizes),
-                                    color=np.asarray(colors), pxMode=False))
+        # 原子逐符号单色件(2026-10-13 真机修复, 原子全白双因):(1) pyqtgraph
+        # 0.14 pxMode=False 的逐点色(VBO)路径真机不生效——均匀色元组走
+        # glVertexAttrib4f 常量顶点属性, 支持良好; (2) 散点默认 additive 混合
+        # 在浅底 gl_bg 上把球色加底饱和成白(src·1+dst)——原子件改 opaque
+        # (不混合+深度测试), 渲出的即方案色本身。同符号原子共用显示半径
+        # → 每符号一件, size 为标量
+        idx_by_sym: dict[str, list[int]] = {}
+        for k, s in enumerate(scene.symbols):
+            idx_by_sym.setdefault(s, []).append(k)
+        for sym, idx in idx_by_sym.items():
+            c = sch["colors"].get(sym, sch["fallback"])
+            self._add(GLScatterPlotItem(
+                pos=pos[idx], size=_display_radius(sym), pxMode=False,
+                color=(c[0] / 255.0, c[1] / 255.0, c[2] / 255.0, 1.0),
+                glOptions="opaque"))
         for i, j in _bonds(pos, scene):
             self._seg(pos[i], pos[j], (0.35, 0.35, 0.35, 1.0), 2.0)
         if scene.cell is not None:

@@ -12,6 +12,9 @@
   抽样量(N_B/N_AIM/N_THTA/N_CHI 采样时)以**代表值**代入并在 notes 里
   标注,面板须显示"示意值"字样;入射通道选择 = samp_incident_word 规则
   (表面→surface;分子双片段→pair;单片段→single 不放置)。
+  显示摆位恒对心(2026-10-13 用户裁决):上式 p_site 取 b=0 的值——预览中
+  两反应物相对位置不随 B_MAX 变动;b/φ 代表值存 BeamView(信息面),b 采样
+  范围由视图层 b 环可视化,瞄准十字=落点;物理公式本身不改。
   场景回填 i_proj/i_targ 角色字段;ring_center/view_center 纯派生供视图层
   取景(b 环/相机中心绑靶 COM——b 定义绕靶,inc_pair.f90:110-114)。
 """
@@ -75,12 +78,12 @@ class BeamView:
     """装配所需的束流代表值(全部显式,便于界面复述)。"""
     theta: float          # 极角 [rad]
     chi: float            # 方位角 [rad]
-    b: float              # 瞄准半径 [Å]
-    phi: float            # 盘方位角 [rad]
+    b: float              # 瞄准半径代表值 [Å](信息面;显示摆位恒对心不位移)
+    phi: float            # 盘方位角代表值 [rad](信息面)
     drop: list[float]     # 落点 (x0, y0) [Å]
     speed: float          # 碰撞速度 [Å/fs]
     u_inc: list[float]    # 入射单位矢量
-    p_site: list[float]   # 弹丸 COM 落位 [Å]
+    p_site: list[float]   # 弹丸 COM 落位 [Å](显示恒对心:取 b=0 公式值)
     mu: float             # 有效质量(表面=弹丸质量;pair=折合质量) [amu]
     v_proj: list[float]   # 弹丸 COM 速度 [Å/fs]
     v_targ: list[float] | None = None  # 靶 COM 速度(pair 非零)
@@ -99,7 +102,7 @@ class PreviewScene:
     cell: list[list[float]] | None = None     # 3x3 晶矢(表面)
     beam: BeamView | None = None
     b_max: float | None = None                # 碰撞盘半径(pair)
-    aim_marker: list[float] | None = None     # 瞄准点 (x0+b·cosφ, y0+b·sinφ, 0)
+    aim_marker: list[float] | None = None     # 瞄准十字=落点 (x0, y0, 0)(恒对心)
     i_proj: int = -1                          # 弹丸片段索引(0 基;-1 = 未解析/单片段)
     i_targ: int = -1                          # 靶片段索引(pair 专属;-1 = 无)
     notes: list[str] = field(default_factory=list)  # "示意值"注记
@@ -174,7 +177,9 @@ def assemble_preview(
         b = b_max if n_b == 0 else 0.7 * b_max
         phi = chi if n_b == 0 else math.pi / 4
         if n_b == 1:
-            scene.notes.append("N_B=1:b 取 0.7·B_MAX、φ 取 45° 为代表值")
+            scene.notes.append("N_B=1 碰撞盘采样:预览恒对心(b 不位移),范围见环")
+        elif channel == "incident_pair" and b > 0:
+            scene.notes.append("N_B=0:b=B_MAX 固定;预览恒对心(b 不位移),值见 b 环")
 
         n_aim = integer("N_AIM", 0)
         if n_aim == 1:
@@ -207,9 +212,12 @@ def assemble_preview(
 
         sin_t = math.sin(theta)
         u_inc = [-sin_t * math.cos(chi), -sin_t * math.sin(chi), -math.cos(theta)]
+        # 显示摆位取镜像公式在 b=0 的值(恒对心, 2026-10-13 用户裁决:两反应物
+        # 相对位置不随 B_MAX 变动;θ≠0 时仍保持 Fortran b=0 几何)。b/φ 代表值
+        # 仅存 BeamView 信息面;采样范围由视图层 b 环可视化
         p_site = [
-            drop[0] + b * math.cos(phi) + r_sep * sin_t * math.cos(chi),
-            drop[1] + b * math.sin(phi) + r_sep * sin_t * math.sin(chi),
+            drop[0] + r_sep * sin_t * math.cos(chi),
+            drop[1] + r_sep * sin_t * math.sin(chi),
             r_sep,
         ]
         v_proj = [speed * c for c in u_inc]
@@ -228,8 +236,7 @@ def assemble_preview(
             u_inc=u_inc, p_site=p_site, mu=mu, v_proj=v_proj, v_targ=v_targ,
         )
         scene.b_max = b_max if channel == "incident_pair" else None
-        aim = [drop[0] + b * math.cos(phi), drop[1] + b * math.sin(phi), 0.0]
-        scene.aim_marker = aim
+        scene.aim_marker = [drop[0], drop[1], 0.0]  # 瞄准十字=落点(恒对心)
 
     # 汇全原子行
     off = 0

@@ -22,9 +22,10 @@ def test_pair_hand_calc():
     assert b.theta == pytest.approx(0.0)
     assert b.b == pytest.approx(0.7 * 2.0)
     assert b.phi == pytest.approx(math.pi / 4)
-    s2 = math.sqrt(0.5)
     assert b.u_inc == pytest.approx([0.0, 0.0, -1.0])
-    assert b.p_site == pytest.approx([1.4 * s2, 1.4 * s2, 8.0])
+    # 显示摆位恒对心(2026-10-13 用户裁决, 显示语义变更随批):p_site 取镜像
+    # 公式 b=0 的值 = (0, 0, R_SEP);b 横向项只进 BeamView.b 信息面
+    assert b.p_site == pytest.approx([0.0, 0.0, 8.0])
     # μ = 1.008(H2 折合质量 = 2.016²/4.032);E_REL 取自案例输入(8.67283884 eV
     # = 200 kcal/mol ÷ 23.0605, 2026-10-13 单位改基后的换算值);v = √(2·E_REL/(μ·dyn_ev))
     assert b.mu == pytest.approx(1.008)
@@ -192,3 +193,49 @@ def test_view_center_policy_surface_drop(tmp_path: Path):
     zs = [p[2] for k, p in enumerate(sc.positions) if not a <= k < b]
     assert vc[2] == pytest.approx(sum(zs) / len(zs))
     assert vc[2] == pytest.approx(1.0)
+
+
+# ---------- Task 5(2026-10-13 恒对心):摆位不随 B_MAX 变动 ----------
+# 用户裁决:预览中两反应物相对位置不随 B_MAX 修改而变动,恒对心瞄准;
+# b 采样范围由 b 环可视化,代表值 b/φ 存 BeamView 信息面。
+
+
+def _pair_scene_bmax(n_b: int, b_max: str) -> preview.PreviewScene:
+    sd = sysdir.scan_system_dir(ROOT / "cases" / "case_harmonic_scatter" / "system")
+    values = dict(parse_input_file(ROOT / "cases" / "case_harmonic_scatter" / "input_qct.txt"))
+    values.update(B_MAX=b_max, N_B=str(n_b))
+    return preview.assemble_preview(sd, values, i_proj=0, i_targ=1)
+
+
+@pytest.mark.parametrize("n_b", [0, 1])
+def test_placement_invariant_under_bmax(n_b):
+    """恒对心回归:仅改 B_MAX(N_B 两模式)→ 原子摆位/瞄准十字逐点不变。"""
+    ref = _pair_scene_bmax(n_b, "1.0")
+    for b_max in ("2.0", "3.5"):
+        sc = _pair_scene_bmax(n_b, b_max)
+        # 摆位公式已不读 b/b_max → 逐点恒等(位级不变,强于 approx)
+        assert sc.positions == ref.positions, (n_b, b_max)
+        assert sc.aim_marker == ref.aim_marker
+        # 信息面/可视化面确实随 B_MAX 变:代表 b 与环半径
+        assert sc.beam.b == pytest.approx((1.0 if n_b == 0 else 0.7) * float(b_max))
+        assert sc.b_max == pytest.approx(float(b_max))
+
+
+def test_headon_notes_semantics():
+    """注记:恒对心语义在场;旧代表值措辞不在场。"""
+    sc = _pair_scene_bmax(1, "2.0")
+    assert any("恒对心" in n and "范围见环" in n for n in sc.notes)
+    assert not any("0.7·B_MAX" in n for n in sc.notes)
+    sc0 = _pair_scene_bmax(0, "2.0")
+    assert any("N_B=0" in n and "恒对心" in n for n in sc0.notes)
+    # 表面(B_MAX 法定不写 → b=0):除注记措辞外零行为变化,b_max 不设环
+    sc_s = preview.assemble_preview(
+        sysdir.scan_system_dir(ROOT / "cases" / "case_surface_window" / "system"),
+        dict(parse_input_file(ROOT / "cases" / "case_surface_window" / "input_qct.txt")),
+        i_proj=0,
+    )
+    assert sc_s.beam is not None
+    assert sc_s.b_max is None
+    assert sc_s.aim_marker[0] == pytest.approx(sc_s.beam.drop[0])
+    assert sc_s.aim_marker[1] == pytest.approx(sc_s.beam.drop[1])
+    assert sc_s.beam.b == pytest.approx(0.0)
