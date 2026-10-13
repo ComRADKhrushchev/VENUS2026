@@ -8,6 +8,10 @@
   的星号随范式动态增减),DIST_SCHEME 逐片段下拉重建,成员参数键按所选词
   动态显隐。校验=core.validate 全部静态规则;
   预览=core.preview 装配(core 公式移植,示意值注记显示在视图下方)。
+  左侧分组可折叠(_Section):体系定义/采样方案/输出恒展开,运行控制可折叠
+  默认展开,浴与谱/束流参数/成员参数/容器键默认折叠;折叠只藏可见性不禁用
+  控件(已填值仍参与校验与写出);选中带成员键的方案词自动展开成员参数组;
+  校验出错的键所在折叠组自动展开。
 """
 
 from __future__ import annotations
@@ -17,9 +21,9 @@ from pathlib import Path
 
 from PyQt6.QtCore import QTimer
 from PyQt6.QtWidgets import (
-    QCheckBox, QComboBox, QFileDialog, QGridLayout, QGroupBox, QHBoxLayout,
+    QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QPlainTextEdit, QScrollArea, QSplitter,
-    QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget,
+    QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
     QHeaderView, QMessageBox,
 )
 from PyQt6.QtCore import Qt
@@ -29,6 +33,51 @@ from ..core.keyspec import (
     KEY_TABLE, MEMBER_TABLE, SCHEME_MEMBER_KEYS, ENUMS, REFERENCE_CONTAINER_KEYS,
 )
 from ..view3d.preview_view import PreviewView
+
+
+class _Section(QWidget):
+    """可折叠参数分组:标题条为 QToolButton(▸/▾ 指示),内容区整体显隐。
+
+    折叠只藏可见性,不禁用控件——已填值仍参与校验与写出(与成员参数显隐
+    同语义);不可折叠组标题无箭头且忽略切换。
+    """
+
+    def __init__(self, title: str, collapsible: bool = True,
+                 expanded: bool = True, parent=None):
+        super().__init__(parent)
+        self.collapsible = collapsible
+        self._btn = QToolButton()
+        self._btn.setText(title)
+        self._btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._btn.setStyleSheet("QToolButton { border: none; font-weight: 600; padding: 2px 0; }")
+        if collapsible:
+            self._btn.setCheckable(True)
+            self._btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._btn.clicked.connect(lambda *_: self.toggle())
+        self.content = QWidget()
+        v = QVBoxLayout(self)
+        v.setContentsMargins(0, 0, 0, 0)
+        v.setSpacing(2)
+        v.addWidget(self._btn)
+        v.addWidget(self.content)
+        self._expanded = True
+        self.set_expanded(expanded)
+
+    @property
+    def expanded(self) -> bool:
+        return self._expanded
+
+    def set_expanded(self, on: bool):
+        self._expanded = on
+        if not self.collapsible:
+            return
+        self._btn.setChecked(on)
+        self._btn.setArrowType(Qt.ArrowType.DownArrow if on else Qt.ArrowType.RightArrow)
+        self.content.setVisible(on)
+
+    def toggle(self):
+        if self.collapsible:
+            self.set_expanded(not self._expanded)
 
 
 class InputPage(QWidget):
@@ -47,6 +96,9 @@ class InputPage(QWidget):
         self._verdict = QPlainTextEdit(readOnly=True)
         self._verdict.setMaximumHeight(120)
         self._view = PreviewView()
+        self._sections: dict[str, _Section] = {}
+        self._section_of_key: dict[str, _Section] = {}
+        self._cur_sec: _Section | None = None
         self._build_ui()
         self._debounce = QTimer(self, singleShot=True, interval=350)
         self._debounce.timeout.connect(self.refresh_preview)
@@ -59,19 +111,25 @@ class InputPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setWidget(left)
         lay = QVBoxLayout(left)
-        legend = QLabel("注:<b>*</b> 加粗标记的字段不可留空;其余输入框留空即不写出该键。")
+        legend = QLabel(
+            "注:<b>*</b> 加粗标记的字段不可留空;其余输入框留空即不写出该键。"
+            "组标题带箭头者可点击折叠/展开(折叠不改变已填值的效力)。"
+        )
         legend.setStyleSheet("color: #555;")
         lay.addWidget(legend)
         grid_row = 0
 
-        def group(title: str) -> tuple[QGroupBox, QGridLayout]:
-            g = QGroupBox(title)
-            gl = QGridLayout(g)
+        def group(sid: str, title: str, collapsible: bool = False,
+                  expanded: bool = True) -> tuple[_Section, QGridLayout]:
+            sec = _Section(title, collapsible=collapsible, expanded=expanded)
+            self._sections[sid] = sec
+            self._cur_sec = sec
+            lay.addWidget(sec)
+            gl = QGridLayout(sec.content)
             gl.setVerticalSpacing(4)
             nonlocal grid_row
             grid_row = 0
-            lay.addWidget(g)
-            return g, gl
+            return sec, gl
 
         def add_row(gl: QGridLayout, label: str, w: QWidget, hint: str = "", key: str = ""):
             nonlocal grid_row
@@ -90,6 +148,7 @@ class InputPage(QWidget):
             e.setPlaceholderText(ph)
             e.textChanged.connect(self._touch)
             self._w[key] = e
+            self._section_of_key[key] = self._cur_sec
             return e
 
         def combo(key: str, items: list[str], editable: bool = False) -> QComboBox:
@@ -103,16 +162,18 @@ class InputPage(QWidget):
             c.currentIndexChanged.connect(self._touch)
             c.currentTextChanged.connect(self._touch)
             self._w[key] = c
+            self._section_of_key[key] = self._cur_sec
             return c
 
         def check(key: str) -> QCheckBox:
             c = QCheckBox()
             c.stateChanged.connect(self._touch)
             self._checks[key] = c
+            self._section_of_key[key] = self._cur_sec
             return c
 
         # ---- 体系定义(先行:范式决定其余字段形态)----
-        g, gl = group("体系定义(SYSTEM_DIR)")
+        g, gl = group("sysdef", "体系定义(SYSTEM_DIR)")
         sd_row = QHBoxLayout()
         self._sd_line = QLineEdit()
         self._sd_line.setPlaceholderText("体系文件夹路径(含 .xyz / POSCAR 反应物文件)")
@@ -141,13 +202,13 @@ class InputPage(QWidget):
         add_row(gl, "RANDOM_ORIENT", check("RANDOM_ORIENT"), "随机取向阶段(默认 F)")
 
         # ---- 采样方案(逐片段;扫描后重建;星号=每片段均须选择)----
-        g, gl = group("采样方案 DIST_SCHEME *(逐片段)")
+        g, gl = group("scheme", "采样方案 DIST_SCHEME *(逐片段)")
         self._scheme_host = QWidget()
         self._scheme_grid = QGridLayout(self._scheme_host)
         gl.addWidget(self._scheme_host)
 
-        # ---- 运行控制 ----
-        g, gl = group("运行控制")
+        # ---- 运行控制(DT 必填在内:可折叠但默认展开)----
+        g, gl = group("run", "运行控制", collapsible=True)
         add_row(gl, "TITLE", line("TITLE", "标题(≤80 字符)"))
         add_row(gl, "N_TRAJ", line("N_TRAJ", "1(轨迹数)"))
         add_row(gl, "ISEED", line("ISEED", "1(种子)"))
@@ -159,6 +220,7 @@ class InputPage(QWidget):
         self._dtmax = QLineEdit()
         self._dtmax.setPlaceholderText("0.0")
         self._dtmax.textChanged.connect(self._touch)
+        self._section_of_key["DT_MAX"] = self._cur_sec
         gl.addWidget(self._dtmax, grid_row - 1, 2)
         add_row(gl, "ELEC_METHOD", line("ELEC_METHOD", "ADIABATIC(≤32)"))
         add_row(gl, "N_SURF", line("N_SURF", "0(折叠单绝热面)"))
@@ -176,7 +238,7 @@ class InputPage(QWidget):
         add_row(gl, "能量列", wrap2, "默认全 F")
 
         # ---- 浴与谱 ----
-        g, gl = group("浴与谱")
+        g, gl = group("bath", "浴与谱", collapsible=True, expanded=False)
         add_row(gl, "BATH", combo("BATH", [""] + ENUMS["bath"]), "默认 NONE")
         add_row(gl, "N_BATH", line("N_BATH", "0(浴步数)"))
         add_row(gl, "DT_BATH [10 fs]", line("DT_BATH", "0.0(N_BATH>0 时须>0)"))
@@ -185,12 +247,13 @@ class InputPage(QWidget):
         self._nucoll.setPlaceholderText("NU_COLL")
         self._nucoll.textChanged.connect(self._touch)
         self._w["NU_COLL"] = self._nucoll
+        self._section_of_key["NU_COLL"] = self._cur_sec
         gl.addWidget(self._nucoll, grid_row - 1, 2)
         add_row(gl, "SPECTRUM_SOURCE", combo("SPECTRUM_SOURCE", [""] + ENUMS["spectrum"]), "默认 COMPUTE")
         add_row(gl, "SPECTRUM_FILE", line("SPECTRUM_FILE", "MANUAL 谱表路径"))
 
         # ---- 束流参数(入射通道)----
-        g, gl = group("束流参数(入射通道)")
+        g, gl = group("beam", "束流参数(入射通道)", collapsible=True, expanded=False)
         add_row(gl, "N_E_REL", combo("N_E_REL", ["", "0", "1", "2"]), "0热/1定值(默认)/2密度加权")
         add_row(gl, "T_TRANS [K]", line("T_TRANS", "N_E_REL=0 时须>0"))
         add_row(gl, "V_WIDTH [Å/(10fs)]", line("V_WIDTH", "N_E_REL=2 时须>0"))
@@ -201,7 +264,7 @@ class InputPage(QWidget):
         add_row(gl, "N_B", combo("N_B", ["", "0", "1"]), "0固定 b(默认)/1碰撞盘")
 
         # ---- 成员参数(动态显隐;束流/落点键已有专属控件,不重复建)----
-        g, gl = group("成员参数(随所选方案显示)")
+        g, gl = group("member", "成员参数(随所选方案显示)", collapsible=True, expanded=False)
         self._member_host = QWidget()
         self._member_grid = QGridLayout(self._member_host)
         self._member_keys: set[str] = set()
@@ -213,13 +276,15 @@ class InputPage(QWidget):
             e.textChanged.connect(self._touch)
             self._w[mk.key] = e
             self._member_keys.add(mk.key)
+            self._section_of_key[mk.key] = self._cur_sec
             r = self._member_grid.rowCount()
             self._member_grid.addWidget(QLabel(mk.key), r, 0)
             self._member_grid.addWidget(e, r, 1)
         gl.addWidget(self._member_host)
 
         # ---- 容器键 ----
-        g, gl = group("容器键(活动容器的 *_keys 词表;reference: K_HARM/Q_TERM/E_SPLIT)")
+        g, gl = group("container", "容器键(活动容器的 *_keys 词表;reference: K_HARM/Q_TERM/E_SPLIT)",
+                      collapsible=True, expanded=False)
         self._container_table = QTableWidget(0, 2)
         self._container_table.setHorizontalHeaderLabels(["键", "值(空=不写出)"])
         self._container_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -231,7 +296,7 @@ class InputPage(QWidget):
         gl.addWidget(self._container_table, 0, 0, 1, 2)
 
         # ---- 动作 ----
-        g, gl = group("输出")
+        g, gl = group("output", "输出")
         row = QHBoxLayout()
         b_val = QPushButton("校验")
         b_val.clicked.connect(self.run_validation)
@@ -310,6 +375,8 @@ class InputPage(QWidget):
                 c.addItems([""] + words)
                 c.currentIndexChanged.connect(self._touch)
                 c.currentTextChanged.connect(self._touch)
+                # 方案词变更即时刷新成员参数显隐(原先只在重扫描时刷新, 变更不生效)
+                c.currentTextChanged.connect(self._refresh_member_visibility)
                 self._scheme_combos.append(c)
                 r = self._scheme_grid.rowCount()
                 self._scheme_grid.addWidget(QLabel(f"片段 {i + 1}:{f.name}({f.nat} 原子)"), r, 0)
@@ -375,6 +442,9 @@ class InputPage(QWidget):
                 # 标签文本即键名(可能带单位后缀)
                 key = w.text().split()[0]
                 w.setVisible(key in visible)
+        # 选中带成员键的方案词后自动展开(否则新显行藏在折叠组里不可见)
+        if visible and not self._sections["member"].expanded:
+            self._sections["member"].set_expanded(True)
 
     # ---------- 数据汇聚 ----------
     def collect(self) -> tuple[dict[str, str], dict[str, str]]:
@@ -447,10 +517,21 @@ class InputPage(QWidget):
     def run_validation(self):
         values, cont = self.collect()
         issues = validate.validate(values, self._sysdef, list(cont.keys()))
+        self._expand_for_issues(issues, cont)
         if not issues:
             self._verdict.setPlainText("✓ 校验通过(全部静态规则)")
         else:
             self._verdict.setPlainText("\n".join(f"✗ {i}" for i in issues))
+
+    def _expand_for_issues(self, issues, cont_keys: dict[str, str]):
+        """校验出错的键所在折叠组自动展开(错误不该藏在折叠里);容器类问题归容器键组。"""
+        cont_names = {k.upper() for k in cont_keys}
+        for i in issues:
+            sec = self._section_of_key.get(i.key)
+            if sec is None and (not i.key or i.key in cont_names):
+                sec = self._sections.get("container")
+            if sec is not None and sec.collapsible and not sec.expanded:
+                sec.set_expanded(True)
 
     def _write_file(self):
         values, cont = self.collect()
