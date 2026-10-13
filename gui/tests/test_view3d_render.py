@@ -23,6 +23,7 @@ pytest.importorskip("pyqtgraph")
 from gui import theme
 from gui.view3d.preview_view import (
     DEFAULT_SCHEME,
+    RING_SEGMENTS,
     SCHEMES,
     PreviewView,
     _Gl3D,
@@ -181,7 +182,7 @@ def _pair_scene_roles(i_proj: int, i_targ: int):
 
 
 def test_gl_ring_center_binds_target():
-    """GL b 环(72 点圆)质心 = 靶 COM(两序); 角色未解析 → 无环。"""
+    """GL b 环(RING_SEGMENTS 点圆)质心 = 靶 COM(两序); 角色未解析 → 无环。"""
     from PyQt6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
@@ -189,13 +190,13 @@ def test_gl_ring_center_binds_target():
     for ip, it in ((1, 0), (0, 1)):
         gl.set_scene(_pair_scene_roles(ip, it))
         rings = [np.asarray(it_.pos) for it_ in gl._items
-                 if hasattr(it_, "pos") and it_.pos is not None and len(it_.pos) == 72]
+                 if hasattr(it_, "pos") and it_.pos is not None and len(it_.pos) == RING_SEGMENTS]
         assert len(rings) == 1, (ip, it)
         ctr_fit = (rings[0].min(axis=0) + rings[0].max(axis=0)) / 2  # 采样圆圆心
         assert ctr_fit == pytest.approx(_pair_scene_roles(ip, it).frag_coms[it], abs=0.01)
     gl.set_scene(_pair_scene_roles(-1, -1))  # 角色缺失: b_max 在场也不画环
     rings = [it_ for it_ in gl._items
-             if hasattr(it_, "pos") and it_.pos is not None and len(it_.pos) == 72]
+             if hasattr(it_, "pos") and it_.pos is not None and len(it_.pos) == RING_SEGMENTS]
     assert rings == []
 
 

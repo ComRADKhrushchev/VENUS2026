@@ -174,6 +174,8 @@ class PesPage(QWidget):
         b_mk.setProperty("class", "primary")  # 本页主动作(实心强调)
         b_mk.clicked.connect(self.compile)
         self._b_clean = QPushButton("清理沙盒")
+        # 判词走 Task 3 简洁文案; 日志随沙盒删除的细节入悬停(build.log 写在沙盒内)
+        self._b_clean.setToolTip("删除隔离沙盒副本;编译日志文件一并删除")
         self._b_clean.clicked.connect(self._cleanup)
         self._b_clean.setEnabled(False)
         l3.addWidget(QLabel("编译器"), 0, 0)

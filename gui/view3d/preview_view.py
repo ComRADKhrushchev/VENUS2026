@@ -144,6 +144,9 @@ _CELL_EDGES = [(0, 1), (1, 2), (2, 3), (3, 0),
                (4, 5), (5, 6), (6, 7), (7, 4),
                (0, 4), (1, 5), (2, 6), (3, 7)]
 
+# b 环圆周采样点数(构造处与单测的环件识别共用, 勿在两处各写字面量)
+RING_SEGMENTS = 72
+
 
 class _Gl3D(QWidget):
     """GL 后端(薄封装):浅底令牌背景 + 方案球色 + 带尺度 xyz 轴。"""
@@ -257,7 +260,7 @@ class _Gl3D(QWidget):
             if rc is not None:
                 r = float(scene.b_max)
                 ctr = np.asarray(rc, dtype=float)
-                th = np.linspace(0, 2 * np.pi, 72)
+                th = np.linspace(0, 2 * np.pi, RING_SEGMENTS)
                 ring = np.stack([ctr[0] + r * np.cos(th), ctr[1] + r * np.sin(th),
                                  np.full_like(th, ctr[2])], axis=1)
                 self._add(GLLinePlotItem(pos=ring, color=(1.0, 0.55, 0.1, 0.8), width=2.0))
