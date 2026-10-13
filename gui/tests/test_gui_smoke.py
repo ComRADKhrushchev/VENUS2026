@@ -95,6 +95,25 @@ def test_main_window_smoke(tmp_path):
     win.close()
 
 
+def test_gl_center_opts_type():
+    """3D 后端 opts['center'] 须为 Vector/QVector3D(有 .x/.y/.z)——pyqtgraph
+    viewMatrix 对 ndarray 调 .x() 会让每帧 paintGL 抛异常(空白视图,2026-10-13 实机故障)。"""
+    from PyQt6.QtWidgets import QApplication
+    from gui.core import preview, sysdir
+    from gui.core.inputwrite import parse_input_file
+    from gui.view3d.preview_view import _Gl3D
+
+    app = QApplication.instance() or QApplication([])
+    gl = _Gl3D()
+    sd = sysdir.scan_system_dir(ROOT / "cases" / "case_harmonic_scatter" / "system")
+    vals = dict(parse_input_file(ROOT / "cases" / "case_harmonic_scatter" / "input_qct.txt"))
+    gl.set_scene(preview.assemble_preview(sd, vals, i_proj=0, i_targ=1))
+    center = gl.view.opts["center"]
+    assert all(callable(getattr(center, a, None)) for a in ("x", "y", "z")), \
+        f"opts['center'] 为 {type(center)}——pyqtgraph 需带 .x/.y/.z 的 Vector 型"
+    assert isinstance(gl.view.opts["distance"], (int, float))
+
+
 def test_projection2d_pixel_assertions(tmp_path):
     """2D 投影后备的像素级断言:瞄准点橙/箭头蓝/键灰/原子白 + 双面板各占半幅。"""
     from PyQt6.QtCore import QSize

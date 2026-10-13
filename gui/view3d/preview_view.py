@@ -133,7 +133,10 @@ class _Gl3D(QWidget):
                 self._seg(p1, p1 - 0.35 * u + s * 0.18 * w, (0.1, 0.5, 1.0, 1.0), 3.0)
         ctr = pos.mean(axis=0)
         span = float(np.linalg.norm(pos.max(axis=0) - pos.min(axis=0))) or 10.0
-        self.view.opts["center"] = ctr
+        # opts['center'] 须为 QVector3D——pyqtgraph viewMatrix 对其调 .x()/.y()/.z(),
+        # ndarray 会让每帧 paintGL 抛 AttributeError(空白视图)
+        from pyqtgraph.Qt import QtGui
+        self.view.opts["center"] = QtGui.QVector3D(float(ctr[0]), float(ctr[1]), float(ctr[2]))
         self.view.opts["distance"] = max(2.2 * span, 12.0)
 
 
