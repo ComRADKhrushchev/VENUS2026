@@ -4,14 +4,14 @@
 # 预期锚见 README.md 第 3 节（判据先行：先写后跑）
 SYSTEM_DIR = system
 TITLE = surface window case - H2 over 2x2 cell in reference well, verlet
-E_REL = 200.0
+E_REL = 8.67283884
 R_SEP = 8.0
-DT = 0.05
+DT = 0.5
 DIST_SCHEME = THERMALIZE
 PROJECTILE = projectile
 T_EQ = 300.0
 N_EQ = 25
-DT_EQ = 0.05
+DT_EQ = 0.5
 N_B = 0
 N_AIM = 1
 N_TRAJ = 8

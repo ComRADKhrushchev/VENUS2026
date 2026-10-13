@@ -1,37 +1,8 @@
-# case_surface_window 运行记录（2026-10-01 重跑，gfortran 树 src/build/gfortran/venus.e）
+# case_surface_window 运行 stdout 记录(2026-10-13 单位制改基批重跑:eV/Å/amu/fs——能量键旧值÷23.0605、时间键×10;gfortran 树 src/build/gfortran/venus.e,cwd=case 目录)
 # 输入变更（用户裁决 2026-10-01，问题提出于 2026-09-28）：表面范式输入不得写
-# B_MAX——横向落点由 N_AIM 独占表述（本例 N_AIM=1 胞内均匀）。原 2026-09-15 输入
-# 的 B_MAX=2.0 + N_B=1（胞内投放再叠 2 A 碰撞盘）已废止；inc_surface_init 对书写
-# B_MAX 的表面输入命名中止（端到端验证：rc=1，报错含 'B_MAX must not be written'）。
-# 运行：cd cases/case_surface_window && ../../src/build/gfortran/venus.e
-
-== stdout 全文（timing 行每次运行不同，其余双跑一致） ==
-
 assembly complete: trajectories=8 atoms=2 fragments=1 paradigm=1 members=11 init=ok columns=3
 statistics: trajectories=8 valid=8
 outcome counts: none (no classification bound - skipped)
-conservation drift: trajectories=8 max|e_fin-e0|=  6.7252E-04 kcal/mol
+conservation drift: trajectories=8 max|e_fin-e0|=  2.9163E-05 eV
 histograms: rows=8 files=hist_e_rel.dat hist_thta.dat
-timing: cpu=    0.16 s
-
-== 量值摘录（解析 trajectories.txt / 两直方图文件） ==
-
-- 帧级守恒：打印行 max|e_fin-e0| = 6.7252e-04 kcal/mol（终帧对首帧族）。
-- 帧数 108–113（< 401）、末帧 t 5.35–5.60（< 20，Q_TERM 中途终止；无分类跑）。
-- 首帧弹丸质心 z = 8.0000000000（恰 R_SEP）×8；x ∈ [0.24, 5.66]、
-  y ∈ [0.30, 5.65] —— 全落 6x6 胞内，纯胞内投放、无碰撞盘包络
-  （对照旧记录 y 曾至 6.29 出胞，即被裁决废止的双重展宽）。
-- thta 真值（末帧动量独立重算口径）：hist_thta.dat 非零 bin
-  154.24/158.59/162.93/167.28/171.62（计数 1/2/1/2/2），全落下行半球
-  (90, 180]；P = 1.0。
-- hist_e_rel.dat 退化如预期：bin 1 计数恰 8、间距 0.025、P = 1.0
-  （表面单片段 e_rel 恒 0，README A4 说明）。
-- A5 确定性：双跑 trajectories.txt / hist_thta.dat 逐字节一致（cmp）；
-  stdout 除 timing 行外一致；stderr 空。
-
-== A6 组成法令探针（历史记录，2026-09-15；探针条件与本次输入变更无关） ==
-
-exit=1，stderr：
-STOP 1
-inc_init: a surface-paradigm incident channel carries exactly one projectile fragment (the surface is not an atom list fragment); fragment count =2
-inc_init: loud-stop (the initial state is not sampled)
+timing: cpu=    0.14 s

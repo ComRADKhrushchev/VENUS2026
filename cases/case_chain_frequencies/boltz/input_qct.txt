@@ -10,10 +10,10 @@
 # 预期锚见 ../README.md 第 3 节(判据先行)。
 SYSTEM_DIR = system
 TITLE = chain-frequency boltz leg - HCl derived-spectrum geometric sampling
-E_REL = 200.0
+E_REL = 8.67283884
 B_MAX = 2.0
 R_SEP = 8.0
-DT = 0.05
+DT = 0.5
 DIST_SCHEME = ROTATION
 J_ROT = 3
 T_VIB_A = 104.0

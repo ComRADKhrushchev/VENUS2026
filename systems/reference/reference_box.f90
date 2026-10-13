@@ -22,12 +22,12 @@
 !                 threshold form; bound only when Q_TERM was provided)
 !   classification reference_classify - e_rel above/below E_SPLIT ->
 !                 'scattering'/'capture' (bound only when E_SPLIT was
-!                 provided; e_rel arrives in kcal/mol, so E_SPLIT is a
-!                 kcal/mol number)
+!                 provided; e_rel arrives in eV, so E_SPLIT is an eV
+!                 number)
 ! Parameters: the declared container keys of input_qct.txt - K_HARM = <v>
 !   force constant [eV/A^2] (default 0.04), Q_TERM = <v> termination
 !   threshold [A] (absent -> unbound), E_SPLIT = <v> classification split
-!   [kcal/mol] (absent -> unbound). The reg file declares the vocabulary
+!   [eV] (absent -> unbound; follows fin%e_rel since the 2026-10-06 rebase). The reg file declares the vocabulary
 !   (reference_keys) and pulls the buffered rows into reference_params_t at
 !   the assembly seam; absent keys keep the field defaults, the found
 !   flags carry the optional-slot provision semantics. A non-positive
@@ -54,14 +54,14 @@ module reference_box
       real(8) :: k_harm  = 0.04d0    ! force constant [eV/A^2] (K_HARM)
       real(8) :: q_term  = 0.0d0     ! termination threshold [A] (Q_TERM)
       logical :: q_term_found = .false.
-      real(8) :: e_split = 0.0d0     ! classification split [kcal/mol] (E_SPLIT)
+      real(8) :: e_split = 0.0d0     ! classification split [eV] (E_SPLIT)
       logical :: e_split_found = .false.
    end type reference_params_t
 
    real(8), parameter :: k_default = 0.04d0 ! default force constant [eV/A^2]
    real(8) :: k_harm  = k_default ! force constant [eV/A^2]
    real(8) :: q_term  = 0.0d0     ! termination threshold [A]
-   real(8) :: e_split = 0.0d0     ! classification split [kcal/mol]
+   real(8) :: e_split = 0.0d0     ! classification split [eV]
    logical :: term_on  = .false.  ! Q_TERM was provided (the slot may bind)
    logical :: class_on = .false.  ! E_SPLIT was provided (the slot may bind)
    logical :: loaded   = .false.  ! reference_load already ran (double-load guard)

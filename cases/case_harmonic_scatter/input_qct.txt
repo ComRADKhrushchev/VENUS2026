@@ -4,16 +4,16 @@
 # 预期锚见 README.md 第 3 节（判据先行：先写后跑）
 SYSTEM_DIR = system
 TITLE = harmonic scatter baseline - H2 pair in reference well, verlet
-E_REL = 200.0
+E_REL = 8.67283884
 B_MAX = 2.0
 R_SEP = 8.0
-DT = 0.05
+DT = 0.5
 DIST_SCHEME = THERMALIZE,ROTATION
 PROJECTILE = frag_a
 TARGET = frag_b
 T_EQ = 300.0
 N_EQ = 25
-DT_EQ = 0.05
+DT_EQ = 0.5
 J_ROT = 3
 N_B = 1
 N_TRAJ = 8
@@ -23,4 +23,4 @@ GWRITE_LEVEL = 2
 # ---- 容器键（reference 容器，原 reference_pars.txt 并入程序输入） ----
 K_HARM = 0.04
 Q_TERM = 9.5
-E_SPLIT = 1.0
+E_SPLIT = 0.04336419

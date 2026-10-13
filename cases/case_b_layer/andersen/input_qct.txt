@@ -11,15 +11,15 @@
 # 预期锚见 ../README.md 第 3 节（判据先行：两段式标定——试跑产物不入档）
 SYSTEM_DIR = system
 TITLE = b-layer thermostat posterior - H4 velocity reset target band, verlet
-E_REL = 200.0
+E_REL = 8.67283884
 B_MAX = 2.0
 R_SEP = 8.0
-DT = 0.05
+DT = 0.5
 DIST_SCHEME = J
 T_ROT = 300.0
 BATH = ANDERSEN
 N_BATH = 5
-DT_BATH = 0.05
+DT_BATH = 0.5
 T_BATH = 350.0
 NU_COLL = 0.137
 N_TRAJ = 32
