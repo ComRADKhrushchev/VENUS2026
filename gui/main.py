@@ -43,9 +43,7 @@ class MainWindow(QMainWindow):
         tabs.addTab(PesPage(), theme.icon("tab-pes"), "PES 容器检查")
         self.setCentralWidget(tabs)
         self.setStatusBar(QStatusBar())
-        self.statusBar().showMessage(
-            "内部单位 eV/Å/amu/fs;预览为示意(平衡几何+代表值);编译验证走隔离副本,不动工作树"
-        )
+        self.statusBar().showMessage("内部单位 eV/Å/amu/fs;预览为示意;编译验证走隔离副本")
 
 
 def main() -> int:

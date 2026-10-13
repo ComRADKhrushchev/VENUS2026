@@ -68,11 +68,12 @@ class PesPage(QWidget):
         scroll.setWidget(host)
         outer.addWidget(scroll)
 
-        # ① 扫描
-        g1 = QGroupBox("① 容器扫描(Tier 1 纯势容器契约:十名 + 八中止)")
+        # ① 扫描(组标题括注细节入组悬停——2026-10-13 文案精简裁决)
+        g1 = QGroupBox("① 容器扫描")
+        g1.setToolTip("Tier 1 纯势容器契约:十名 + 八中止。\n候选通常在 systems/inactive/ 下,亦可任选路径。")
         l1 = QGridLayout(g1)
         self._dir = QLineEdit()
-        self._dir.setPlaceholderText("容器文件夹路径(systems/inactive/ 下的候选或任意路径)")
+        self._dir.setPlaceholderText("容器文件夹路径")
         b_br = QPushButton("浏览…")
         b_br.setIcon(theme.icon("folder"))
         b_br.clicked.connect(self._browse)
@@ -84,7 +85,8 @@ class PesPage(QWidget):
         l1.addWidget(b_br, 0, 2)
         l1.addWidget(b_scan, 0, 3)
         self._quick = QComboBox()
-        self._quick.addItem("(从 systems/inactive/ 快选)")
+        self._quick.addItem("(请选择)")
+        self._quick.setToolTip("列出 systems/inactive/ 下的候选容器,选中即扫描")
         self._fill_quick()
         self._quick.currentIndexChanged.connect(self._quick_pick)
         l1.addWidget(QLabel("快选"), 1, 0)
@@ -100,7 +102,8 @@ class PesPage(QWidget):
         outer_v.addWidget(g1)
 
         # ② 生成器
-        g2 = QGroupBox("② 缺失槽位生成(可行模板;整文件覆盖式 gui_slots.f90,删除即撤销)")
+        g2 = QGroupBox("② 缺失槽位生成")
+        g2.setToolTip("可行模板;整文件覆盖式 gui_slots.f90,删除即撤销。")
         l2 = QGridLayout(g2)
         self._gen_term = QCheckBox("term 终止判定")
         self._term_var = QComboBox()
@@ -114,7 +117,7 @@ class PesPage(QWidget):
         l2.addWidget(self._term_var, 0, 1)
         l2.addWidget(QLabel("R"), 0, 2)
         l2.addWidget(self._term_r, 0, 3)
-        l2.addWidget(QLabel("变体说明见下拉项 tooltip"), 0, 4)
+        l2.addWidget(QLabel("变体说明见下拉悬停"), 0, 4)
 
         self._gen_cls = QCheckBox("classify 结果分类")
         self._cls_var = QComboBox()
@@ -148,8 +151,8 @@ class PesPage(QWidget):
         l2.addWidget(b_add, 2, 3)
         l2.addWidget(b_del, 2, 4)
         l2.addWidget(self._kl_table, 3, 0, 1, 5)
-        note = QLabel(
-            "方法组五名(prop/match/sync/init/method_name)不生成——真实物理,作者提供;"
+        note = QLabel("方法组五名不生成(真实物理,作者提供);keys+load 需作者模块的公共 real(8) 变量,扫描后预填。")
+        note.setToolTip(
             "未提供时绝热面缺省即可跑。keys+load 需作者模块的公共 real(8) 变量(扫描后自动预填)。"
         )
         note.setWordWrap(True)
@@ -161,7 +164,8 @@ class PesPage(QWidget):
         outer_v.addWidget(g2)
 
         # ③ 编译
-        g3 = QGroupBox("③ 编译验证(隔离副本 make——不动工作树;reference 并存对编译合法)")
+        g3 = QGroupBox("③ 编译验证")
+        g3.setToolTip("隔离副本 make,不动工作树;reference 与被检容器并存对编译合法。")
         l3 = QGridLayout(g3)
         self._fc = QComboBox()
         self._fc.addItems(["gfortran", "ifx"])
@@ -234,7 +238,7 @@ class PesPage(QWidget):
                     "subroutine" if d.kind == "s" else "function"))
                 self._table.setItem(i, 4, QTableWidgetItem(f"{d.module} ({d.file})"))
         if not res.is_tier1:
-            self._scan_info.setText("ℹ 含 reg_*.f90:显式 reg 容器(Tier 2)——reg 是权威,十名全忽略。")
+            self._scan_info.setText("ℹ 显式 reg 容器(Tier 2):reg 权威,十名忽略。")
         elif res.ok:
             extras = []
             if res.keys_words:
@@ -307,7 +311,7 @@ class PesPage(QWidget):
             QMessageBox.warning(self, "路径无效", "容器文件夹不存在。")
             return
         self._log.clear()
-        self._mk_verdict.setText("编译中…(隔离副本:src+scripts+reference+被检容器)")
+        self._mk_verdict.setText("编译中…(隔离副本)")
         self._worker = _CompileWorker(path, self._fc.currentText())
         self._worker.line.connect(self._log.appendPlainText)
         self._worker.done.connect(self._compile_done)
@@ -319,11 +323,11 @@ class PesPage(QWidget):
             return
         if res.ok:
             self._mk_verdict.setText(
-                f"✓ 编译通过(exit 0)。二进制:{res.sandbox}/src/build/{self._fc.currentText()}/venus.e;"
-                f"日志已落盘:{res.log}"
+                f"✓ 编译通过。二进制:{res.sandbox}/src/build/{self._fc.currentText()}/venus.e;"
+                f"日志:{res.log}"
             )
         else:
-            self._mk_verdict.setText(f"✗ 编译失败(exit {res.returncode})。日志:{res.log}(沙盒保留供诊断)")
+            self._mk_verdict.setText(f"✗ 编译失败(exit {res.returncode})。日志:{res.log};沙盒保留供诊断")
         self._b_clean.setEnabled(True)
         self._last = res
 
@@ -332,4 +336,4 @@ class PesPage(QWidget):
         if res is not None:
             sandbox.cleanup(res)
             self._b_clean.setEnabled(False)
-            self._mk_verdict.setText("沙盒已清理(日志文件一并删除)。")
+            self._mk_verdict.setText("沙盒已清理。")

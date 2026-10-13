@@ -416,7 +416,10 @@ class PreviewView(QWidget):
         self._gl = _Gl3D()
         self._2d = _Projection2D()
         self._mode = QComboBox()
-        self._mode.addItems(["3D(OpenGL,可拖拽旋转)", "2D 投影(无 GL 后备)"])
+        self._mode.addItem("3D 视图")
+        self._mode.setItemData(0, "OpenGL 实时渲染,可拖拽旋转/缩放", Qt.ItemDataRole.ToolTipRole)
+        self._mode.addItem("2D 投影")
+        self._mode.setItemData(1, "无 GL 后备(QPainter 双面板投影)", Qt.ItemDataRole.ToolTipRole)
         self._mode.currentIndexChanged.connect(self._switch)
         self._scheme = QComboBox()
         for key, sch in SCHEMES.items():

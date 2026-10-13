@@ -138,7 +138,7 @@ def assemble_preview(
     surf = scat == "SURFACE"
     cell = cell_from_values(values) if surf else None
     scene = PreviewScene(cell=cell)
-    scene.notes.append("预览为示意:片段内部几何取文件平衡坐标(未抽样振动/转动)")
+    scene.notes.append("预览为示意:内部几何取平衡坐标,抽样量取代表值")
 
     n_frag = len(sysdef.frags)
     channel = incident_word(1 if surf else 0, n_frag)
@@ -153,20 +153,20 @@ def assemble_preview(
     scene.frag_names = [f.name for f in sysdef.frags]
 
     if channel == "incident_single":
-        scene.notes.append("单片段通道:入射成员不放置(体系文件坐标原样)")
+        scene.notes.append("单片段通道:坐标取体系文件原样")
     elif i_proj < 0 or (channel == "incident_pair" and i_targ < 0):
-        scene.notes.append("PROJECTILE/TARGET 角色未解析,预览以文件坐标原样显示")
+        scene.notes.append("PROJECTILE/TARGET 角色未解析:坐标取文件原样")
     else:
         # ---- 束流代表值(抽样量取代表;固定量取输入值)----
         n_thta = integer("N_THTA", 0)
         thta_max = num("THTA_MAX")
         theta = thta_max  # 固定模式即输入值;采样模式以界值为代表值
         if n_thta == 1:
-            scene.notes.append("N_THTA=1 采样极角,预览取 θ=THTA_MAX 为代表值")
+            scene.notes.append("N_THTA=1:θ 取 THTA_MAX 为代表值")
         chi = num("CHI")
         if integer("N_CHI", 0) == 1:
             chi = 0.0
-            scene.notes.append("N_CHI=1 采样方位角,预览取 χ=0 为代表值")
+            scene.notes.append("N_CHI=1:χ 取 0 为代表值")
         b_max = num("B_MAX")
         n_b = integer("N_B", 0)
         if channel == "incident_surface":
@@ -174,7 +174,7 @@ def assemble_preview(
         b = b_max if n_b == 0 else 0.7 * b_max
         phi = chi if n_b == 0 else math.pi / 4
         if n_b == 1:
-            scene.notes.append("N_B=1 碰撞盘采样,预览取 b=0.7·B_MAX、φ=45° 为代表值")
+            scene.notes.append("N_B=1:b 取 0.7·B_MAX、φ 取 45° 为代表值")
 
         n_aim = integer("N_AIM", 0)
         if n_aim == 1:
@@ -185,7 +185,7 @@ def assemble_preview(
                 drop = [0.5 * a1[0] + 0.5 * a2[0], 0.5 * a1[1] + 0.5 * a2[1]]
             else:
                 drop = [0.0, 0.0]
-            scene.notes.append("N_AIM=1 胞内均匀采样,预览取胞心为代表值")
+            scene.notes.append("N_AIM=1:落点取胞心为代表值")
         elif n_aim == 2:
             drop = [num("AIM_X"), num("AIM_Y")]
         else:
@@ -203,7 +203,7 @@ def assemble_preview(
         speed = math.sqrt(2.0 * e_rel / (mu * DYN_EV)) if (mu > 0 and e_rel > 0) else 0.0
         n_e_rel = integer("N_E_REL", 1)
         if n_e_rel != 1:
-            scene.notes.append(f"N_E_REL={n_e_rel} 采样能速,预览取 E_REL 对应速度为代表值")
+            scene.notes.append(f"N_E_REL={n_e_rel}:速度取 E_REL 对应值为代表值")
 
         sin_t = math.sin(theta)
         u_inc = [-sin_t * math.cos(chi), -sin_t * math.sin(chi), -math.cos(theta)]

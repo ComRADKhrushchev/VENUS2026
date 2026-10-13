@@ -196,8 +196,8 @@ class InputPage(QWidget):
         lay = QVBoxLayout(left)
         lay.setContentsMargins(theme.SP_M, theme.SP_M, theme.SP_M, theme.SP_M)
         lay.setSpacing(theme.SP_M)
-        legend = QLabel(
-            "注:<b>*</b> 加粗标记的字段不可留空;其余输入框留空即不写出该键。"
+        legend = QLabel("注:<b>*</b> 加粗星号为必填;其余输入框留空即不写出该键。")
+        legend.setToolTip(
             "组标题带箭头者可点击折叠/展开(折叠不改变已填值的效力);"
             "不需要的输入框按其余设置自动隐藏并清空(各键名见悬停提示)。"
         )
@@ -284,11 +284,12 @@ class InputPage(QWidget):
             self._checks[key] = c
             return c
 
-        # ---- 体系定义(先行:范式决定其余字段形态)----
-        group("sysdef", "体系定义(SYSTEM_DIR)")
+        # ---- 体系定义(先行:范式决定其余字段形态;标题括注入组头悬停)----
+        group("sysdef", "体系定义")
+        self._sections["sysdef"]._btn.setToolTip("写出键: SYSTEM_DIR")
         sd_row = QHBoxLayout()
         self._sd_line = QLineEdit()
-        self._sd_line.setPlaceholderText("体系文件夹路径(含 .xyz / POSCAR 反应物文件)")
+        self._sd_line.setPlaceholderText("体系文件夹路径")
         b1 = QPushButton("浏览…")
         b1.setIcon(theme.icon("folder"))
         b1.clicked.connect(self._browse_sysdir)
@@ -300,7 +301,7 @@ class InputPage(QWidget):
         sd_row.addWidget(b2)
         wrap = QWidget()
         wrap.setLayout(sd_row)
-        row(cell("SYSTEM_DIR", wrap))
+        row(cell("SYSTEM_DIR", wrap, "体系文件夹,含 .xyz / POSCAR 反应物文件"))
         self._cur_lay.addWidget(self._info)
         row(cell("E_REL", line("E_REL", "如 8.7"), "必填"),
             cell("R_SEP", line("R_SEP", "如 8.0"), "必填"))
@@ -311,12 +312,12 @@ class InputPage(QWidget):
         row(cell("SCATTERING", combo("SCATTERING", [""] + ENUMS["scattering"]), "默认 GAS"),
             cell("N_AIM", mcombo("N_AIM"), "仅表面散射"))
         row(cell("CELL", line("CELL", "三行晶矢, 如 6 0 0, 0 6 0, 0 0 20"), "表面散射必填"))
-        row(cell("AIM_X", line("AIM_X", "x(胞帧)"), "落点模式=2 时"),
+        row(cell("AIM_X", line("AIM_X", "x"), "落点模式=2 时, CELL 帧"),
             cell("AIM_Y", line("AIM_Y", "y"), "落点模式=2 时"))
 
         # ---- 采样方案(逐片段;扫描后重建;星号=每片段均须选择)----
-        group("scheme", "采样方案 *(逐片段)")
-        self._sections["scheme"]._btn.setToolTip("写出键: DIST_SCHEME(每片段一词)")
+        group("scheme", "采样方案 *")
+        self._sections["scheme"]._btn.setToolTip("写出键: DIST_SCHEME(每片段一词;扫描后按片段重建)")
         self._scheme_host = QWidget()
         self._scheme_grid = QGridLayout(self._scheme_host)
         self._cur_lay.addWidget(self._scheme_host)
@@ -349,7 +350,9 @@ class InputPage(QWidget):
         row(cell("SPECTRUM_FILE", line("SPECTRUM_FILE", "MANUAL 谱表路径"), "MANUAL 时必填"))
 
         # ---- 束流参数(入射通道)----
-        group("beam", "束流参数(入射通道)", collapsible=True, expanded=False)
+        group("beam", "束流参数", collapsible=True, expanded=False)
+        self._sections["beam"]._btn.setToolTip(
+            "入射通道束流;写出键: N_E_REL / N_THTA / N_CHI / N_B")
         row(cell("N_E_REL", mcombo("N_E_REL")),
             cell("T_TRANS", line("T_TRANS", "K"), "碰撞能模式=0 时须>0"),
             cell("V_WIDTH", line("V_WIDTH", "Å/fs"), "碰撞能模式=2 时须>0"))
@@ -361,9 +364,10 @@ class InputPage(QWidget):
 
         # ---- 方案词参数说明(2026-10-13 裁定: 参数只经 DIST_SCHEME 括号,
         #      逐片段字段随方案行内联显示,本组仅留说明)----
-        group("member", "方案词参数(逐片段,在采样方案行内填写)", collapsible=True, expanded=False)
-        row(QLabel("各片段选定方案词后,其参数字段内联出现在该片段行;"
-                   "无参数的词写裸词,缺省参数走成员默认。"))
+        group("member", "方案词参数", collapsible=True, expanded=False)
+        self._sections["member"]._btn.setToolTip(
+            "逐片段,在采样方案行内填写;无参数的词写裸词,缺省参数走成员默认")
+        row(QLabel("选定方案词后,参数字段内联于该片段行;裸词走成员默认。"))
 
         # ---- 容器键 ----
         g = group("container", "容器键", collapsible=True, expanded=False)
@@ -404,7 +408,8 @@ class InputPage(QWidget):
         rl = QVBoxLayout(right)
         rl.setContentsMargins(0, 0, 0, 0)
         rl.setSpacing(theme.SP_S)
-        cap = QLabel("起始散射构型(示意——内部几何为平衡坐标,抽样量取代表值)")
+        cap = QLabel("起始散射构型(示意)")
+        cap.setToolTip("内部几何为平衡坐标,抽样量取代表值")
         cap.setProperty("class", "caption")
         cap.setWordWrap(True)
         rl.addWidget(cap)
@@ -780,7 +785,7 @@ class InputPage(QWidget):
         issues = validate.validate(values, self._sysdef, list(cont.keys()))
         if issues:
             self.run_validation()
-            QMessageBox.warning(self, "校验未通过", "存在校验错误,先修正再写出(见校验结果)。")
+            QMessageBox.warning(self, "校验未通过", "存在校验错误,先修正再写出。")
             return
         out_dir = QFileDialog.getExistingDirectory(self, "选择输出目录")
         if not out_dir:
