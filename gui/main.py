@@ -2,7 +2,8 @@
 """main.py - GUI 入口:python -m gui.main(或 python gui/main.py)。
 
 两页:①输入文件生成(左表单/右 3D 起始散射预览)②自定义 PES 容器
-检查(扫描→槽位生成→隔离树编译)。
+检查(扫描→槽位生成→隔离树编译)。样式走 gui.theme(令牌化浅色主题,
+Fusion 底座 + 全局 QSS——唯一样式入口)。
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ if str(_ROOT) not in sys.path:
 
 from PyQt6.QtWidgets import QApplication, QMainWindow, QStatusBar, QTabWidget
 
+from gui import theme
 from gui.pages.input_page import InputPage
 from gui.pages.pes_page import PesPage
 
@@ -25,6 +27,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("VENUS2026 GUI — 输入生成 / 自定义 PES 容器检查")
+        self.setWindowIcon(theme.icon("app"))
         # 初始尺寸钳制在屏幕可用几何内(任务栏除外——下沿不得被任务栏挡住)
         screen = QApplication.primaryScreen()
         avail = screen.availableGeometry() if screen else None
@@ -36,8 +39,8 @@ class MainWindow(QMainWindow):
         if avail is not None:
             self.move(avail.topLeft())
         tabs = QTabWidget()
-        tabs.addTab(InputPage(), "输入文件生成")
-        tabs.addTab(PesPage(), "PES 容器检查")
+        tabs.addTab(InputPage(), theme.icon("tab-input"), "输入文件生成")
+        tabs.addTab(PesPage(), theme.icon("tab-pes"), "PES 容器检查")
         self.setCentralWidget(tabs)
         self.setStatusBar(QStatusBar())
         self.statusBar().showMessage(
@@ -47,6 +50,8 @@ class MainWindow(QMainWindow):
 
 def main() -> int:
     app = QApplication(sys.argv)
+    theme.apply_theme(app)  # Fusion + 调色板 + 字体 + 全局 QSS(先于建窗)
+    app.setWindowIcon(theme.icon("app"))
     win = MainWindow()
     win.show()
     return app.exec()

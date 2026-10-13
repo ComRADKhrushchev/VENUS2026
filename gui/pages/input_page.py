@@ -22,15 +22,16 @@ import re
 import shutil
 from pathlib import Path
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import QSize, QTimer
 from PyQt6.QtWidgets import (
-    QCheckBox, QComboBox, QFileDialog, QGridLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QPlainTextEdit, QScrollArea, QSplitter,
-    QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout, QWidget,
-    QHeaderView, QMessageBox,
+    QCheckBox, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout,
+    QLabel, QLineEdit, QPushButton, QPlainTextEdit, QScrollArea, QSizePolicy,
+    QSplitter, QTableWidget, QTableWidgetItem, QToolButton, QVBoxLayout,
+    QWidget, QHeaderView, QMessageBox,
 )
 from PyQt6.QtCore import Qt
 
+from .. import theme
 from ..core import inputwrite, preview, sysdir, validate
 from ..core.keyspec import (
     KEY_TABLE, MEMBER_TABLE, SCHEME_MEMBER_KEYS, ENUMS, REFERENCE_CONTAINER_KEYS,
@@ -110,9 +111,11 @@ class _Section(QWidget):
         super().__init__(parent)
         self.collapsible = collapsible
         self._btn = QToolButton()
+        self._btn.setObjectName("SectionHeader")  # 样式由全局 QSS 收口
         self._btn.setText(title)
         self._btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-        self._btn.setStyleSheet("QToolButton { border: none; font-weight: 600; padding: 2px 0; }")
+        self._btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._btn.setIconSize(QSize(14, 14))
         if collapsible:
             self._btn.setCheckable(True)
             self._btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -120,7 +123,7 @@ class _Section(QWidget):
         self.content = QWidget()
         v = QVBoxLayout(self)
         v.setContentsMargins(0, 0, 0, 0)
-        v.setSpacing(2)
+        v.setSpacing(theme.SP_S)
         v.addWidget(self._btn)
         v.addWidget(self.content)
         self._expanded = True
@@ -135,7 +138,7 @@ class _Section(QWidget):
         if not self.collapsible:
             return
         self._btn.setChecked(on)
-        self._btn.setArrowType(Qt.ArrowType.DownArrow if on else Qt.ArrowType.RightArrow)
+        self._btn.setIcon(theme.icon("chevron-down" if on else "chevron-right"))
         self.content.setVisible(on)
 
     def toggle(self):
@@ -155,10 +158,16 @@ class InputPage(QWidget):
         self._container_table: QTableWidget | None = None
         self._info: QLabel = QLabel("未扫描体系文件夹")
         self._info.setWordWrap(True)  # 扫描结果长行不撑最小宽
-        self._notes: QLabel = QLabel("")
+        self._info.setProperty("class", "caption")
+        self._notes = QLabel("")
         self._notes.setWordWrap(True)
+        self._notes.setProperty("class", "caption")
         self._verdict = QPlainTextEdit(readOnly=True)
         self._verdict.setMaximumHeight(120)
+        self._verdict.setProperty("state", "idle")  # ok/error 时语义色(QSS)
+        self._verdict_summary = QLabel("")  # 校验语义摘要行(● 通过 / ● N 处问题)
+        self._verdict_summary.setProperty("class", "verdict-summary")
+        self._verdict_summary.setProperty("state", "idle")
         self._view = PreviewView()
         self._sections: dict[str, _Section] = {}
         self._section_of_key: dict[str, _Section] = {}
@@ -179,15 +188,20 @@ class InputPage(QWidget):
         left = QWidget()
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
+        # 横向滚动条按需出现(2026-10-13 窗口适配裁决: 用户拉窄分栏时作后备,
+        # 默认分栏份额下内容最小宽 502-568px < 可视宽, 平时不出现)
         scroll.setWidget(left)
+        self._scroll = scroll
         lay = QVBoxLayout(left)
+        lay.setContentsMargins(theme.SP_M, theme.SP_M, theme.SP_M, theme.SP_M)
+        lay.setSpacing(theme.SP_M)
         legend = QLabel(
             "注:<b>*</b> 加粗标记的字段不可留空;其余输入框留空即不写出该键。"
             "组标题带箭头者可点击折叠/展开(折叠不改变已填值的效力);"
             "不需要的输入框按其余设置自动隐藏并清空(各键名见悬停提示)。"
         )
         legend.setWordWrap(True)  # 长图例不撑最小宽
-        legend.setStyleSheet("color: #555;")
+        legend.setProperty("class", "caption")
         lay.addWidget(legend)
 
         def group(sid: str, title: str, collapsible: bool = False,
@@ -197,8 +211,9 @@ class InputPage(QWidget):
             self._cur_sec = sec
             lay.addWidget(sec)
             self._cur_lay = QVBoxLayout(sec.content)
-            self._cur_lay.setSpacing(4)
-            self._cur_lay.setContentsMargins(4, 2, 4, 2)
+            self._cur_lay.setSpacing(theme.SP_S)
+            self._cur_lay.setContentsMargins(
+                theme.SP_M, theme.SP_S, theme.SP_M, theme.SP_S)  # 组头下内容缩进
             return sec
 
         def cell(key: str, w: QWidget, hint: str = "", label: str | None = None) -> QWidget:
@@ -274,8 +289,10 @@ class InputPage(QWidget):
         self._sd_line = QLineEdit()
         self._sd_line.setPlaceholderText("体系文件夹路径(含 .xyz / POSCAR 反应物文件)")
         b1 = QPushButton("浏览…")
+        b1.setIcon(theme.icon("folder"))
         b1.clicked.connect(self._browse_sysdir)
         b2 = QPushButton("扫描")
+        b2.setIcon(theme.icon("search"))
         b2.clicked.connect(self._rescan)
         sd_row.addWidget(self._sd_line)
         sd_row.addWidget(b1)
@@ -283,7 +300,6 @@ class InputPage(QWidget):
         wrap = QWidget()
         wrap.setLayout(sd_row)
         row(cell("SYSTEM_DIR", wrap))
-        self._info.setStyleSheet("color: #555;")
         self._cur_lay.addWidget(self._info)
         row(cell("E_REL", line("E_REL", "如 8.7"), "必填"),
             cell("R_SEP", line("R_SEP", "如 8.0"), "必填"))
@@ -385,12 +401,17 @@ class InputPage(QWidget):
         # ---- 动作 ----
         group("output", "输出")
         act_row = QHBoxLayout()
+        act_row.setSpacing(theme.SP_S)
         b_val = QPushButton("校验")
+        b_val.setIcon(theme.icon("check"))
         b_val.clicked.connect(self.run_validation)
         b_out = QPushButton("写出 input_qct.txt…")
+        b_out.setIcon(theme.icon("save"))
+        b_out.setProperty("class", "primary")  # 实心强调主按钮(校验=次级描边)
         b_out.clicked.connect(self._write_file)
         act_row.addWidget(b_val)
         act_row.addWidget(b_out)
+        act_row.addStretch(1)
         wrap3 = QWidget()
         wrap3.setLayout(act_row)
         self._cur_lay.addWidget(wrap3)
@@ -398,20 +419,33 @@ class InputPage(QWidget):
         self._cur_lay.addWidget(self._copy_check)  # 独占一行, 不撑组最小宽
         lay.addStretch(1)
 
-        # 右侧:预览 + 注记 + 校验结果
+        # 右侧:预览(卡片框) + 注记 + 校验结果(语义摘要行 + 结果框)
         right = QWidget()
         rl = QVBoxLayout(right)
-        rl.addWidget(QLabel("起始散射构型(示意——内部几何为平衡坐标,抽样量取代表值)"))
-        rl.addWidget(self._view, 1)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.setSpacing(theme.SP_S)
+        cap = QLabel("起始散射构型(示意——内部几何为平衡坐标,抽样量取代表值)")
+        cap.setProperty("class", "caption")
+        cap.setWordWrap(True)
+        rl.addWidget(cap)
+        view_card = QFrame()
+        view_card.setProperty("class", "card")
+        vcv = QVBoxLayout(view_card)
+        vcv.setContentsMargins(theme.SP_S, theme.SP_S, theme.SP_S, theme.SP_S)
+        vcv.addWidget(self._view)
+        rl.addWidget(view_card, 1)
         rl.addWidget(self._notes)
-        rl.addWidget(QLabel("校验结果"))
+        lab_v = QLabel("校验结果")
+        lab_v.setProperty("class", "caption")
+        rl.addWidget(lab_v)
+        rl.addWidget(self._verdict_summary)
         rl.addWidget(self._verdict)
 
         split.addWidget(scroll)
         split.addWidget(right)
         split.setSizes([560, 640])
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(4, 4, 4, 4)
+        outer.setContentsMargins(theme.SP_L, theme.SP_L, theme.SP_L, theme.SP_L)
         outer.addWidget(split)
         # 无条件必填键的静态星号(DIST_SCHEME 的星号在组标题上)
         for k in ("SYSTEM_DIR", "E_REL", "R_SEP", "DT"):
@@ -696,8 +730,19 @@ class InputPage(QWidget):
         self._expand_for_issues(issues, cont)
         if not issues:
             self._verdict.setPlainText("✓ 校验通过(全部静态规则)")
+            self._set_verdict_state("ok", 0)
         else:
             self._verdict.setPlainText("\n".join(f"✗ {i}" for i in issues))
+            self._set_verdict_state("error", len(issues))
+
+    def _set_verdict_state(self, state: str, n: int):
+        """校验语义色: 结果框边框/底色与摘要行按 ok/error 变色(QSS; 文本不变)。"""
+        self._verdict.setProperty("state", state)
+        self._verdict_summary.setProperty("state", state)
+        self._verdict_summary.setText("● 校验通过" if state == "ok" else f"● {n} 处问题")
+        for w in (self._verdict, self._verdict_summary):
+            w.style().unpolish(w)  # 属性变更后重刷样式
+            w.style().polish(w)
 
     def _expand_for_issues(self, issues, cont_keys: dict[str, str]):
         """校验出错的键所在折叠组自动展开(错误不该藏在折叠里);容器类问题归容器键组。"""

@@ -264,8 +264,11 @@ class PreviewView(QWidget):
         self._current = self._gl
         lay = QVBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
         top = QHBoxLayout()
-        top.addWidget(QLabel("预览模式:"))
+        mode_lab = QLabel("预览模式:")
+        mode_lab.setProperty("class", "caption")
+        top.addWidget(mode_lab)
         top.addWidget(self._mode)
         top.addStretch(1)
         lay.addLayout(top)

@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
 
 from ..core import pes_gen, pes_scan, sandbox
 from ..core.pes_scan import ALL_NAMES
+from .. import theme
 
 _WANT = {n: ("subroutine" if n in pes_scan.SUB_NAMES else "function") for n in ALL_NAMES}
 
@@ -73,8 +74,10 @@ class PesPage(QWidget):
         self._dir = QLineEdit()
         self._dir.setPlaceholderText("容器文件夹路径(systems/inactive/ 下的候选或任意路径)")
         b_br = QPushButton("浏览…")
+        b_br.setIcon(theme.icon("folder"))
         b_br.clicked.connect(self._browse)
         b_scan = QPushButton("扫描")
+        b_scan.setIcon(theme.icon("search"))
         b_scan.clicked.connect(self.scan)
         l1.addWidget(QLabel("容器文件夹"), 0, 0)
         l1.addWidget(self._dir, 0, 1)
@@ -152,6 +155,7 @@ class PesPage(QWidget):
         note.setWordWrap(True)
         l2.addWidget(note, 4, 0, 1, 5)
         b_gen = QPushButton("生成/覆盖 gui_slots.f90")
+        b_gen.setIcon(theme.icon("wand"))
         b_gen.clicked.connect(self.generate)
         l2.addWidget(b_gen, 5, 0, 1, 2)
         outer_v.addWidget(g2)
@@ -162,6 +166,8 @@ class PesPage(QWidget):
         self._fc = QComboBox()
         self._fc.addItems(["gfortran", "ifx"])
         b_mk = QPushButton("开始编译")
+        b_mk.setIcon(theme.icon("hammer"))
+        b_mk.setProperty("class", "primary")  # 本页主动作(实心强调)
         b_mk.clicked.connect(self.compile)
         self._b_clean = QPushButton("清理沙盒")
         self._b_clean.clicked.connect(self._cleanup)
@@ -172,7 +178,7 @@ class PesPage(QWidget):
         l3.addWidget(self._b_clean, 0, 3)
         self._log = QPlainTextEdit(readOnly=True)
         self._log.setMinimumHeight(220)
-        self._log.setStyleSheet("font-family: Consolas, monospace; font-size: 9pt;")
+        self._log.setProperty("class", "log")  # 等宽字体由全局 QSS 收口
         l3.addWidget(self._log, 1, 0, 1, 4)
         self._mk_verdict = QLabel("")
         self._mk_verdict.setWordWrap(True)

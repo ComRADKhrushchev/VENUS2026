@@ -40,6 +40,26 @@ python -m gui.main          # 或 python gui/main.py
 `C:\Program Files\Git\...`,PATH 命中的 WSL bash 会被排除;可用环境变量
 `VENUS_GUI_BASH` 显式指定。
 
+## 主题与样式(2026-10-13 裁决: 方案 A 令牌化浅色主题 + 图标 + 密度重排)
+
+唯一样式入口 = `gui/theme.py`:色彩令牌(角色化命名,交互蓝 `#2563EB` 为强调色)、
+间距标尺 `SP_S/M/L/XL = 4/8/12/16`、三档排版(正文 9 / 组头 10 / 说明 8 pt);
+`apply_theme()` 一次装配 Fusion 底座 + Microsoft YaHei UI 字体 + 调色板 + 全局
+QSS。**页面代码零 `setStyleSheet`**(`test_theme.py` 防回漂看守)——局部差异走
+objectName(`#SectionHeader` 分组标题色带)或 dynamic property:
+
+| 标记 | 载体 | 效果 |
+| --- | --- | --- |
+| `class="primary"` | 写出/开始编译按钮 | 实心强调主按钮(其余描边次级) |
+| `class="caption"` | 图例/扫描信息/注记/栏标题 | 弱化说明文字(小号灰) |
+| `class="card"` | 预览画布外框 | 卡片(白底圆角描边) |
+| `class="log"` | 编译日志 | 等宽字体 |
+| `state="ok"/"error"` | 校验结果框+摘要行 | 绿/红语义色(文本不变, 仅样式) |
+
+图标为 `gui/assets/icons/` 手绘 SVG(应用/页签/按钮/折叠 chevron),`theme.icon(名)`
+按名取用、缺文件返回空图标不崩。语义红线: 标签文本/tooltip/显隐/收集/折叠契约
+不受样式影响(既有测试看守);2D 投影画布三处 RGB 为测试锚,不随主题变。
+
 ## 结构
 
 ```
@@ -83,8 +103,9 @@ python -m pytest gui/tests -m slow -q  # 慢测(auto_sample 隔离 make / 生成
 ## 注意
 
 - 窗口适配(2026-10-13):初始尺寸钳制在屏幕可用几何内(下沿不压任务栏),两页
-  内容各处滚动区(最小高 236px 起步);左栏内容最小宽 452px < 默认分栏份额,
-  平时不出横向滚动条(用户拉窄分栏时滚动条仍作后备)。
+  内容各处滚动区(最小高 236px 起步);左栏内容最小宽 502-568px(主题批间距后
+  实测,gui/logs/theme_shots.log)< 默认分栏份额约 687px,平时不出横向滚动条
+  (用户拉窄分栏时滚动条仍作后备)。
 - 预览的抽样量(N_B/N_AIM/N_THTA/N_CHI 采样模式)以代表值代入,视图下方有
   "示意"注记;片段内部几何取体系文件平衡坐标,不含振动/转动采样。
 - 预览默认 3D(OpenGL);个别显卡/驱动不兼容时切换"2D 投影"后备。
