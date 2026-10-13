@@ -371,7 +371,7 @@ class InputPage(QWidget):
 
         # ---- 容器键 ----
         g = group("container", "容器键", collapsible=True, expanded=False)
-        g._btn.setToolTip("活动容器的 *_keys 词表;reference 预填 K_HARM/Q_TERM/E_SPLIT")
+        g._btn.setToolTip("活动容器的 *_keys 词表;参照容器预填 K_HARM/Q_TERM/E_SPLIT")
         self._container_table = QTableWidget(0, 2)
         self._container_table.setHorizontalHeaderLabels(["键", "值(空=不写出)"])
         self._container_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)

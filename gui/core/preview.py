@@ -176,7 +176,7 @@ def assemble_preview(
             b_max = b_max if b_max > 0 else 0.0  # 表面不写 B_MAX(法定 0 = 定点束)
         b = b_max if n_b == 0 else 0.7 * b_max
         phi = chi if n_b == 0 else math.pi / 4
-        if n_b == 1:
+        if channel == "incident_pair" and n_b == 1:  # b 环仅 pair 画,表面不画
             scene.notes.append("N_B=1 碰撞盘采样:预览恒对心(b 不位移),范围见环")
         elif channel == "incident_pair" and b > 0:
             scene.notes.append("N_B=0:b=B_MAX 固定;预览恒对心(b 不位移),值见 b 环")

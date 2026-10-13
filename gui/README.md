@@ -118,7 +118,8 @@ python -m pytest gui/tests -m slow -q  # 慢测(auto_sample 隔离编译 / 生�
   "示意"注记;片段内部几何取体系文件平衡坐标,不含振动/转动采样。
 - 预览恒对心(2026-10-13 用户裁决):弹丸摆位不随 B_MAX 位移(显示取 b=0),
   b 采样范围由 b 环可视化,瞄准十字=落点。
-- 原子配色真机目验:`python gui/logs/gl_probe_colors.py`(真实窗口渲染多元素
-  场景,逐元素像素色读数落盘 `gui/logs/gl_probe_colors.log`)。
+- 原子配色真机目验:`python gui/scripts/gl_probe_colors.py`(真实窗口渲染多元素
+  场景,逐元素像素色读数落盘 `gui/logs/gl_probe_colors.log`;脚本入库 gui/scripts,
+  输出仍落不入库的 gui/logs)。
 - 预览默认 3D(OpenGL);个别显卡/驱动不兼容时切换"2D 投影"后备。
 - 编译验证的隔离沙盒默认保留(失败诊断 + build.log 落盘);"清理沙盒"按钮删除。
