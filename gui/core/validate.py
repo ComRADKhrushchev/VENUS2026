@@ -182,6 +182,21 @@ def validate(
         if sysdef is not None and sysdef.errors:
             err("SYSTEM_DIR", f"system/ 扫描有错: {sysdef.errors[0]}")
 
+    # ---- 5b. 积分器×阶域(dynamics/propagator.f90:126-165/186/223-224:
+    #      VERLET 1(Verlet)/2(Beeman)·SYMPLECTIC 4/6/8·RADAU 1-15)----
+    integ = (values.get("INTEGRATOR", "") or "VERLET").strip().upper() or "VERLET"
+    order_domains = {
+        "VERLET": {1, 2}, "SYMPLECTIC": {4, 6, 8}, "RADAU": set(range(1, 16)),
+    }
+    if integ in order_domains:
+        domain = order_domains[integ]
+        order = _int(values, "ORDER")
+        if order is None:  # 未写出 → 程序默认 1(对 SYMPLECTIC 非法)
+            if 1 not in domain:
+                err("ORDER", f"{integ} 须写 ORDER ∈ {sorted(domain)}(缺省默认 1 对其非法)")
+        elif order not in domain:
+            err("ORDER", f"{integ} 的 ORDER 须 ∈ {sorted(domain)}")
+
     # ---- 6. 束流键(beam_laws beam_init + inc_pair/inc_surface 差异)----
     n_e_rel = _int(values, "N_E_REL")
     if n_e_rel is not None and n_e_rel not in (0, 1, 2):

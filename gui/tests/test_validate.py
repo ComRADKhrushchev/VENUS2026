@@ -112,3 +112,21 @@ def test_member_and_unknown_and_container_keys():
     assert any(i.key == "DT" and "撞名" in i.msg for i in out)
     out = validate.validate(v, _pair_sd(), ["X" * 33])
     assert any("32 字符" in i.msg for i in out)
+
+
+def test_integrator_order_domain():
+    """积分器×阶合法域(权威 src/dynamics/propagator.f90:126-165/186/223-224):
+    VERLET 1/2·SYMPLECTIC 4/6/8·RADAU 1-15; SYMPLECTIC 缺省(默认1)会 fatal, 须拦。"""
+    v = dict(_pair_values(), INTEGRATOR="SYMPLECTIC")
+    assert any(i.key == "ORDER" for i in validate.validate(v, _pair_sd()))
+    for ok in ("4", "6", "8"):
+        assert not any(i.key == "ORDER" for i in validate.validate(dict(v, ORDER=ok), _pair_sd()))
+    assert any(i.key == "ORDER" for i in validate.validate(dict(v, ORDER="5"), _pair_sd()))
+    v2 = dict(_pair_values(), INTEGRATOR="VERLET", ORDER="3")
+    assert any(i.key == "ORDER" for i in validate.validate(v2, _pair_sd()))
+    v3 = dict(_pair_values(), INTEGRATOR="VERLET")  # 缺省 → 默认 1 合法
+    assert not any(i.key == "ORDER" for i in validate.validate(v3, _pair_sd()))
+    v4 = dict(_pair_values(), INTEGRATOR="RADAU", ORDER="15")
+    assert not any(i.key == "ORDER" for i in validate.validate(v4, _pair_sd()))
+    v5 = dict(_pair_values(), INTEGRATOR="RADAU", ORDER="16")
+    assert any(i.key == "ORDER" for i in validate.validate(v5, _pair_sd()))

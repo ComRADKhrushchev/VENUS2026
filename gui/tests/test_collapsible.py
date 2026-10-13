@@ -53,12 +53,12 @@ def test_section_toggle():
 
 
 def test_collapsed_values_still_collected():
-    """折叠只藏可见性不禁用:折叠组内已填值仍进入 collect(与成员参数显隐同语义)。"""
+    """折叠只藏可见性不禁用:折叠组内已填值仍进入 collect(条件隐藏键则绝不写出)。"""
     page = _page()
     assert not page._sections["beam"].expanded
-    page._w["T_TRANS"].setText("300.0")
+    page._w["THTA_MAX"].setText("1.2")  # 极角: 恒显键, 折叠组语义的有效探针
     vals, _ = page.collect()
-    assert vals.get("T_TRANS") == "300.0"
+    assert vals.get("THTA_MAX") == "1.2"
 
 
 def test_member_scheme_selection_expands_section():

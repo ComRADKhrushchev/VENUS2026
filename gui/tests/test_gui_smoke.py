@@ -33,14 +33,15 @@ def test_main_window_smoke(tmp_path):
     # 页1:扫描 harmonic_scatter → 填必填 → 校验/预览(2D 投影后备可离屏渲染)
     page1 = win.centralWidget().widget(0)
     page1._view.set_mode(PreviewView.MODE_2D)
-    # 星号标注约定:无条件必填静态加粗带 *;条件必填随范式增减
-    assert page1._labels["E_REL"].text() == "<b>E_REL *</b> [kcal/mol]"
-    assert page1._labels["A_LAT"].text() == "A_LAT [Å]"      # 表面专用,未扫描不带星
+    # 星号标注约定:无条件必填静态加粗带 *;条件必填随范式增减(标签=物理量,KEY 入 tooltip)
+    assert page1._labels["E_REL"].text() == "<b>碰撞能 *</b> [eV]"
+    assert page1._labels["A_LAT"].text() == "晶格常数 [Å]"   # 表面专用,未扫描不带星
+    assert page1.row_hidden("A_LAT") and page1.row_hidden("N_AIM"), "未扫描: 范式键全藏"
     page1._sd_line.setText(str(ROOT / "cases" / "case_harmonic_scatter" / "system"))
     page1._rescan()
     assert "气相散射" in page1._info.text()
-    assert page1._labels["PROJECTILE"].text() == "<b>PROJECTILE *</b>"
-    assert page1._labels["TARGET"].text() == "<b>TARGET *</b>"
+    assert page1._labels["PROJECTILE"].text() == "<b>弹丸片段 *</b>"
+    assert page1._labels["TARGET"].text() == "<b>靶片段 *</b>"
     page1._w["PROJECTILE"].setCurrentText("frag_a")
     page1._w["TARGET"].setCurrentText("frag_b")
     page1._w["E_REL"].setText("200.0")
@@ -62,10 +63,9 @@ def test_main_window_smoke(tmp_path):
     page1._sd_line.setText(str(ROOT / "cases" / "case_spectrum_source" / "h2ag_ebk" / "system"))
     page1._rescan()
     assert "表面散射" in page1._info.text()
-    assert not page1._w["B_MAX"].isEnabled()
-    assert page1._w["B_MAX"].placeholderText() == "表面散射不支持"
-    assert page1._labels["A_LAT"].text() == "<b>A_LAT *</b> [Å]"
-    assert page1._labels["TARGET"].text() == "TARGET"        # 表面散射:无 TARGET 星
+    assert page1.row_hidden("B_MAX") and page1.row_hidden("TARGET"), "表面散射: 整行隐藏(非禁用)"
+    assert page1._labels["A_LAT"].text() == "<b>晶格常数 *</b> [Å]"
+    assert page1._labels["TARGET"].text() == "靶片段"        # 表面散射:无 TARGET 星
     page1._w["PROJECTILE"].setCurrentText("H2")
     page1._w["A_LAT"].setText("2.9437")
     page1._w["N_AIM"].setCurrentText("1")
