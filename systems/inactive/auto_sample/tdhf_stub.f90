@@ -1,20 +1,20 @@
 !=====================================================================
 ! tdhf_stub.f90 - the auto_sample fixture's method group: a no-op
-!   package named auto_tdhf (prop/match/sync/arm/method_name)
+!   package named auto_tdhf (prop/match/sync/init/method_name)
 ! Design:
 !   The no-op propagation and matching forms are the legal degenerate
 !   members (elec_prop_i lists no-op; match without a hop writes
-!   nothing - occ stays the seeded [1]). arm writes the witness file
-!   auto_arm_witness.txt into the run directory - the drill's
-!   selection-gate evidence (present iff the run armed the package).
+!   nothing - occ stays the seeded [1]). init writes the witness file
+!   auto_init_witness.txt into the run directory - the drill's
+!   selection-gate evidence (present iff the run ran the package init).
 ! Units: none
 !=====================================================================
 module auto_sample_met
    use state, only: state_t, elec_t
    implicit none
    private
-   public :: prop, match, sync, arm, method_name
-   logical :: armed = .false.            ! witness latch [-]
+   public :: prop, match, sync, init, method_name
+   logical :: inited = .false.            ! witness latch [-]
 contains
    !------------------------------------------------------------------
    ! method_name() - the registration name (lowercase, author data)
@@ -47,14 +47,14 @@ contains
    end subroutine sync
 
    !------------------------------------------------------------------
-   ! arm() - the selected-package witness (writes the drill's file once)
+   ! init() - the selected-package witness (writes the drill's file once)
    !------------------------------------------------------------------
-   subroutine arm()
+   subroutine init()
       integer :: u                        ! witness unit (newunit, the repo convention)
-      if (armed) return
-      armed = .true.
-      open (newunit=u, file='auto_arm_witness.txt', status='replace', action='write')
-      write (u, '(a)') 'auto_tdhf armed'
+      if (inited) return
+      inited = .true.
+      open (newunit=u, file='auto_init_witness.txt', status='replace', action='write')
+      write (u, '(a)') 'auto_tdhf init ran'
       close (u)
-   end subroutine arm
+   end subroutine init
 end module auto_sample_met

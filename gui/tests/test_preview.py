@@ -127,7 +127,7 @@ def test_scene_role_fields_pair_both_orders():
 
 
 def test_scene_role_fields_surface_unresolved_single(tmp_path: Path):
-    """表面:弹丸在场但无靶片段角色(i_targ=-1);未解析/单片段:双 -1。"""
+    """表面(SCATTERING=SURFACE):弹丸在场但无靶片段角色(i_targ=-1);未解析/单片段:双 -1。"""
     d = tmp_path / "system"
     d.mkdir()
     (d / "proj.poscar").write_text(
@@ -135,7 +135,8 @@ def test_scene_role_fields_surface_unresolved_single(tmp_path: Path):
         encoding="utf-8",
     )
     sd = sysdir.scan_system_dir(d)
-    values = {"E_REL": "100.0", "R_SEP": "6.0", "N_B": "0"}
+    values = {"SCATTERING": "SURFACE", "CELL": "9 0 0, 0 9 0, 0 0 12",
+              "E_REL": "100.0", "R_SEP": "6.0", "N_B": "0"}
     sc = preview.assemble_preview(sd, values, i_proj=0)
     assert (sc.i_proj, sc.i_targ) == (0, -1)
 
@@ -172,7 +173,7 @@ def test_view_center_policy_pair_and_fallback():
 
 
 def test_view_center_policy_surface_drop(tmp_path: Path):
-    """表面:横向 = 落点(N_AIM=2 定点),高度 = 衬底(非弹丸)原子均值。"""
+    """表面(SCATTERING=SURFACE):横向 = 落点(N_AIM=2 定点),高度 = 衬底(非弹丸)原子均值。"""
     d = tmp_path / "system"
     d.mkdir()
     (d / "proj.xyz").write_text("1\n\nH 0 0 0\n", encoding="utf-8")
@@ -182,8 +183,9 @@ def test_view_center_policy_surface_drop(tmp_path: Path):
         encoding="utf-8",
     )
     sd = sysdir.scan_system_dir(d)
-    assert sd.ok and sd.surface_model == 1
-    values = {"E_REL": "100.0", "R_SEP": "6.0", "N_AIM": "2",
+    assert sd.ok and sd.has_cell  # POSCAR 带胞为扫描侧事实(信息性;范式由 SCATTERING 键定)
+    values = {"SCATTERING": "SURFACE", "CELL": "9 0 0, 0 9 0, 0 0 12",
+              "E_REL": "100.0", "R_SEP": "6.0", "N_AIM": "2",
               "AIM_X": "1.5", "AIM_Y": "2.5", "N_B": "0"}
     sc = preview.assemble_preview(sd, values, i_proj=0)  # 名序:proj(0) < slab(1)
     assert (sc.i_proj, sc.i_targ) == (0, -1) and sc.beam is not None
