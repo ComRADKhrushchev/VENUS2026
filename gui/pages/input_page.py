@@ -60,11 +60,8 @@ PHYSICAL_LABELS = {
     "DT_MIN": "自适应步长下界 [fs]",
     "DT_MAX": "步长上界 [fs]",
     "ELEC_METHOD": "电子方法名",
-    "N_SURF": "势能面数",
-    "PES_MAIN": "主势能面名",
     "GWRITE_LEVEL": "输出详略级别",
     "OBSERVABLES": "记录列清单",
-    "E_KIN": "能量记录列",
     "BATH": "热浴",
     "N_BATH": "浴步数",
     "DT_BATH": "浴步长 [fs]",
@@ -319,19 +316,7 @@ class InputPage(QWidget):
         row(cell("DT_MIN", line("DT_MIN", "下界"), "仅 RADAU"),
             cell("DT_MAX", line("DT_MAX", "上界"), "仅 RADAU"))
         row(cell("ELEC_METHOD", line("ELEC_METHOD", "ADIABATIC(≤32)"), "默认 ADIABATIC"),
-            cell("N_SURF", line("N_SURF", "0"), "0=折叠单绝热面"),
-            cell("PES_MAIN", line("PES_MAIN", "1")))
-        eke = QHBoxLayout()
-        for k, name in (("E_KIN", "动能"), ("E_POT", "势能"), ("E_TOT", "总能")):
-            box = QCheckBox(name)
-            box.setToolTip(f"写出键: {k}")
-            box.stateChanged.connect(self._touch)
-            self._checks[k] = box
-            eke.addWidget(box)
-        wrap2 = QWidget()
-        wrap2.setLayout(eke)
-        row(cell("GWRITE_LEVEL", combo("GWRITE_LEVEL", ["", "0", "1", "2", "5"]), "默认 2"),
-            cell("E_KIN", wrap2, "默认全关"))
+            cell("GWRITE_LEVEL", combo("GWRITE_LEVEL", ["", "0", "1", "2", "5"]), "默认 2"))
         row(cell("OBSERVABLES", line("OBSERVABLES", "记录列名逗号清单(≤256)")))
 
         # ---- 浴与谱 ----

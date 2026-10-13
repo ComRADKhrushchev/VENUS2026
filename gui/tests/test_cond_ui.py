@@ -185,3 +185,18 @@ def test_mark_stars_physical_names():
     _surf(page)
     assert page._labels["A_LAT"].text() == "<b>晶格常数 *</b> [Å]"
     assert page._labels["N_AIM"].text() == "落点模式"
+
+
+def test_retired_keys_absent():
+    """2026-10-13 用户裁决: GUI 表单移除主势能面(PES_MAIN)/势能面数(N_SURF)/
+    动能·势能·总能输出键(E_KIN/E_POT/E_TOT)——键仍在 input.f90 键表与 keyspec
+    镜像中(Fortran 侧不变), GUI 不再提供入口, 运行走键表默认。"""
+    page = _page()
+    for k in ("N_SURF", "PES_MAIN", "E_KIN", "E_POT", "E_TOT"):
+        assert k not in page._w, f"{k} 不应再有输入控件"
+        assert k not in page._labels, f"{k} 不应再有行标签"
+        assert k not in page._cell_of_key, f"{k} 不应再占表单行"
+        assert k not in page._checks, f"{k} 不应再有复选框"
+    vals, _ = page.collect()
+    for k in ("N_SURF", "PES_MAIN", "E_KIN", "E_POT", "E_TOT"):
+        assert k not in vals
