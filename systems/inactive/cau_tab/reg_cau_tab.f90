@@ -32,6 +32,7 @@ module reg_cau_tab
    use cau_tab_tdhf, only: cau_tab_match, cau_tab_tdhf_setup
    use cau_tab_tdhf, only: cau_tab_sync, cau_tab_col_nup, cau_tab_col_ndn, &
                            cau_tab_col_mag, cau_tab_col_eelec, cau_tab_col_emf
+   use cau_tab_tdhf, only: cau_tab_col_eimp, cau_tab_col_ebath, cau_tab_col_ehyb
    implicit none
    private
    public :: reg_cau_tab_slots
@@ -122,6 +123,9 @@ contains
          call rec_reg_col('mag_mom', cau_tab_col_mag)
          call rec_reg_col('e_elec_ev', cau_tab_col_eelec)
          call rec_reg_col('e_mf_ev', cau_tab_col_emf)
+         call rec_reg_col('e_imp_ev', cau_tab_col_eimp)
+         call rec_reg_col('e_bath_ev', cau_tab_col_ebath)
+         call rec_reg_col('e_hyb_ev', cau_tab_col_ehyb)
       end if
    end subroutine register_columns
 end module reg_cau_tab

@@ -12,24 +12,21 @@
 !   level at band center). Ported from C@Au_TDHF/2D TDHF_U.f90 (the
 !   2025.12.31 mean-field scheme; the old file's NAC/FSSH pieces are not
 !   used by it and are not ported).
-!   Electronic phase: exp(i*E_int*dt/hbar_code) with E_int = E[eV] *
-!   23.0605 * e_conv (the repo's legislated pair) and dt in 10 fs units -
-!   reproducing the old C1/C7 chain exactly.
+!   Electronic phase: exp(i*E_int*dt/hbar_evfs) with E_int [eV] and dt
+!   [fs] (the 2026-10-06 eV-A-amu-fs base, consts.f90) - numerically the
+!   same phase as the old chain E[eV]*23.0605*e_conv*dt/hbar_code.
 !   cau_tab_pes (the force-slot contract): V = E0 + E_elec + E_mf -
 !   energy_metal_zero [eV], the matched kernel with the rho-weighted
 !   Hcore-kernel trace + the U/J mean-field chain [eV/A]. Unarmed (the
 !   adiabatic degenerate point) it reduces to the pure ground PES (the GS table sheet).
-!   Per-trajectory rho lifecycle: the driver offers no trajectory-head
-!   signal to containers (a real contract gap this prototype surfaces),
-!   so the seed - a q-independent diabatic occupation - is re-applied at
-!   (1) the container's own true termination judgment (the common end)
-!   and (2) the prop member's time-backwards guard (t reset = new
-!   trajectory). The first force of a max_steps-exhausted trajectory
-!   still sees the previous rho - a documented residual, verified only
-!   to be harmless by check_cau_tab criterion (i).
+!   Per-trajectory rho lifecycle: the driver now performs the trajectory-
+!   head reseed (driver.f90 elec_prop(sta, 0.0d0), 2026-10-04 fix - zero
+!   evolution, t-guard reseeds rho), closing the old stale-rho bookkeeping
+!   artifact; the container's own end_traj reseed and the prop member's
+!   time-backwards guard remain as belt-and-braces.
 !=====================================================================
 module cau_tab_tdhf
-   use consts,       only: e_conv, hbar_code, r_kcal, pi
+   use consts,       only: hbar_evfs, kb_ev, pi
    use cau_tab_pot
    use linalg,       only: eig_sym
    use rng,          only: rng_u
@@ -45,10 +42,14 @@ module cau_tab_tdhf
    public :: cau_tab_sync                        ! the package's container-publish member
    public :: cau_tab_col_nup, cau_tab_col_ndn, cau_tab_col_mag, &  ! recorder columns
              cau_tab_col_eelec, cau_tab_col_emf                    ! (obs_list-selected)
+   public :: cau_tab_col_eimp, cau_tab_col_ebath, cau_tab_col_ehyb ! the Tr(rho.Hcore) block split
+                                                                 ! (impurity / bath / cross blocks;
+                                                                 ! e_imp+e_bath+e_hyb == e_elec)
    public :: rho_ref_out                          ! rho reference copy (criterion leg)
 
    ! -- conversion constants (the legislated pair; delivery stays in eV) --
-   real(8), parameter :: ev_kcal = 23.0605d0     ! eV -> kcal/mol (the unit-contract literal)
+   ! (ev_kcal/e_conv pair retired with the 2026-10-06 eV base: phases ride
+   !  hbar_evfs [eV*fs], bath kT rides kb_ev [eV/K])
 
    ! -- bath / model dimensions --
    integer :: n_orb = 20                         ! spinless bath orbital count (even)
@@ -80,7 +81,7 @@ module cau_tab_tdhf
    real(8) :: u_val = 0.0d0, j_val = 0.0d0                 ! Hubbard U / exchange J [eV]
    complex(8), allocatable :: rhom(:, :, :)                ! density matrix, diabatic rep (n,n,2)
    logical :: armed = .false.                              ! package-arm flag (the seam sets it)
-   real(8) :: t_seen = -1.0d30                             ! last prop-member trajectory time [10 fs]
+   real(8) :: t_seen = -1.0d30                             ! last prop-member trajectory time [fs]
 
    ! -- cached delivery (one ground+Hubbard evaluation per geometry) --
    real(8) :: e0_cache = 0.0d0
@@ -211,8 +212,8 @@ contains
          call stop_td('seed_rho', 'START_U0 must be GS or 1D (unknown impurity start state "'// &
                       trim(start_state)//'")')
       end if
-      ! 2. bath: Fermi-Dirac at mu_ev with kT = R*T/ev_kcal [eV]
-      kT = r_kcal*t_elec/ev_kcal
+      ! 2. bath: Fermi-Dirac at mu_ev with kT = kb_ev*T [eV]
+      kT = kb_ev*t_elec
       do is = 1, 2
          do i = n_sptl + 1, n_siz
             if (kT > 1.0d-8) then
@@ -338,10 +339,11 @@ contains
    !------------------------------------------------------------------
    ! evolve_rho(dt) - one propagation of rhom with the CURRENT Fock
    !                 eigenpairs (rho -> C e^{iEdt} (C^T rho C) e^{-iEdt} C^T;
-   !                 phase in internal units E[eV]*ev_kcal*e_conv*dt/hbar_code)
+   !                 phase exp(-i*E[eV]*dt[fs]/hbar_evfs[eV*fs]) - the
+   !                 2026-10-06 eV-A-amu-fs base)
    !------------------------------------------------------------------
    subroutine evolve_rho(dt)
-      real(8), intent(in) :: dt                ! substep length [10 fs]
+      real(8), intent(in) :: dt                ! substep length [fs]
       integer :: n, is, i
       complex(8), allocatable :: cc(:, :), tmp(:, :), rho_adi(:, :)
       complex(8) :: ph(size(rhom, 1))
@@ -353,7 +355,7 @@ contains
          rho_adi = matmul(conjg(transpose(cc)), matmul(rhom(:, :, is), cc))
          ! 2. free propagation phases on the diagonal
          do i = 1, n
-            ph(i) = exp(cmplx(0.0d0, 1.0d0, 8)*e_hf(i, is)*ev_kcal*e_conv*dt/hbar_code)
+            ph(i) = exp(cmplx(0.0d0, 1.0d0, 8)*e_hf(i, is)*dt/hbar_evfs)
          end do
          do i = 1, n
             rho_adi(i, :) = rho_adi(i, :)*ph(i)
@@ -726,6 +728,53 @@ contains
       call occ_vec(nv)
       cau_tab_col_emf = mf_energy(nv)
    end function cau_tab_col_emf
+
+   ! the Tr(rho.Hcore) block split (2026-10-09): impurity block (i,k <= n_sptl,
+   ! the C-derived one-electron energy), bath block (the metal e-h content) and
+   ! the cross blocks (transient hybridization energy; zero at the freeze line,
+   ! where Vcp decays to zero) - the three sum to cau_tab_col_eelec exactly
+   real(8) function cau_tab_col_eimp(sta)
+      type(state_t), intent(in) :: sta
+      integer :: i, k, is
+      cau_tab_col_eimp = 0.0d0
+      if (.not. armed) return
+      do is = 1, 2
+         do i = 1, n_sptl
+            do k = 1, n_sptl
+               cau_tab_col_eimp = cau_tab_col_eimp + real(rhom(i, k, is))*hcore(k, i, is)
+            end do
+         end do
+      end do
+   end function cau_tab_col_eimp
+
+   real(8) function cau_tab_col_ebath(sta)
+      type(state_t), intent(in) :: sta
+      integer :: i, k, is
+      cau_tab_col_ebath = 0.0d0
+      if (.not. armed) return
+      do is = 1, 2
+         do i = n_sptl + 1, n_siz
+            do k = n_sptl + 1, n_siz
+               cau_tab_col_ebath = cau_tab_col_ebath + real(rhom(i, k, is))*hcore(k, i, is)
+            end do
+         end do
+      end do
+   end function cau_tab_col_ebath
+
+   real(8) function cau_tab_col_ehyb(sta)
+      type(state_t), intent(in) :: sta
+      integer :: i, k, is
+      cau_tab_col_ehyb = 0.0d0
+      if (.not. armed) return
+      do is = 1, 2
+         do i = 1, n_sptl
+            do k = n_sptl + 1, n_siz
+               cau_tab_col_ehyb = cau_tab_col_ehyb + real(rhom(i, k, is))*hcore(k, i, is)
+               cau_tab_col_ehyb = cau_tab_col_ehyb + real(rhom(k, i, is))*hcore(i, k, is)
+            end do
+         end do
+      end do
+   end function cau_tab_col_ehyb
 
    !------------------------------------------------------------------
    ! rho_ref_out(r) - reference copy of the module rho (criterion leg)
