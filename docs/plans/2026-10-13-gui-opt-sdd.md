@@ -80,3 +80,41 @@
 - 模型选择:本环境 Agent 工具无 model 旋钮,实现者/复核者均 general-purpose
   (会话模型)——记录为裁决。
 - 与主树并发会话隔离:一切编辑只在 worktree;并回 master 在终审后统一处理。
+
+## 第二批任务(2026-10-13 用户三诉求, 承上批同一分支)
+
+用户修改令:①页2术语——"魔术名"改"预留名"、"缺失槽位"改"程序补全"、生成
+文件不叫 gui_slots、内容去中英混排;②预览中两反应物相对位置不随 B_MAX 变动,
+恒对心瞄准;③真机 3D 原子全白(配色未按元素生效)。
+
+裁决(控制器):
+- 生成文件名 gui_slots.f90 → auto_slots.f90(承接仓库 auto-pes 词汇; prebuild
+  按目录内 *.f90 织入, 文件名无机制语义);函数 generate_gui_slots 同步更名。
+- 恒对心 = 按镜像公式取 b=0 摆位(仅去掉横向 b 项;θ≠0 时保持 Fortran b=0
+  几何), b 环保留显示采样范围, 瞄准十字归位落点;物理公式本身不动。
+- GL 配色失效修复走"逐符号单色 GLScatterPlotItem"(同符号原子共用显示半径
+  与颜色, 绕开 pyqtgraph 0.14 pxMode=False 逐点色真机失效路径);附真机探针
+  脚本供目验。
+- 去混排解释: 散文全中文;文件名/槽名/单位等技术记号保留原样。
+
+### Task 4: 页2术语与文件名批(pes_page/pes_gen/README/测试)
+
+1. "魔术名"→"预留名"(表头/说明/README 同步);②组"缺失槽位生成"→"程序补全";
+   按钮/判词/提示中 gui_slots.f90 → auto_slots.f90;pes_gen 文件名常量与
+   generate_gui_slots 函数随批更名, 测试同步。
+2. 去中英混排: Tier 1/Tier 2/make/reference 等散文词改中文(纯势容器/显式
+   注册容器/编译/参照容器), 技术 token(reg_*.f90、prop/match/... 槽名、
+   auto_slots.f90、单位)保留。
+3. 验收: 全量 pytest 绿;grep 无残留("魔术名|gui_slots|缺失槽位|Tier 1"于
+   gui/ 用户可见面与测试);README 页2 节同步;截图取证。
+
+### Task 5: 预览恒对心 + GL 原子配色真机修复(preview.py/preview_view.py)
+
+1. core: 显示摆位去横向 b 项(p_site 仅 drop + R_SEP 倾角项), 瞄准十字=落点,
+   b 环不动(仍绕靶 COM, 半径 b_max), 注记改"恒对心"语义;BeamView 代表值字段
+   保留(信息面);test_preview 手算期望随批更新(理由: 显示语义变更, 用户裁决)。
+2. view: 原子改逐符号单色 GLScatterPlotItem(均匀色+标量尺寸, pxMode=False),
+   配色方案按符号取色;GL 构造测试改为按符号项断言颜色;写真机探针脚本
+   (gui/logs/, 渲染采样场景并落盘像素颜色读数, 供用户真机目验)。
+3. 验收: 全量绿;前后取证(摆位随 B_MAX 不变的程序断言;逐符号项颜色断言);
+   截图;README 预览节一句同步(恒对心/配色真机口径)。
