@@ -2,10 +2,11 @@
 """input_page.py - 页1:输入文件生成(左参数表单 / 右 3D 起始散射预览)
 
 设计:
-  表单键值语义 = "空 = 不写出"(与 Fortran 键表的可省默认对齐;必填键以
-  占位符标出)。范式自适应:扫描 SYSTEM_DIR 后按表面/分子范式启用/禁用
-  范式键(B_MAX/A_LAT/N_AIM/AIM_X/AIM_Y/角色键),DIST_SCHEME 逐片段下拉
-  重建,成员参数键按所选词动态显隐。校验=core.validate 全部静态规则;
+  表单键值语义 = "空 = 不写出"(与 Fortran 键表的可省默认对齐;必填键以加粗
+  星号标于行标签,不加文字说明)。范式自适应:扫描 SYSTEM_DIR 后按表面散射/
+  气相散射启用/禁用范式键(B_MAX/A_LAT/N_AIM/AIM_X/AIM_Y/角色键,条件必填
+  的星号随范式动态增减),DIST_SCHEME 逐片段下拉重建,成员参数键按所选词
+  动态显隐。校验=core.validate 全部静态规则;
   预览=core.preview 装配(core 公式移植,示意值注记显示在视图下方)。
 """
 
@@ -35,6 +36,8 @@ class InputPage(QWidget):
         super().__init__(parent)
         self._w: dict[str, QLineEdit | QComboBox] = {}
         self._checks: dict[str, QCheckBox] = {}
+        self._labels: dict[str, QLabel] = {}       # 行标签(星号标注用)
+        self._label_base: dict[str, str] = {}      # 标签原文(星号增减的基础)
         self._scheme_combos: list[QComboBox] = []
         self._sysdef: sysdir.SysDef | None = None
         self._container_table: QTableWidget | None = None
@@ -56,6 +59,9 @@ class InputPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setWidget(left)
         lay = QVBoxLayout(left)
+        legend = QLabel("注:<b>*</b> 加粗标记的字段不可留空;其余输入框留空即不写出该键。")
+        legend.setStyleSheet("color: #555;")
+        lay.addWidget(legend)
         grid_row = 0
 
         def group(title: str) -> tuple[QGroupBox, QGridLayout]:
@@ -67,9 +73,13 @@ class InputPage(QWidget):
             lay.addWidget(g)
             return g, gl
 
-        def add_row(gl: QGridLayout, label: str, w: QWidget, hint: str = ""):
+        def add_row(gl: QGridLayout, label: str, w: QWidget, hint: str = "", key: str = ""):
             nonlocal grid_row
-            gl.addWidget(QLabel(label), grid_row, 0)
+            lab = QLabel(label)
+            if key:
+                self._labels[key] = lab
+                self._label_base[key] = label
+            gl.addWidget(lab, grid_row, 0)
             gl.addWidget(w, grid_row, 1)
             if hint:
                 gl.addWidget(QLabel(hint), grid_row, 2)
@@ -115,23 +125,23 @@ class InputPage(QWidget):
         sd_row.addWidget(b2)
         wrap = QWidget()
         wrap.setLayout(sd_row)
-        add_row(gl, "SYSTEM_DIR", wrap)
+        add_row(gl, "SYSTEM_DIR", wrap, key="SYSTEM_DIR")
         self._info.setStyleSheet("color: #555;")
         gl.addWidget(self._info, grid_row, 0, 1, 3)
         grid_row += 1
-        add_row(gl, "E_REL [kcal/mol]", line("E_REL", "必填(碰撞能)"))
-        add_row(gl, "R_SEP [Å]", line("R_SEP", "必填(初始间距)"))
-        add_row(gl, "B_MAX [Å]", line("B_MAX", "碰撞盘半径(仅气相对;表面禁写)"))
-        add_row(gl, "PROJECTILE", combo("PROJECTILE", [""]))
-        add_row(gl, "TARGET", combo("TARGET", [""]))
-        add_row(gl, "A_LAT [Å]", line("A_LAT", "表面范式必填(晶格常数)"))
+        add_row(gl, "E_REL [kcal/mol]", line("E_REL", "碰撞能"), key="E_REL")
+        add_row(gl, "R_SEP [Å]", line("R_SEP", "初始间距"), key="R_SEP")
+        add_row(gl, "B_MAX [Å]", line("B_MAX", "碰撞盘半径(仅气相散射)"))
+        add_row(gl, "PROJECTILE", combo("PROJECTILE", [""]), key="PROJECTILE")
+        add_row(gl, "TARGET", combo("TARGET", [""]), key="TARGET")
+        add_row(gl, "A_LAT [Å]", line("A_LAT", "晶格常数(表面散射)"), key="A_LAT")
         add_row(gl, "N_AIM", combo("N_AIM", ["", "0", "1", "2"]), "0原点/1胞内/2定点(仅表面)")
         add_row(gl, "AIM_X [Å]", line("AIM_X", "N_AIM=2 定点 x(POSCAR 帧)"))
         add_row(gl, "AIM_Y [Å]", line("AIM_Y", "N_AIM=2 定点 y"))
         add_row(gl, "RANDOM_ORIENT", check("RANDOM_ORIENT"), "随机取向阶段(默认 F)")
 
-        # ---- 采样方案(逐片段;扫描后重建)----
-        g, gl = group("采样方案 DIST_SCHEME(逐片段)")
+        # ---- 采样方案(逐片段;扫描后重建;星号=每片段均须选择)----
+        g, gl = group("采样方案 DIST_SCHEME *(逐片段)")
         self._scheme_host = QWidget()
         self._scheme_grid = QGridLayout(self._scheme_host)
         gl.addWidget(self._scheme_host)
@@ -142,7 +152,7 @@ class InputPage(QWidget):
         add_row(gl, "N_TRAJ", line("N_TRAJ", "1(轨迹数)"))
         add_row(gl, "ISEED", line("ISEED", "1(种子)"))
         add_row(gl, "MAX_STEPS", line("MAX_STEPS", "100000"))
-        add_row(gl, "DT [10 fs]", line("DT", "必填(步长)"))
+        add_row(gl, "DT [10 fs]", line("DT", "积分步长"), key="DT")
         add_row(gl, "INTEGRATOR", combo("INTEGRATOR", [""] + ENUMS["integ"]), "默认 VERLET")
         add_row(gl, "ORDER", line("ORDER", "1(radau 阶)"))
         add_row(gl, "DT_MIN / DT_MAX", line("DT_MIN", "0.0"), "自适应界(仅 radau;另一格 DT_MAX")
@@ -251,6 +261,22 @@ class InputPage(QWidget):
         outer = QVBoxLayout(self)
         outer.setContentsMargins(4, 4, 4, 4)
         outer.addWidget(split)
+        # 无条件必填键的静态星号(DIST_SCHEME 的星号在组标题上)
+        for k in ("SYSTEM_DIR", "E_REL", "R_SEP", "DT"):
+            self._mark(k, True)
+
+    def _mark(self, key: str, on: bool):
+        """行标签的必填星号增减(加粗键名 + *;标签原文含单位后缀时星号置于键名后)。"""
+        lab = self._labels.get(key)
+        base = self._label_base.get(key, "")
+        if lab is None or not base:
+            return
+        parts = base.split(" ", 1)
+        if on:
+            starred = f"<b>{parts[0]} *</b>" + (f" {parts[1]}" if len(parts) > 1 else "")
+        else:
+            starred = base
+        lab.setText(starred)
 
     # ---------- 交互 ----------
     def _touch(self, *_):
@@ -299,13 +325,17 @@ class InputPage(QWidget):
                 c.blockSignals(False)
             # 范式启停
             self._w["B_MAX"].setEnabled(not surf)
-            self._w["B_MAX"].setPlaceholderText("碰撞盘半径(仅气相对;表面禁写)" if not surf else "表面范式禁写")
+            self._w["B_MAX"].setPlaceholderText("碰撞盘半径(仅气相散射)" if not surf else "表面散射不支持")
             for k in ("A_LAT", "N_AIM", "AIM_X", "AIM_Y"):
                 self._w[k].setEnabled(surf or k != "N_AIM")
             self._w["N_AIM"].setEnabled(surf)
             self._w["TARGET"].setEnabled(not surf and n > 1)
             self._w["PROJECTILE"].setEnabled(surf or n > 1)
-            para = "表面范式(带胞)" if surf else f"分子范式({n} 片段)"
+            # 条件必填星号随范式增减(表面:PROJECTILE+A_LAT;气相多片段:双角色)
+            self._mark("PROJECTILE", surf or n > 1)
+            self._mark("TARGET", (not surf) and n > 1)
+            self._mark("A_LAT", surf)
+            para = "表面散射(带胞)" if surf else f"气相散射({n} 片段)"
             box = f"; box {sd.box_lx:.4f}×{sd.box_ly:.4f} Å, skew {sd.skew * 57.2958:.1f}°" if surf else ""
             self._info.setText(f"✓ {para}{box} — 片段: {', '.join(sd.frag_names)}")
             # 范式切换清理:本范式禁写的键残留值自动清空(禁写字段的旧值不该变成雷)

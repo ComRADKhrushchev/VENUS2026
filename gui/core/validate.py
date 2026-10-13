@@ -98,7 +98,7 @@ def validate(
     # ---- 3. 必填五键 + 单值类型/槽宽(input.f90)----
     for r in REQUIRED_KEYS:
         if not values.get(r, "").strip():
-            err(r, "必填键缺值(无系统无关默认)")
+            err(r, "取值缺失(该键无系统无关默认)")
     for spec in KEY_TABLE:
         v = values.get(spec.name, "").strip()
         if not v:
@@ -132,16 +132,16 @@ def validate(
         targ = values.get("TARGET", "").strip()
         if surf:
             if _written(values, "B_MAX"):
-                err("B_MAX", "表面范式不得写 B_MAX(横向落点归 N_AIM 独有,2026-10-01 裁决)")
+                err("B_MAX", "表面散射不支持 B_MAX(横向落点由 N_AIM 落点模式专有,2026-10-01 裁决)")
             if targ:
-                err("TARGET", "表面范式禁写 TARGET(仅 PROJECTILE)")
+                err("TARGET", "表面散射不支持 TARGET(仅 PROJECTILE)")
             if not proj:
-                err("PROJECTILE", "表面范式必填 PROJECTILE")
+                err("PROJECTILE", "表面散射须提供 PROJECTILE")
             elif proj.lower() not in names:
                 err("PROJECTILE", f"PROJECTILE 未命中片段(可用: {', '.join(sysdef.frag_names)})")
             a_lat = _num(values, "A_LAT")
             if a_lat is None:
-                err("A_LAT", "表面范式必填晶格常数 A_LAT")
+                err("A_LAT", "表面散射须提供晶格常数 A_LAT")
             elif sysdef.box_lx > 0:
                 rlx = sysdef.box_lx / a_lat
                 rly = sysdef.box_ly / a_lat
@@ -151,17 +151,17 @@ def validate(
                     err("A_LAT", "A_LAT 与胞不可公度(box_lx/A_LAT、box_ly/A_LAT 须为整数)")
         else:
             if _written(values, "A_LAT"):
-                err("A_LAT", "分子范式禁写 A_LAT(表面窗口键)")
+                err("A_LAT", "气相散射不支持 A_LAT(表面散射专用键)")
             if n_frag == 1:
                 if proj:
-                    err("PROJECTILE", "单片段气相禁写 PROJECTILE")
+                    err("PROJECTILE", "单片段体系不支持 PROJECTILE")
                 if targ:
-                    err("TARGET", "单片段气相禁写 TARGET")
+                    err("TARGET", "单片段体系不支持 TARGET")
             elif n_frag > 1:
                 if not proj:
-                    err("PROJECTILE", "多片段气相必填 PROJECTILE")
+                    err("PROJECTILE", "多片段气相散射须提供 PROJECTILE")
                 if not targ:
-                    err("TARGET", "多片段气相必填 TARGET")
+                    err("TARGET", "多片段气相散射须提供 TARGET")
                 if proj and proj.lower() not in names:
                     err("PROJECTILE", f"PROJECTILE 未命中片段(可用: {', '.join(sysdef.frag_names)})")
                 if targ and targ.lower() not in names:
@@ -211,12 +211,12 @@ def validate(
     if n_aim is not None and n_aim not in (0, 1, 2):
         err("N_AIM", "须为 0(原点)/1(胞内)/2(定点)")
     if n_aim == 1 and (sysdef is None or not sysdef.has_cell):
-        err("N_AIM", "落点模式 1 须有晶胞(表面范式)")
+        err("N_AIM", "落点模式 1 须有晶胞(表面散射)")
     if n_aim == 2:
         if not (_written(values, "AIM_X") and _written(values, "AIM_Y")):
             err("AIM_X", "N_AIM=2 须同时给 AIM_X 与 AIM_Y")
         if sysdef is not None and sysdef.ok and sysdef.surface_model == 0:
-            err("N_AIM", "落点模式 2(定点)仅表面范式可用")
+            err("N_AIM", "落点模式 2(定点)仅表面散射可用")
     e_rel = _num(values, "E_REL")
     if n_e_rel in (1, 2) and e_rel is not None and e_rel <= 0.0:
         err("E_REL", "碰撞能模式 1/2 须 E_REL > 0")
@@ -225,9 +225,9 @@ def validate(
     pairish = sysdef is not None and sysdef.ok and sysdef.surface_model == 0 and len(sysdef.frags) > 1
     if pairish:
         if b_max is not None and b_max <= 0.0:
-            err("B_MAX", "气相对碰撞盘半径须 > 0")
+            err("B_MAX", "气相散射碰撞盘半径须 > 0")
         if _written(values, "AIM_X") or _written(values, "AIM_Y"):
-            err("AIM_X", "AIM_X/AIM_Y 是表面范式键(pair 禁写)")
+            err("AIM_X", "AIM_X/AIM_Y 为表面散射专用键(气相散射不支持)")
         if n_aim == 2:
             err("N_AIM", "pair 通道禁用定点落点(N_AIM=2)")
     if b_max is not None and b_max == 0.0 and n_b == 1:
