@@ -22,11 +22,11 @@
    界面文案约定(2026-10-13 裁决):书面措辞——"表面范式/分子范式"作"表面散射/气相散射"、
    "禁写"作"不支持"、字段必填以行标签**加粗星号**标注(条件必填的星号随范式增减),
    不在占位符里写"必填"字样;可见文案书面简洁,括注细节入悬停(2026-10-13 裁决)。
-2. **PES 容器检查** —— 对自定义 Tier 1 纯势容器文件夹:①十名扫描 + 八中止
-   (prebuild.sh 语义的 Python 镜像);②缺失可选槽位按设定生成 Fortran 代码
-   (`gui_slots.f90`:term 三变体 / classify 两变体 / keys+load 接线;方法组五名不生成);
-   ③隔离树编译验证(src+scripts+reference 临时副本里激活容器 make,绝不触碰工作树;
-   reference 与被检容器并存对编译合法)。
+2. **PES 容器检查** —— 对自定义纯势容器文件夹:①十名扫描 + 八中止
+   (prebuild.sh 语义的 Python 镜像);②程序补全——缺失可选槽按设定生成
+   Fortran 代码(`auto_slots.f90`:term 三变体 / classify 两变体 / keys+load
+   接线;方法组五名不生成);③隔离树编译验证(src+scripts+参照容器的临时
+   副本里激活容器编译,绝不触碰工作树;参照容器与被检容器并存对编译合法)。
 
 ## 启动
 
@@ -79,8 +79,8 @@ gui/core/              无 Qt 依赖的逻辑核(可独立单测):
   validate.py          跨键静态校验(全部写盘前可判 fatal 规则)
   preview.py           初始构型装配(beam_laws/inc_surface/inc_pair 公式移植)
   pes_scan.py          十名扫描+八中止(prebuild.sh:85-168 镜像;差分测试对拍)
-  pes_gen.py           缺失槽位代码生成器(term/classify/keys+load 模板)
-  sandbox.py           隔离树编译(临时副本 make,日志落盘)
+  pes_gen.py           程序补全代码生成器(term/classify/keys+load 模板)
+  sandbox.py           隔离树编译(临时副本内编译,日志落盘)
 gui/tests/             pytest(常规批默认;`-m slow` 为整树编译慢测)
 ```
 
@@ -88,7 +88,7 @@ gui/tests/             pytest(常规批默认;`-m slow` 为整树编译慢测)
 
 ```
 python -m pytest gui/tests -q        # 常规(含键表/质量表镜像同步、案例金标、装配手算、prebuild 差分、offscreen 冒烟)
-python -m pytest gui/tests -m slow -q  # 慢测(auto_sample 隔离 make / 生成槽位端到端编译)
+python -m pytest gui/tests -m slow -q  # 慢测(auto_sample 隔离编译 / 生成槽位端到端编译)
 ```
 
 ## 单位制(2026-10-13 起随 master)

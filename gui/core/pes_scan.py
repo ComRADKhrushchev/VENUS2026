@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""pes_scan.py - Tier 1 纯势容器十名扫描(scripts/prebuild.sh:85-168 的 Python 移植)
+"""pes_scan.py - 纯势容器十名扫描(scripts/prebuild.sh:85-168 的 Python 移植)
 
 设计:
   auto_scan_file 的 awk 语义逐条移植:剥 '!' 注释尾→去行首空白→小写副本
@@ -42,7 +42,7 @@ class NameDef:
 class ScanResult:
     """容器文件夹扫描结论。"""
     folder: str
-    is_tier1: bool = True          # False = 含 reg_*.f90(Tier 2,非本检查器对象)
+    is_tier1: bool = True          # False = 含 reg_*.f90(显式注册容器,非本检查器对象)
     has_f90: bool = False
     defs: dict[str, list[NameDef]] = field(default_factory=dict)   # 名 → 出现列表
     errors: list[str] = field(default_factory=list)                # 中止级问题(中文)
@@ -153,7 +153,7 @@ def scan_container(folder: str | Path) -> ScanResult:
         return res
     if any(f.name.startswith("reg_") for f in f90s):
         res.is_tier1 = False
-        res.notes.append("含 reg_*.f90:显式 reg 容器(Tier 2),reg 是权威,十名全忽略")
+        res.notes.append("含 reg_*.f90:显式注册容器,reg 是权威,十名全忽略")
         return res
 
     defs: dict[str, list[NameDef]] = {n: [] for n in ALL_NAMES}

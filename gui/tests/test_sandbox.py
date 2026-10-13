@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""sandbox 慢测(显式跑):auto_sample 隔离树 make 绿 + 生成槽位端到端编译。
+"""sandbox 慢测(显式跑):auto_sample 隔离树编译绿 + 生成槽位端到端编译。
 
 默认不进常规批次:pytest gui/tests -m slow 才执行(整树编译 ~分钟级)。
 """
@@ -48,14 +48,14 @@ POT_WITH_VAR = textwrap.dedent("""\
 
 
 def test_generated_slots_compile_end_to_end(tmp_path):
-    """pot-only 容器 + GUI 生成的 term/classify/keys+load → 隔离 make 绿。"""
+    """pot-only 容器 + GUI 生成的 term/classify/keys+load → 隔离编译绿。"""
     bash = sandbox.find_bash()
     if bash is None:
         pytest.skip("无 Git Bash")
     con = tmp_path / "mycon"
     con.mkdir()
     (con / "pot.f90").write_text(POT_WITH_VAR, encoding="utf-8")
-    pes_gen.generate_gui_slots(
+    pes_gen.generate_auto_slots(
         con,
         term=pes_gen.TermSpec(variant="any_atom", r=4.5),
         classify=pes_gen.ClassifySpec(variant="const", label="bound"),

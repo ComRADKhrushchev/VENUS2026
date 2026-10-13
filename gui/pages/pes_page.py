@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
-"""pes_page.py - 页2:自定义 PES 容器检查 → 缺失槽位生成 → 隔离树编译
+"""pes_page.py - 页2:自定义 PES 容器检查 → 程序补全 → 隔离树编译
 
 设计:
   三段流:①[扫描] core.pes_scan 十名+八中止,结果表逐名判定,提取 keys
-  词表/方法名/模块变量;②[生成] core.pes_gen 按设定补缺失槽位(term 三变体/
+  词表/方法名/模块变量;②[生成] core.pes_gen 按设定补全可选槽位(term 三变体/
   classify 两变体/keys+load 接线),方法组五名不生成(真实物理,界内说明);
-  ③[编译验证] core.sandbox 隔离副本 make(QThread 后台流式日志落盘),
-  reference 与被检容器并存对编译合法,绝不触碰工作树。
+  ③[编译验证] core.sandbox 隔离副本编译(QThread 后台流式日志落盘),
+  参照容器与被检容器并存对编译合法,绝不触碰工作树。
 """
 
 from __future__ import annotations
@@ -70,7 +70,7 @@ class PesPage(QWidget):
 
         # ① 扫描(组标题括注细节入组悬停——2026-10-13 文案精简裁决)
         g1 = QGroupBox("① 容器扫描")
-        g1.setToolTip("Tier 1 纯势容器契约:十名 + 八中止。\n候选通常在 systems/inactive/ 下,亦可任选路径。")
+        g1.setToolTip("纯势容器契约:十名 + 八中止。\n候选通常在 systems/inactive/ 下,亦可任选路径。")
         l1 = QGridLayout(g1)
         self._dir = QLineEdit()
         self._dir.setPlaceholderText("容器文件夹路径")
@@ -102,8 +102,8 @@ class PesPage(QWidget):
         outer_v.addWidget(g1)
 
         # ② 生成器
-        g2 = QGroupBox("② 缺失槽位生成")
-        g2.setToolTip("可行模板;整文件覆盖式 gui_slots.f90,删除即撤销。")
+        g2 = QGroupBox("② 程序补全")
+        g2.setToolTip("可行模板;整文件覆盖式 auto_slots.f90,删除即撤销。")
         l2 = QGridLayout(g2)
         self._gen_term = QCheckBox("term 终止判定")
         self._term_var = QComboBox()
@@ -157,7 +157,7 @@ class PesPage(QWidget):
         )
         note.setWordWrap(True)
         l2.addWidget(note, 4, 0, 1, 5)
-        b_gen = QPushButton("生成/覆盖 gui_slots.f90")
+        b_gen = QPushButton("生成/覆盖 auto_slots.f90")
         b_gen.setIcon(theme.icon("wand"))
         b_gen.clicked.connect(self.generate)
         l2.addWidget(b_gen, 5, 0, 1, 2)
@@ -165,7 +165,7 @@ class PesPage(QWidget):
 
         # ③ 编译
         g3 = QGroupBox("③ 编译验证")
-        g3.setToolTip("隔离副本 make,不动工作树;reference 与被检容器并存对编译合法。")
+        g3.setToolTip("隔离副本编译,不动工作树;参照容器与被检容器并存对编译合法。")
         l3 = QGridLayout(g3)
         self._fc = QComboBox()
         self._fc.addItems(["gfortran", "ifx"])
@@ -240,7 +240,7 @@ class PesPage(QWidget):
                     "subroutine" if d.kind == "s" else "function"))
                 self._table.setItem(i, 4, QTableWidgetItem(f"{d.module} ({d.file})"))
         if not res.is_tier1:
-            self._scan_info.setText("ℹ 显式 reg 容器(Tier 2):reg 权威,十名忽略。")
+            self._scan_info.setText("ℹ 显式注册容器:reg 权威,十名忽略。")
         elif res.ok:
             extras = []
             if res.keys_words:
@@ -267,7 +267,7 @@ class PesPage(QWidget):
     # ---------- ② 生成 ----------
     def generate(self):
         if self._scan is None or not self._scan.is_tier1:
-            QMessageBox.warning(self, "先扫描", "请先扫描一个 Tier 1 候选容器文件夹。")
+            QMessageBox.warning(self, "先扫描", "请先扫描一个纯势容器候选文件夹。")
             return
         path = Path(self._dir.text().strip())
         term = cls = kl = None
@@ -297,7 +297,7 @@ class PesPage(QWidget):
             QMessageBox.information(self, "未选择", "请勾选至少一个要生成的槽位。")
             return
         try:
-            p = pes_gen.generate_gui_slots(path, term=term, classify=cls, keys_load=kl)
+            p = pes_gen.generate_auto_slots(path, term=term, classify=cls, keys_load=kl)
         except ValueError as exc:
             QMessageBox.critical(self, "生成被拒", str(exc))
             return

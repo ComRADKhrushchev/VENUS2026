@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""pes_gen.py - 缺失槽位代码生成器(Tier 1 容器可选槽的可行模板)
+"""pes_gen.py - 程序补全代码生成器(纯势容器可选槽的可行模板)
 
 设计:
   用户澄清(2026-10-12):PES 没写的可选槽(如终止判定 term)由 GUI 按设定
@@ -8,7 +8,7 @@
     classify 两变体: COM 距阈值 → 'bound'/'scattered' / 常量标签
     keys+load        键词表声明 + pull 接线(目标 = 作者模块的 real(8) 公共变量)
   方法组五名(prop/match/sync/init/method_name)不生成——真实物理;绝热面
-  缺省即可跑。产物 = 容器文件夹内单文件 gui_slots.f90(单模块 gui_slots,
+  缺省即可跑。产物 = 容器文件夹内单文件 auto_slots.f90(单模块 auto_slots,
   删除该文件即撤销);生成前扫描防撞名,生成后应重扫确认。
   参照: auto_sample 范本(systems/inactive/auto_sample)与 reg_reference.f90
   的 pull 接线形。
@@ -21,8 +21,8 @@ from pathlib import Path
 
 from .pes_scan import scan_container, ScanResult
 
-GEN_FILE = "gui_slots.f90"
-GEN_MODULE = "gui_slots"
+GEN_FILE = "auto_slots.f90"
+GEN_MODULE = "auto_slots"
 
 TERM_VARIANTS = {
     "any_atom": "任意原子坐标分量越出 |q|>R 球(原点逃逸,auto_sample 同款)",
@@ -178,13 +178,13 @@ def _keys_load_body(spec: KeysLoadSpec) -> tuple[list[str], str]:
     return use_lines, body
 
 
-def generate_gui_slots(
+def generate_auto_slots(
     folder: str | Path,
     term: TermSpec | None = None,
     classify: ClassifySpec | None = None,
     keys_load: KeysLoadSpec | None = None,
 ) -> Path:
-    """生成/覆盖 <folder>/gui_slots.f90;被请求槽位若已存在(非本文件)则拒绝。
+    """生成/覆盖 <folder>/auto_slots.f90;被请求槽位若已存在(非本文件)则拒绝。
 
     返回写入路径;ValueError 说明冲突(调用方重扫后可定位)。
     """
@@ -203,7 +203,7 @@ def generate_gui_slots(
                 f"槽位 '{slot}' 已由 {existing.file} 提供(生成会造成重定义——"
                 f"如需 GUI 版本请先移除原定义)"
             )
-    # 既有 gui_slots.f90 的旧定义视同不存在(整文件覆盖)
+    # 既有 auto_slots.f90 的旧定义视同不存在(整文件覆盖)
     scan.defs = {
         n: [d for d in lst if d.file != GEN_FILE] for n, lst in scan.defs.items()
     }
@@ -232,7 +232,7 @@ def generate_gui_slots(
 
     head = [
         "!=====================================================================",
-        "! gui_slots.f90 - VENUS2026 GUI 生成的容器槽位补件(整文件覆盖式)",
+        "! auto_slots.f90 - VENUS2026 GUI 生成的容器槽位补件(整文件覆盖式)",
         "!   删除本文件即撤销全部生成内容;手工修改会在下次生成时丢失。",
         "!=====================================================================",
         f"module {GEN_MODULE}",
