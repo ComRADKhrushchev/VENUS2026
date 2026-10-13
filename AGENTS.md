@@ -158,11 +158,14 @@ make clean        # removes the whole build/ tree (both compiler subtrees)
   whole-system COM-momentum projection, then the unfreeze. The loop's in-loop RNG draws are
   the one sanctioned exception to the realize-draws-no-RNG rule. Species keys T_BATH/NU_COLL
   are unchanged.
-- Unit conversion happens only at the force_interface boundary; internal units Å/amu/10 fs.
+- Unit conversion happens only at the force_interface boundary; internal units eV/Å/amu/fs
+  (2026-10-06 rebase, synced into master 2026-10-13; the single kinematic fold is
+  dyn_ev/ev_dyn in `consts.f90` — E[eV] = (p²/2m)·dyn_ev).
 - One single random stream for the whole library (`utils/rng.f90`) — never add another RNG.
-- "Physical constants" (values fixed by recorded decision — e.g. the conversion pair
-  23.0605 × 0.04184 = 0.96485132) are used verbatim in analytic checks, never re-derived
-  from CODATA.
+- "Physical constants" (values fixed by recorded decision — e.g. dyn_ev = 103.6426965,
+  1 amu·Å²/fs² in eV, CODATA-2018-frozen per logs in `cases/case_spectrum_source/baseline_ev_v2/`)
+  are used verbatim in analytic checks, never re-derived from CODATA. The retired kcal-era pair
+  (23.0605 × 0.04184) belongs to baseline_kcal_v1 history.
 - Input grammar is KEYWORD=VALUE (`src/input.f90`); `GWRITE_LEVEL` bare default is 2,
   `RANDOM_ORIENT` bare default is F.
 

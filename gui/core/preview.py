@@ -8,7 +8,7 @@
     p_site = (x0 + b·cosφ + R_SEP·sinθ·cosχ,
               y0 + b·sinφ + R_SEP·sinθ·sinχ, R_SEP)           (:127-129)
     pair 速度劈分 w1 = m2/(m1+m2)、w2 = m1/(m1+m2)            (inc_pair.f90:115-118)
-    v = √(2·e_conv·E_REL/μ), e_conv = 0.04184                 (beam_laws.f90:269)
+    v = √(2·E_REL/(μ·dyn_ev)), dyn_ev = 103.6426965           (beam_laws.f90, eV/fs 制)
   抽样量(N_B/N_AIM/N_THTA/N_CHI 采样时)以**代表值**代入并在 notes 里
   标注,面板须显示"示意值"字样;入射通道选择 = samp_incident_word 规则
   (表面→surface;分子双片段→pair;单片段→single 不放置)。
@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 
 from .sysdir import SysDef, Frag
 
-E_CONV = 0.04184  # kcal/mol → 内部能量(consts.f90 e_conv,固定值不得重推)
+DYN_EV = 103.6426965  # 1 amu·Å²/fs² 折 eV(consts.f90 dyn_ev,镜像不得重推)
 
 
 def incident_word(surface_model: int, n_frag: int) -> str:
@@ -54,11 +54,11 @@ class BeamView:
     b: float              # 瞄准半径 [Å]
     phi: float            # 盘方位角 [rad]
     drop: list[float]     # 落点 (x0, y0) [Å]
-    speed: float          # 碰撞速度 [Å/(10 fs)]
+    speed: float          # 碰撞速度 [Å/fs]
     u_inc: list[float]    # 入射单位矢量
     p_site: list[float]   # 弹丸 COM 落位 [Å]
     mu: float             # 有效质量(表面=弹丸质量;pair=折合质量) [amu]
-    v_proj: list[float]   # 弹丸 COM 速度 [Å/(10 fs)]
+    v_proj: list[float]   # 弹丸 COM 速度 [Å/fs]
     v_targ: list[float] | None = None  # 靶 COM 速度(pair 非零)
 
 
@@ -164,7 +164,7 @@ def assemble_preview(
         else:
             m2 = sum(sysdef.frags[i_targ].masses)
             mu = m1 * m2 / (m1 + m2)
-        speed = math.sqrt(2.0 * E_CONV * e_rel / mu) if (mu > 0 and e_rel > 0) else 0.0
+        speed = math.sqrt(2.0 * e_rel / (mu * DYN_EV)) if (mu > 0 and e_rel > 0) else 0.0
         n_e_rel = integer("N_E_REL", 1)
         if n_e_rel != 1:
             scene.notes.append(f"N_E_REL={n_e_rel} 采样能速,预览取 E_REL 对应速度为代表值")

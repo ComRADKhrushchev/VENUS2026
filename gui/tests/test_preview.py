@@ -25,9 +25,9 @@ def test_pair_hand_calc():
     s2 = math.sqrt(0.5)
     assert b.u_inc == pytest.approx([0.0, 0.0, -1.0])
     assert b.p_site == pytest.approx([1.4 * s2, 1.4 * s2, 8.0])
-    # μ = 1.008(H2 折合质量 = 2.016²/4.032);v = √(2·0.04184·200/1.008)
+    # μ = 1.008(H2 折合质量 = 2.016²/4.032);v = √(2·200/(1.008·dyn_ev)), eV/fs 制
     assert b.mu == pytest.approx(1.008)
-    assert b.speed == pytest.approx(math.sqrt(2 * 0.04184 * 200.0 / 1.008))
+    assert b.speed == pytest.approx(math.sqrt(2 * 200.0 / (1.008 * preview.DYN_EV)))
     # pair 劈分 w1=w2=0.5
     assert b.v_proj == pytest.approx([0.0, 0.0, -0.5 * b.speed])
     assert b.v_targ == pytest.approx([0.0, 0.0, 0.5 * b.speed])
@@ -60,7 +60,7 @@ def test_surface_fixed_site(tmp_path: Path):
     # 定点落点 + b=B_MAX 未写 → 0(表面法定不写)→ p_site = (1.5, 2.5, 6.0)
     assert b.p_site == pytest.approx([1.5, 2.5, 6.0])
     assert b.mu == pytest.approx(1.008)
-    assert b.speed == pytest.approx(math.sqrt(2 * 0.04184 * 100.0 / 1.008))
+    assert b.speed == pytest.approx(math.sqrt(2 * 100.0 / (1.008 * preview.DYN_EV)))
     assert b.v_targ is None  # 表面:全额赋予弹丸
     assert b.v_proj == pytest.approx([0.0, 0.0, -b.speed])
 
@@ -90,3 +90,12 @@ def test_single_fragment_no_beam():
     scene = preview.assemble_preview(sd, values)
     assert scene.beam is None
     assert any("单片段" in n for n in scene.notes)
+
+
+def test_dyn_ev_mirror():
+    """preview.DYN_EV 须等于 consts.f90 的 dyn_ev(单位制常数镜像,防漂移)。"""
+    import re
+    text = (ROOT / "src" / "globals" / "consts.f90").read_text(encoding="utf-8")
+    m = re.search(r"dyn_ev\s*=\s*([0-9.]+)d0", text)
+    assert m, "consts.f90 未找到 dyn_ev 定义"
+    assert preview.DYN_EV == float(m.group(1))

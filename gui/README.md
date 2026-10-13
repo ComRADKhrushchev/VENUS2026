@@ -55,6 +55,14 @@ python -m pytest gui/tests -q        # 常规(含键表/质量表镜像同步、
 python -m pytest gui/tests -m slow -q  # 慢测(auto_sample 隔离 make / 生成槽位端到端编译)
 ```
 
+## 单位制(2026-10-13 起随 master)
+
+内部单位制为 **eV/Å/amu/fs**(2026-10-06 裁决方案 A,2026-10-13 并入 master):
+输入面 E_REL/E_VIB/E_STAB/E_BAR/E_SCALE 按 [eV],DT/DT_BATH/DT_EQ 按 [fs],
+速度 [Å/fs](v = √(2·E_REL/(μ·dyn_ev)),dyn_ev = 103.6426965,`gui/core/preview.py`
+镜像 `src/globals/consts.f90` 且有镜像测试防漂移)。旧 kcal/mol+(10 fs) 制的
+读数归档见 `cases/case_spectrum_source/baseline_kcal_v1/`。
+
 ## 防漂移约定
 
 - `keyspec.py` ↔ `src/input.f90` 键表/枚举/分派表:`test_keyspec.py` 逐行比对源文本。
