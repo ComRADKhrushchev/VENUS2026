@@ -83,7 +83,7 @@ def test_validation_error_expands_section():
     page._w["DT"].setText("0.05")
     page._w["B_MAX"].setText("2.0")
     page._w["N_B"].setCurrentText("1")
-    page._w["N_E_REL"].setCurrentText("0")  # 热分布须 T_TRANS>0,此处留空 → 报错
+    page.set_choice("N_E_REL", "0")  # 热分布须 T_TRANS>0,此处留空 → 报错
     for c in page._scheme_combos:
         c.setCurrentText("THERMALIZE")
     assert not page._sections["beam"].expanded

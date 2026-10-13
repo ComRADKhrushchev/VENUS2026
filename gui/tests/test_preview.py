@@ -25,9 +25,11 @@ def test_pair_hand_calc():
     s2 = math.sqrt(0.5)
     assert b.u_inc == pytest.approx([0.0, 0.0, -1.0])
     assert b.p_site == pytest.approx([1.4 * s2, 1.4 * s2, 8.0])
-    # μ = 1.008(H2 折合质量 = 2.016²/4.032);v = √(2·200/(1.008·dyn_ev)), eV/fs 制
+    # μ = 1.008(H2 折合质量 = 2.016²/4.032);E_REL 取自案例输入(8.67283884 eV
+    # = 200 kcal/mol ÷ 23.0605, 2026-10-13 单位改基后的换算值);v = √(2·E_REL/(μ·dyn_ev))
     assert b.mu == pytest.approx(1.008)
-    assert b.speed == pytest.approx(math.sqrt(2 * 200.0 / (1.008 * preview.DYN_EV)))
+    assert b.speed == pytest.approx(
+        math.sqrt(2 * float(values["E_REL"]) / (1.008 * preview.DYN_EV)))
     # pair 劈分 w1=w2=0.5
     assert b.v_proj == pytest.approx([0.0, 0.0, -0.5 * b.speed])
     assert b.v_targ == pytest.approx([0.0, 0.0, 0.5 * b.speed])

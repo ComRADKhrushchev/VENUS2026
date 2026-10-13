@@ -57,7 +57,8 @@ PHYSICAL_LABELS = {
     "DT": "积分步长 [fs]",
     "INTEGRATOR": "积分器",
     "ORDER": "积分阶",
-    "DT_MIN": "自适应步长界 [fs]",
+    "DT_MIN": "自适应步长下界 [fs]",
+    "DT_MAX": "步长上界 [fs]",
     "ELEC_METHOD": "电子方法名",
     "N_SURF": "势能面数",
     "PES_MAIN": "主势能面名",
@@ -67,7 +68,8 @@ PHYSICAL_LABELS = {
     "BATH": "热浴",
     "N_BATH": "浴步数",
     "DT_BATH": "浴步长 [fs]",
-    "T_BATH": "浴温度 [K] / 碰撞频率",
+    "T_BATH": "浴温度 [K]",
+    "NU_COLL": "碰撞频率",
     "SPECTRUM_SOURCE": "谱来源",
     "SPECTRUM_FILE": "谱表文件路径",
     "N_E_REL": "碰撞能模式",
@@ -85,6 +87,17 @@ ORDER_ITEMS = {
     "VERLET": ["1", "2"],
     "SYMPLECTIC": ["4", "6", "8"],
     "RADAU": [str(i) for i in range(1, 16)],
+}
+
+# 模式类下拉: (值, 含义) — 选项显示"值 · 含义", 写出取原值(itemData)
+MODE_OPTS = {
+    "N_E_REL": [("0", "热分布"), ("1", "定值(默认)"), ("2", "密度加权")],
+    "N_THTA": [("0", "固定(默认)"), ("1", "sinθ 采样")],
+    "N_CHI": [("0", "固定(默认)"), ("1", "均匀采样")],
+    "N_B": [("0", "固定 b(默认)"), ("1", "碰撞盘")],
+    "N_AIM": [("0", "原点"), ("1", "胞内均匀"), ("2", "定点")],
+    "N_OSC": [("0", "热"), ("1", "定态")],
+    "N_E_BAR": [("0", "定值"), ("1", "热")],
 }
 
 
@@ -151,10 +164,13 @@ class InputPage(QWidget):
         self._view = PreviewView()
         self._sections: dict[str, _Section] = {}
         self._section_of_key: dict[str, _Section] = {}
-        self._row_of_key: dict[str, list[QWidget]] = {}   # 行内 label/控件/提示(整行显隐)
+        self._cell_of_key: dict[str, QWidget] = {}        # 键 → 单元对(标签+控件)
+        self._rows: list[tuple[QWidget, list[str]]] = []  # 行容器 → 行内键(整行塌缩判定)
+        self._pending: list[str] = []                     # row() 取走的键缓冲
         self._cond_hidden: set[str] = set()               # 条件隐藏(collect 跳过,绝不写出)
         self._word_hidden: set[str] = set()               # 成员词未选而隐藏(旧语义,可收集)
         self._cur_sec: _Section | None = None
+        self._cur_lay: QVBoxLayout | None = None
         self._build_ui()
         self._debounce = QTimer(self, singleShot=True, interval=350)
         self._debounce.timeout.connect(self.refresh_preview)
@@ -174,49 +190,62 @@ class InputPage(QWidget):
         )
         legend.setStyleSheet("color: #555;")
         lay.addWidget(legend)
-        grid_row = 0
 
         def group(sid: str, title: str, collapsible: bool = False,
-                  expanded: bool = True) -> tuple[_Section, QGridLayout]:
+                  expanded: bool = True) -> _Section:
             sec = _Section(title, collapsible=collapsible, expanded=expanded)
             self._sections[sid] = sec
             self._cur_sec = sec
             lay.addWidget(sec)
-            gl = QGridLayout(sec.content)
-            gl.setVerticalSpacing(4)
-            nonlocal grid_row
-            grid_row = 0
-            return sec, gl
+            self._cur_lay = QVBoxLayout(sec.content)
+            self._cur_lay.setSpacing(4)
+            self._cur_lay.setContentsMargins(4, 2, 4, 2)
+            return sec
 
-        def add_row(gl: QGridLayout, key: str, w: QWidget, hint: str = ""):
-            """行登记:key → [label, 控件, 提示?] (整行显隐);标签=物理量, KEY 名入 tooltip。"""
-            nonlocal grid_row
-            label = PHYSICAL_LABELS.get(key, key)
-            lab = QLabel(label)
-            lab.setToolTip(f"写出键: {key}")
+        def cell(key: str, w: QWidget, hint: str = "", label: str | None = None) -> QWidget:
+            """单元对 = 行标签(物理量)+控件;旁注并入悬停;登记键→单元/段映射。"""
+            text = label if label is not None else PHYSICAL_LABELS.get(key, key)
+            lab = QLabel(text)
+            tip = f"写出键: {key}" + (f"\n{hint}" if hint else "")
+            lab.setToolTip(tip)
+            w.setToolTip(tip)
             self._labels[key] = lab
-            self._label_base[key] = label
-            cells = [lab, w]
-            gl.addWidget(lab, grid_row, 0)
-            gl.addWidget(w, grid_row, 1)
-            if hint:
-                h = QLabel(hint)
-                cells.append(h)
-                gl.addWidget(h, grid_row, 2)
-            self._row_of_key.setdefault(key, []).extend(cells)
-            grid_row += 1
+            self._label_base[key] = text
+            c = QWidget()
+            h = QHBoxLayout(c)
+            h.setContentsMargins(0, 0, 0, 0)
+            h.setSpacing(4)
+            h.addWidget(lab)
+            h.addWidget(w, 1)
+            self._cell_of_key[key] = c
+            self._section_of_key[key] = self._cur_sec
+            self._pending.append(key)
+            return c
+
+        def row(*cells: QWidget):
+            """行容器: 1-3 个单元对并排;隐藏某键的单元对时其余左移,整行键全
+            隐藏时行容器塌缩(_apply_row_visibility)。"""
+            r = QWidget()
+            h = QHBoxLayout(r)
+            h.setContentsMargins(0, 0, 0, 0)
+            h.setSpacing(12)
+            for c in cells:
+                h.addWidget(c, 1)
+            self._cur_lay.addWidget(r)
+            self._rows.append((r, list(self._pending)))
+            self._pending.clear()
 
         def line(key: str, ph: str = "") -> QLineEdit:
             e = QLineEdit()
             e.setPlaceholderText(ph)
             e.textChanged.connect(self._touch)
             self._w[key] = e
-            self._section_of_key[key] = self._cur_sec
             return e
 
         def combo(key: str, items: list[str], editable: bool = False) -> QComboBox:
             c = QComboBox()
-            c.addItems(items)
+            for it in items:               # 普通枚举: 显示 = 值(存 itemData)
+                c.addItem(it, it)
             c.setEditable(editable)
             if editable:
                 c.setCurrentText("")
@@ -225,18 +254,23 @@ class InputPage(QWidget):
             c.currentIndexChanged.connect(self._touch)
             c.currentTextChanged.connect(self._touch)
             self._w[key] = c
-            self._section_of_key[key] = self._cur_sec
+            return c
+
+        def mcombo(key: str) -> QComboBox:
+            """模式下拉: 首项空白=默认不写出;选项显示"值 · 含义", 写出取原值(itemData)。"""
+            c = combo(key, [""])
+            for v, desc in MODE_OPTS[key]:
+                c.addItem(f"{v} · {desc}", v)
             return c
 
         def check(key: str) -> QCheckBox:
             c = QCheckBox()
             c.stateChanged.connect(self._touch)
             self._checks[key] = c
-            self._section_of_key[key] = self._cur_sec
             return c
 
         # ---- 体系定义(先行:范式决定其余字段形态)----
-        g, gl = group("sysdef", "体系定义(SYSTEM_DIR)")
+        group("sysdef", "体系定义(SYSTEM_DIR)")
         sd_row = QHBoxLayout()
         self._sd_line = QLineEdit()
         self._sd_line.setPlaceholderText("体系文件夹路径(含 .xyz / POSCAR 反应物文件)")
@@ -249,48 +283,42 @@ class InputPage(QWidget):
         sd_row.addWidget(b2)
         wrap = QWidget()
         wrap.setLayout(sd_row)
-        add_row(gl, "SYSTEM_DIR", wrap)
+        row(cell("SYSTEM_DIR", wrap))
         self._info.setStyleSheet("color: #555;")
-        gl.addWidget(self._info, grid_row, 0, 1, 3)
-        grid_row += 1
-        add_row(gl, "E_REL", line("E_REL", "如 8.7"))
-        add_row(gl, "R_SEP", line("R_SEP", "如 8.0"))
-        add_row(gl, "B_MAX", line("B_MAX", "固定 b 与碰撞盘采样共用"), "仅气相散射")
-        add_row(gl, "PROJECTILE", combo("PROJECTILE", [""]), "扫描后可选片段")
-        add_row(gl, "TARGET", combo("TARGET", [""]), "扫描后可选片段")
-        add_row(gl, "A_LAT", line("A_LAT", "须与胞公度"), "仅表面散射")
-        add_row(gl, "N_AIM", combo("N_AIM", ["", "0", "1", "2"]), "0原点/1胞内/2定点")
-        add_row(gl, "AIM_X", line("AIM_X", "定点 x(POSCAR 帧)"), "落点模式=2 时")
-        add_row(gl, "AIM_Y", line("AIM_Y", "定点 y"), "落点模式=2 时")
-        add_row(gl, "RANDOM_ORIENT", check("RANDOM_ORIENT"), "默认关")
+        self._cur_lay.addWidget(self._info)
+        row(cell("E_REL", line("E_REL", "如 8.7"), "必填"),
+            cell("R_SEP", line("R_SEP", "如 8.0"), "必填"))
+        row(cell("B_MAX", line("B_MAX", "如 2.0"), "固定 b 与碰撞盘采样共用, 仅气相散射"),
+            cell("RANDOM_ORIENT", check("RANDOM_ORIENT"), "默认关"))
+        row(cell("PROJECTILE", combo("PROJECTILE", [""]), "扫描后按片段名选"),
+            cell("TARGET", combo("TARGET", [""]), "气相双片段必选"))
+        row(cell("A_LAT", line("A_LAT", "须与胞公度"), "表面散射必填"),
+            cell("N_AIM", mcombo("N_AIM"), "仅表面散射"))
+        row(cell("AIM_X", line("AIM_X", "x(POSCAR 帧)"), "落点模式=2 时"),
+            cell("AIM_Y", line("AIM_Y", "y"), "落点模式=2 时"))
 
         # ---- 采样方案(逐片段;扫描后重建;星号=每片段均须选择)----
-        g, gl = group("scheme", "采样方案 *(逐片段)")
+        group("scheme", "采样方案 *(逐片段)")
         self._sections["scheme"]._btn.setToolTip("写出键: DIST_SCHEME(每片段一词)")
         self._scheme_host = QWidget()
         self._scheme_grid = QGridLayout(self._scheme_host)
-        gl.addWidget(self._scheme_host)
+        self._cur_lay.addWidget(self._scheme_host)
 
         # ---- 运行控制(DT 必填在内:可折叠但默认展开)----
-        g, gl = group("run", "运行控制", collapsible=True)
-        add_row(gl, "TITLE", line("TITLE", "≤80 字符"))
-        add_row(gl, "N_TRAJ", line("N_TRAJ", "1"))
-        add_row(gl, "ISEED", line("ISEED", "1"))
-        add_row(gl, "MAX_STEPS", line("MAX_STEPS", "100000"))
-        add_row(gl, "DT", line("DT", "如 0.5"))
-        add_row(gl, "INTEGRATOR", combo("INTEGRATOR", [""] + ENUMS["integ"]), "默认 VERLET")
-        add_row(gl, "ORDER", combo("ORDER", [""] + ORDER_ITEMS["VERLET"]),
-                "VERLET 1/2·SYMPLECTIC 4/6/8·RADAU 1-15")
-        add_row(gl, "DT_MIN", line("DT_MIN", "下界"), "仅 RADAU;右格为上界")
-        self._dtmax = line("DT_MAX", "上界")
-        self._row_of_key.setdefault("DT_MIN", []).append(self._dtmax)
-        self._row_of_key["DT_MAX"] = self._row_of_key["DT_MIN"]
-        gl.addWidget(self._dtmax, grid_row - 1, 2)
-        add_row(gl, "ELEC_METHOD", line("ELEC_METHOD", "ADIABATIC(≤32)"))
-        add_row(gl, "N_SURF", line("N_SURF", "0(折叠单绝热面)"))
-        add_row(gl, "PES_MAIN", line("PES_MAIN", "1(主 PES 名)"))
-        add_row(gl, "GWRITE_LEVEL", combo("GWRITE_LEVEL", ["", "0", "1", "2", "5"]), "默认 2")
-        add_row(gl, "OBSERVABLES", line("OBSERVABLES", "记录列名逗号清单(≤256)"))
+        group("run", "运行控制", collapsible=True)
+        row(cell("TITLE", line("TITLE", "≤80 字符")))
+        row(cell("N_TRAJ", line("N_TRAJ", "1")),
+            cell("ISEED", line("ISEED", "1")),
+            cell("MAX_STEPS", line("MAX_STEPS", "100000")))
+        row(cell("DT", line("DT", "如 0.5"), "必填"),
+            cell("INTEGRATOR", combo("INTEGRATOR", [""] + ENUMS["integ"]), "默认 VERLET"),
+            cell("ORDER", combo("ORDER", [""] + ORDER_ITEMS["VERLET"]),
+                 "VERLET 1/2·SYMPLECTIC 4/6/8·RADAU 1-15"))
+        row(cell("DT_MIN", line("DT_MIN", "下界"), "仅 RADAU"),
+            cell("DT_MAX", line("DT_MAX", "上界"), "仅 RADAU"))
+        row(cell("ELEC_METHOD", line("ELEC_METHOD", "ADIABATIC(≤32)"), "默认 ADIABATIC"),
+            cell("N_SURF", line("N_SURF", "0"), "0=折叠单绝热面"),
+            cell("PES_MAIN", line("PES_MAIN", "1")))
         eke = QHBoxLayout()
         for k, name in (("E_KIN", "动能"), ("E_POT", "势能"), ("E_TOT", "总能")):
             box = QCheckBox(name)
@@ -300,64 +328,63 @@ class InputPage(QWidget):
             eke.addWidget(box)
         wrap2 = QWidget()
         wrap2.setLayout(eke)
-        add_row(gl, "E_KIN", wrap2, "默认全关")
+        row(cell("GWRITE_LEVEL", combo("GWRITE_LEVEL", ["", "0", "1", "2", "5"]), "默认 2"),
+            cell("E_KIN", wrap2, "默认全关"))
+        row(cell("OBSERVABLES", line("OBSERVABLES", "记录列名逗号清单(≤256)")))
 
         # ---- 浴与谱 ----
-        g, gl = group("bath", "浴与谱", collapsible=True, expanded=False)
-        add_row(gl, "BATH", combo("BATH", [""] + ENUMS["bath"]), "默认 NONE")
-        add_row(gl, "N_BATH", line("N_BATH", "0"))
-        add_row(gl, "DT_BATH", line("DT_BATH", "0.0(N_BATH>0 时须>0)"))
-        add_row(gl, "T_BATH", line("T_BATH", "K"))
-        self._nucoll = line("NU_COLL", "碰撞频率")
-        self._row_of_key.setdefault("T_BATH", []).append(self._nucoll)
-        self._row_of_key["NU_COLL"] = self._row_of_key["T_BATH"]
-        gl.addWidget(self._nucoll, grid_row - 1, 2)
-        add_row(gl, "SPECTRUM_SOURCE", combo("SPECTRUM_SOURCE", [""] + ENUMS["spectrum"]), "默认 COMPUTE")
-        add_row(gl, "SPECTRUM_FILE", line("SPECTRUM_FILE", "MANUAL 谱表路径"), "MANUAL 时")
+        group("bath", "浴与谱", collapsible=True, expanded=False)
+        row(cell("BATH", combo("BATH", [""] + ENUMS["bath"]), "默认 NONE"),
+            cell("SPECTRUM_SOURCE", combo("SPECTRUM_SOURCE", [""] + ENUMS["spectrum"]),
+                 "默认 COMPUTE"))
+        row(cell("N_BATH", line("N_BATH", "0"), "ANDERSEN 时"),
+            cell("DT_BATH", line("DT_BATH", "0.0"), "N_BATH>0 时须>0"))
+        row(cell("T_BATH", line("T_BATH", "K"), "ANDERSEN 必填"),
+            cell("NU_COLL", line("NU_COLL", "每步碰撞概率"), "ANDERSEN 必填"))
+        row(cell("SPECTRUM_FILE", line("SPECTRUM_FILE", "MANUAL 谱表路径"), "MANUAL 时必填"))
 
         # ---- 束流参数(入射通道)----
-        g, gl = group("beam", "束流参数(入射通道)", collapsible=True, expanded=False)
-        add_row(gl, "N_E_REL", combo("N_E_REL", ["", "0", "1", "2"]), "0热/1定值(默认)/2密度加权")
-        add_row(gl, "T_TRANS", line("T_TRANS", "须>0"), "碰撞能模式=0 时")
-        add_row(gl, "V_WIDTH", line("V_WIDTH", "须>0"), "碰撞能模式=2 时")
-        add_row(gl, "N_THTA", combo("N_THTA", ["", "0", "1"]), "0固定(默认)/1采样")
-        add_row(gl, "THTA_MAX", line("THTA_MAX", "固定值即采样界"))
-        add_row(gl, "N_CHI", combo("N_CHI", ["", "0", "1"]), "0固定(默认)/1均匀")
-        add_row(gl, "CHI", line("CHI", "固定方位角"), "方位角模式=0 时")
-        add_row(gl, "N_B", combo("N_B", ["", "0", "1"]), "0固定 b(默认)/1碰撞盘")
+        group("beam", "束流参数(入射通道)", collapsible=True, expanded=False)
+        row(cell("N_E_REL", mcombo("N_E_REL")),
+            cell("T_TRANS", line("T_TRANS", "K"), "碰撞能模式=0 时须>0"),
+            cell("V_WIDTH", line("V_WIDTH", "Å/fs"), "碰撞能模式=2 时须>0"))
+        row(cell("N_THTA", mcombo("N_THTA")),
+            cell("THTA_MAX", line("THTA_MAX", "rad"), "固定值即采样界"))
+        row(cell("N_CHI", mcombo("N_CHI")),
+            cell("CHI", line("CHI", "rad"), "方位角模式=0 时"))
+        row(cell("N_B", mcombo("N_B")))
 
-        # ---- 成员参数(动态显隐;束流/落点键已有专属控件,不重复建)----
-        g, gl = group("member", "成员参数(随所选方案显示)", collapsible=True, expanded=False)
-        self._member_host = QWidget()
-        self._member_grid = QGridLayout(self._member_host)
+        # ---- 成员参数(按方案词打包成行, 每行≤3 键;束流/落点键已有专属控件)----
+        group("member", "成员参数(随所选方案显示)", collapsible=True, expanded=False)
         self._member_keys: set[str] = set()
-        for mk in MEMBER_TABLE:
-            if mk.key in self._w:  # N_E_REL/N_AIM/AIM_X 等在前述组已有专属控件
-                continue
-            # 标签 = hint 剥去尾部括注的物理量名;约束留在占位符;KEY 名入 tooltip
-            m = re.search(r"\(([^)]*)\)\s*$", mk.hint)
-            phys = (mk.hint[:m.start()] if m else mk.hint).strip()
-            if mk.key in ("N_OSC", "N_E_BAR"):
-                w = combo(mk.key, ["", "0", "1"])  # 二态模式键改下拉
-            else:
-                w = QLineEdit()
-                w.setPlaceholderText(m.group(1) if m else mk.hint)
-                w.textChanged.connect(self._touch)
-                self._w[mk.key] = w
-            self._section_of_key[mk.key] = self._cur_sec
-            self._member_keys.add(mk.key)
-            lab = QLabel(phys)
-            lab.setToolTip(f"写出键: {mk.key}")
-            self._labels[mk.key] = lab
-            self._row_of_key.setdefault(mk.key, []).extend([lab, w])
-            r = self._member_grid.rowCount()
-            self._member_grid.addWidget(lab, r, 0)
-            self._member_grid.addWidget(w, r, 1)
-        gl.addWidget(self._member_host)
+        member_of = {m.key: m for m in MEMBER_TABLE}
+        for word, mkeys in SCHEME_MEMBER_KEYS.items():
+            batch: list[QWidget] = []
+            for k in mkeys:
+                mk = member_of[k]
+                if mk.key in self._w:  # N_E_REL/N_AIM/AIM_X 等在前述组已有专属控件
+                    continue
+                # 标签 = hint 剥去尾部括注的物理量名;约束留在占位符
+                m = re.search(r"\(([^)]*)\)\s*$", mk.hint)
+                phys = (mk.hint[:m.start()] if m else mk.hint).strip()
+                if mk.key in MODE_OPTS:  # 二态模式键: 值·含义下拉
+                    w = mcombo(mk.key)
+                else:
+                    w = QLineEdit()
+                    w.setPlaceholderText(m.group(1) if m else mk.hint)
+                    w.textChanged.connect(self._touch)
+                    self._w[mk.key] = w
+                self._member_keys.add(mk.key)
+                batch.append(cell(mk.key, w, label=phys))
+                if len(batch) == 3:
+                    row(*batch)
+                    batch = []
+            if batch:
+                row(*batch)
 
         # ---- 容器键 ----
-        g, gl = group("container", "容器键(活动容器的 *_keys 词表;reference: K_HARM/Q_TERM/E_SPLIT)",
-                      collapsible=True, expanded=False)
+        group("container", "容器键(活动容器的 *_keys 词表;reference: K_HARM/Q_TERM/E_SPLIT)",
+              collapsible=True, expanded=False)
         self._container_table = QTableWidget(0, 2)
         self._container_table.setHorizontalHeaderLabels(["键", "值(空=不写出)"])
         self._container_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -366,22 +393,22 @@ class InputPage(QWidget):
             self._container_table.setItem(self._container_table.rowCount() - 1, 0, QTableWidgetItem(k))
             self._container_table.setItem(self._container_table.rowCount() - 1, 1, QTableWidgetItem(""))
         self._container_table.setMinimumHeight(110)
-        gl.addWidget(self._container_table, 0, 0, 1, 2)
+        self._cur_lay.addWidget(self._container_table)
 
         # ---- 动作 ----
-        g, gl = group("output", "输出")
-        row = QHBoxLayout()
+        group("output", "输出")
+        act_row = QHBoxLayout()
         b_val = QPushButton("校验")
         b_val.clicked.connect(self.run_validation)
         b_out = QPushButton("写出 input_qct.txt…")
         b_out.clicked.connect(self._write_file)
         self._copy_check = QCheckBox("同时复制 system/ 到输出目录")
-        row.addWidget(b_val)
-        row.addWidget(b_out)
-        row.addWidget(self._copy_check)
+        act_row.addWidget(b_val)
+        act_row.addWidget(b_out)
+        act_row.addWidget(self._copy_check)
         wrap3 = QWidget()
-        wrap3.setLayout(row)
-        gl.addWidget(wrap3, 0, 0, 1, 2)
+        wrap3.setLayout(act_row)
+        self._cur_lay.addWidget(wrap3)
         lay.addStretch(1)
 
         # 右侧:预览 + 注记 + 校验结果
@@ -515,7 +542,10 @@ class InputPage(QWidget):
 
         def cur(k: str) -> str:
             w = self._w.get(k)
-            return w.currentText().strip() if isinstance(w, QComboBox) else ""
+            if not isinstance(w, QComboBox):
+                return ""
+            d = w.currentData()
+            return str(d if d is not None else w.currentText()).strip()
 
         show: dict[str, bool] = {}
 
@@ -563,25 +593,43 @@ class InputPage(QWidget):
             self._apply_row_visibility(k)
 
     def _apply_row_visibility(self, key: str):
-        """行可见性 = 条件显隐 ∧ 词基显隐;隐藏作用于行内 label/控件/提示全部。"""
+        """单元对可见性 = 条件显隐 ∧ 词基显隐;同行其余键左移补位;
+        行容器仅当整行键全隐藏时塌缩。"""
         on = key not in self._cond_hidden and key not in self._word_hidden
-        for w in self._row_of_key.get(key, ()):
-            w.setVisible(on)
+        c = self._cell_of_key.get(key)
+        if c is not None:
+            c.setVisible(on)
+        for r, keys in self._rows:
+            r.setVisible(any(k not in self._cond_hidden and k not in self._word_hidden
+                             for k in keys))
 
     def row_hidden(self, key: str) -> bool:
-        """行的当前可见性(整行所有控件均隐藏才算隐藏)。"""
-        rows = self._row_of_key.get(key)
-        return bool(rows) and all(w.isHidden() for w in rows)
+        """键的当前可见性(单元对或所在行容器隐藏即隐藏)。"""
+        c = self._cell_of_key.get(key)
+        return c is None or c.isHidden() or c.parentWidget().isHidden()
+
+    def _same_row(self, a: str, b: str) -> bool:
+        """两键是否打包在同一行(行布局契约的测试入口)。"""
+        return any(a in keys and b in keys for _, keys in self._rows)
+
+    def set_choice(self, key: str, value: str):
+        """按下拉的数据值选择(模式类下拉显示为"值 · 含义", 显示文本非值)。"""
+        c = self._w[key]
+        for i in range(c.count()):
+            if c.itemData(i) == value:
+                c.setCurrentIndex(i)
+                return
 
     def _rebuild_order_items(self):
         """积分阶选项随积分器重建(VERLET 1/2·SYMPLECTIC 4/6/8·RADAU 1-15)。"""
         integ = self._w["INTEGRATOR"].currentText().strip() or "VERLET"
         items = [""] + ORDER_ITEMS.get(integ, ORDER_ITEMS["VERLET"])
         c = self._w["ORDER"]
-        keep = c.currentText()
+        keep = c.currentData()
         c.blockSignals(True)
         c.clear()
-        c.addItems(items)
+        for it in items:
+            c.addItem(it, it)
         c.setCurrentText(keep if keep in items else "")
         c.blockSignals(False)
 
@@ -595,8 +643,9 @@ class InputPage(QWidget):
                 t = w.text().strip()
                 if t:
                     values[k] = t
-            else:  # QComboBox
-                t = w.currentText().strip()
+            else:  # QComboBox: 取数据值(模式类下拉显示"值 · 含义"而数据为原值)
+                d = w.currentData()
+                t = str(d if d is not None else w.currentText()).strip()
                 if t and k != "PROJECTILE" and k != "TARGET":
                     values[k] = t
         # 角色键按原文(区分大小写按文件名匹配,大小写不敏感)

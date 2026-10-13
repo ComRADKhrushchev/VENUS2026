@@ -64,10 +64,10 @@ def test_hidden_keys_cleared_and_never_collected():
     page._w["AIM_X"].setText("3.0")  # 气相下 AIM_X 整行隐藏
     assert "AIM_X" not in page.collect()[0], "隐藏键不得进入 collect"
     _surf(page)
-    page._w["N_AIM"].setCurrentText("2")
+    page.set_choice("N_AIM", "2")
     assert not page.row_hidden("AIM_X"), "N_AIM=2 应显示定点坐标"
     page._w["AIM_X"].setText("3.0")
-    page._w["N_AIM"].setCurrentText("0")
+    page.set_choice("N_AIM", "0")
     assert page.row_hidden("AIM_X") and page._w["AIM_X"].text() == "", "隐藏时刻清空"
     assert "AIM_X" not in page.collect()[0]
 
@@ -76,9 +76,9 @@ def test_n_aim_governs_aim_rows():
     page = _page()
     _surf(page)
     assert page.row_hidden("AIM_X") and page.row_hidden("AIM_Y"), "落点模式默认(0)不显示定点"
-    page._w["N_AIM"].setCurrentText("2")
+    page.set_choice("N_AIM", "2")
     assert not page.row_hidden("AIM_X") and not page.row_hidden("AIM_Y")
-    page._w["N_AIM"].setCurrentText("1")
+    page.set_choice("N_AIM", "1")
     assert page.row_hidden("AIM_X") and page.row_hidden("AIM_Y")
 
 
@@ -120,12 +120,12 @@ def test_beam_modes_governs_rows():
     page = _page()
     assert page.row_hidden("T_TRANS") and page.row_hidden("V_WIDTH"), \
         "碰撞能默认定值: 平动温度与速度展宽都不需要"
-    page._w["N_E_REL"].setCurrentText("0")
+    page.set_choice("N_E_REL", "0")
     assert not page.row_hidden("T_TRANS") and page.row_hidden("V_WIDTH")
-    page._w["N_E_REL"].setCurrentText("2")
+    page.set_choice("N_E_REL", "2")
     assert page.row_hidden("T_TRANS") and not page.row_hidden("V_WIDTH")
     assert not page.row_hidden("CHI"), "方位角默认固定: 显示固定方位角"
-    page._w["N_CHI"].setCurrentText("1")
+    page.set_choice("N_CHI", "1")
     assert page.row_hidden("CHI"), "方位角均匀采样: 不需要固定值"
     assert not page.row_hidden("THTA_MAX"), "极角两种模式共用, 恒显"
 
@@ -139,14 +139,14 @@ def test_member_modes_governs_rows():
     assert not page.row_hidden("T_OSC") and page.row_hidden("N_LEVEL"), \
         "振子模式默认 0(热): 显示温度, 藏能级"
     assert not page.row_hidden("K_OSC"), "力常数恒显"
-    page._w["N_OSC"].setCurrentText("1")
+    page.set_choice("N_OSC", "1")
     assert page.row_hidden("T_OSC") and not page.row_hidden("N_LEVEL")
     for c in page._scheme_combos:
         c.setCurrentText("BARRIER_EXCITATION")
     assert page.row_hidden("T_OSC") and page.row_hidden("K_OSC"), "换词后旧词成员行隐藏"
-    page._w["N_E_BAR"].setCurrentText("1")
+    page.set_choice("N_E_BAR", "1")
     assert not page.row_hidden("T_BAR")
-    page._w["N_E_BAR"].setCurrentText("0")
+    page.set_choice("N_E_BAR", "0")
     assert page.row_hidden("T_BAR")
     assert not page.row_hidden("E_STAB") and not page.row_hidden("E_BAR")
 

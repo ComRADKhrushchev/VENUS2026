@@ -48,7 +48,7 @@ def test_main_window_smoke(tmp_path):
     page1._w["R_SEP"].setText("8.0")
     page1._w["DT"].setText("0.05")
     page1._w["B_MAX"].setText("2.0")
-    page1._w["N_B"].setCurrentText("1")
+    page1.set_choice("N_B", "1")
     for c in page1._scheme_combos:
         c.setCurrentText("THERMALIZE" if not c.currentIndex() else "ROTATION")
     page1._scheme_combos[1].setCurrentText("ROTATION")
@@ -68,7 +68,7 @@ def test_main_window_smoke(tmp_path):
     assert page1._labels["TARGET"].text() == "靶片段"        # 表面散射:无 TARGET 星
     page1._w["PROJECTILE"].setCurrentText("H2")
     page1._w["A_LAT"].setText("2.9437")
-    page1._w["N_AIM"].setCurrentText("1")
+    page1.set_choice("N_AIM", "1")
     for c in page1._scheme_combos:
         c.setCurrentText("EBK")
     page1.refresh_preview()
