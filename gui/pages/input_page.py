@@ -157,6 +157,7 @@ class InputPage(QWidget):
         self._sysdef: sysdir.SysDef | None = None
         self._container_table: QTableWidget | None = None
         self._info: QLabel = QLabel("未扫描体系文件夹")
+        self._info.setWordWrap(True)  # 扫描结果长行不撑最小宽
         self._notes: QLabel = QLabel("")
         self._notes.setWordWrap(True)
         self._verdict = QPlainTextEdit(readOnly=True)
@@ -188,6 +189,7 @@ class InputPage(QWidget):
             "组标题带箭头者可点击折叠/展开(折叠不改变已填值的效力);"
             "不需要的输入框按其余设置自动隐藏并清空(各键名见悬停提示)。"
         )
+        legend.setWordWrap(True)  # 长图例不撑最小宽
         legend.setStyleSheet("color: #555;")
         lay.addWidget(legend)
 
@@ -383,8 +385,8 @@ class InputPage(QWidget):
                 row(*batch)
 
         # ---- 容器键 ----
-        group("container", "容器键(活动容器的 *_keys 词表;reference: K_HARM/Q_TERM/E_SPLIT)",
-              collapsible=True, expanded=False)
+        g = group("container", "容器键", collapsible=True, expanded=False)
+        g._btn.setToolTip("活动容器的 *_keys 词表;reference 预填 K_HARM/Q_TERM/E_SPLIT")
         self._container_table = QTableWidget(0, 2)
         self._container_table.setHorizontalHeaderLabels(["键", "值(空=不写出)"])
         self._container_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
@@ -402,13 +404,13 @@ class InputPage(QWidget):
         b_val.clicked.connect(self.run_validation)
         b_out = QPushButton("写出 input_qct.txt…")
         b_out.clicked.connect(self._write_file)
-        self._copy_check = QCheckBox("同时复制 system/ 到输出目录")
         act_row.addWidget(b_val)
         act_row.addWidget(b_out)
-        act_row.addWidget(self._copy_check)
         wrap3 = QWidget()
         wrap3.setLayout(act_row)
         self._cur_lay.addWidget(wrap3)
+        self._copy_check = QCheckBox("同时复制 system/ 到输出目录")
+        self._cur_lay.addWidget(self._copy_check)  # 独占一行, 不撑组最小宽
         lay.addStretch(1)
 
         # 右侧:预览 + 注记 + 校验结果

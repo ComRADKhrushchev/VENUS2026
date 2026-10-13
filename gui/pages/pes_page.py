@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (
     QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QGridLayout, QGroupBox,
     QHBoxLayout, QHeaderView, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QPlainTextEdit, QPushButton, QSpinBox, QTableWidget, QTableWidgetItem,
-    QVBoxLayout, QWidget,
+    QScrollArea, QVBoxLayout, QWidget,
 )
 
 from ..core import pes_gen, pes_scan, sandbox
@@ -57,7 +57,15 @@ class PesPage(QWidget):
 
     # ---------- UI ----------
     def _build_ui(self):
+        # 三段内容共处滚动区(最小尺寸塌缩——不把整页内容顶成窗口最小高)
         outer = QVBoxLayout(self)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        host = QWidget()
+        outer_v = QVBoxLayout(host)
+        outer_v.setContentsMargins(0, 0, 0, 0)
+        scroll.setWidget(host)
+        outer.addWidget(scroll)
 
         # ① 扫描
         g1 = QGroupBox("① 容器扫描(Tier 1 纯势容器契约:十名 + 八中止)")
@@ -86,7 +94,7 @@ class PesPage(QWidget):
         self._scan_info = QLabel("")
         self._scan_info.setWordWrap(True)
         l1.addWidget(self._scan_info, 3, 0, 1, 4)
-        outer.addWidget(g1)
+        outer_v.addWidget(g1)
 
         # ② 生成器
         g2 = QGroupBox("② 缺失槽位生成(可行模板;整文件覆盖式 gui_slots.f90,删除即撤销)")
@@ -146,7 +154,7 @@ class PesPage(QWidget):
         b_gen = QPushButton("生成/覆盖 gui_slots.f90")
         b_gen.clicked.connect(self.generate)
         l2.addWidget(b_gen, 5, 0, 1, 2)
-        outer.addWidget(g2)
+        outer_v.addWidget(g2)
 
         # ③ 编译
         g3 = QGroupBox("③ 编译验证(隔离副本 make——不动工作树;reference 并存对编译合法)")
@@ -169,8 +177,8 @@ class PesPage(QWidget):
         self._mk_verdict = QLabel("")
         self._mk_verdict.setWordWrap(True)
         l3.addWidget(self._mk_verdict, 2, 0, 1, 4)
-        outer.addWidget(g3)
-        outer.addStretch(1)
+        outer_v.addWidget(g3)
+        outer_v.addStretch(1)
 
     def _fill_quick(self):
         try:

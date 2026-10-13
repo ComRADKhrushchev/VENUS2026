@@ -25,14 +25,23 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("VENUS2026 GUI — 输入生成 / 自定义 PES 容器检查")
-        self.resize(1500, 950)
+        # 初始尺寸钳制在屏幕可用几何内(任务栏除外——下沿不得被任务栏挡住)
+        screen = QApplication.primaryScreen()
+        avail = screen.availableGeometry() if screen else None
+        w, h = 1500, 950
+        if avail is not None:
+            w, h = min(w, avail.width()), min(h, avail.height())
+        self.resize(w, h)
+        self.setMinimumSize(min(900, w), min(700, h))
+        if avail is not None:
+            self.move(avail.topLeft())
         tabs = QTabWidget()
         tabs.addTab(InputPage(), "输入文件生成")
         tabs.addTab(PesPage(), "PES 容器检查")
         self.setCentralWidget(tabs)
         self.setStatusBar(QStatusBar())
         self.statusBar().showMessage(
-            "内部单位 Å/amu/10 fs;预览为示意(平衡几何+代表值);编译验证走隔离副本,不动工作树"
+            "内部单位 eV/Å/amu/fs;预览为示意(平衡几何+代表值);编译验证走隔离副本,不动工作树"
         )
 
 
