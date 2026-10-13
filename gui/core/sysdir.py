@@ -2,8 +2,8 @@
 """sysdir.py - system/ 体系文件夹解析(src/utils/specio.f90 + interface/sysdef_interface.f90 的移植)
 
 设计:
-  .xyz / POSCAR 解析、元素质量表、名序折叠排序、单胞规则、范式推导
-  (带胞文件在场 → 表面范式)逐条移植自 Fortran 侧;坐标全程笛卡尔 Å
+  .xyz / POSCAR 解析、元素质量表、名序折叠排序、单胞规则(散射类自 SCATTERING 键取,2026-10-13 裁决)
+  逐条移植自 Fortran 侧;坐标全程笛卡尔 Å
   (POSCAR Direct 分数坐标解析时一次转笛卡尔,速度块读跳)。
   质量表数值逐字取自 specio.f90 的 DATA 表(程序物理常数,不得重推)。
 """
@@ -86,17 +86,13 @@ class SysDef:
     """system/ 文件夹解析产物(sysdef buffer + list_atoms 派生量的合并视图)。"""
     folder: str
     frags: list[Frag] = field(default_factory=list)
-    has_cell: bool = False
-    cell: list[list[float]] | None = None   # 3x3 晶矢 [Å](行存)
-    box_lx: float = 0.0                     # 胞 x 边长 [Å](config_atoms 余弦定理)
+    has_cell: bool = False                   # 扫描侧事实:任一 POSCAR 带胞(信息性;
+                                              # 散射类自 SCATTERING 键取,2026-10-13 裁决)
+    cell: list[list[float]] | None = None   # 3x3 晶矢 [Å](行存;扫描信息,落点框以 CELL 键为准)
+    box_lx: float = 0.0                     # 胞 x 边长 [Å](config_atoms 余弦定理;扫描派生)
     box_ly: float = 0.0
     skew: float = 0.0                       # 胞斜角 [rad]
     errors: list[str] = field(default_factory=list)
-
-    @property
-    def surface_model(self) -> int:
-        """1 = 表面范式(任一文件带胞);0 = 分子范式(sysdef_interface 规则)。"""
-        return 1 if self.has_cell else 0
 
     @property
     def frag_names(self) -> list[str]:

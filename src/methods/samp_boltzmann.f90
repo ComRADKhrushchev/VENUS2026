@@ -5,10 +5,12 @@
 !   quasi-classical realization: per mode E_k = (n_k + 1/2)*hbar*w_k on
 !   the energy shell with a uniform phase, back-transformed about the COM
 ! Design:
-!   One temperature serves every carrier fragment equally (the equal-
-!   treatment statute); the FULL mode tables (frequencies in rad/fs
-!   plus orthonormal mass-weighted columns) arrive as assembly data - one
-!   per carrier - and init validates shape and orthonormality loudly per
+!   One temperature row per word-carrying fragment (the 2026-10-13 bracket
+!   ruling realized per carrier - two BOLTZMANN fragments may carry different
+!   T_VIB; a monoatomic word-carrier's row is validated but carries no
+!   table); the FULL mode tables (frequencies in rad/fs plus orthonormal
+!   mass-weighted columns) arrive as assembly data - one per polyatomic
+!   carrier - and init validates shape and orthonormality loudly per
 !   carrier (the normalmode member's contract). The draw law keeps the
 !   legislated constant hc_k verbatim over wavenumbers derived from the
 !   table (w_to_wvn); the draw consumes [one gamma per mode] then [one
@@ -45,13 +47,12 @@ module samp_boltzmann
       real(8), allocatable :: c(:,:)     ! (3*nat x n_mode) orthonormal mass-weighted columns
    end type mode_tbl_t
 
-   ! Member-owned parameters (the second-side temperature t_vib_b is
-   ! retained for the per-side face and is NOT consumed - equal treatment
-   ! means one temperature for all carriers)
+   ! Member-owned parameters (one temperature row per word-carrying fragment -
+   ! the bracket ruling's per-carrier form; 0 = the name was absent and the
+   ! member's own validation rejects it)
    type :: boltz_params_t
-      real(8) :: t_vib_a = 0.0d0         ! vibrational temperature [K] (every carrier)
-      real(8) :: t_vib_b = 0.0d0         ! second-side temperature [K] (retained, unused)
-      type(mode_tbl_t), allocatable :: tbl(:) ! per-carrier mode tables (list_atoms order)
+      real(8), allocatable :: t_vib(:)    ! vibrational temperatures [K] (word-carrier rows)
+      type(mode_tbl_t), allocatable :: tbl(:) ! per-polyatomic-carrier mode tables (list_atoms order)
    end type boltz_params_t
 
    ! Derived member state (module-private; rebuilt by every boltz_init) -
@@ -70,7 +71,6 @@ module samp_boltzmann
       real(8), allocatable :: ph_last(:)    ! last drawn phases [rad]
    end type carry_t
    type(carry_t), allocatable :: carry(:)   ! carrier rows (list_atoms order)
-   real(8) :: t_vib_c = 0.0d0               ! validated temperature [K]
    logical :: inited = .false.              ! init completed [flag]
 contains
    !------------------------------------------------------------------
@@ -79,17 +79,25 @@ contains
    !                 the per-mode geometric constants
    !------------------------------------------------------------------
    subroutine boltz_init(p)
-      type(boltz_params_t), intent(in) :: p ! member parameters (one temperature /
-                                            ! one mode table per carrier)
-      integer :: i, k, d, kc, code, n_carry
+      type(boltz_params_t), intent(in) :: p ! member parameters (one temperature
+                                            ! row per word carrier / one mode
+                                            ! table per polyatomic carrier)
+      integer :: i, k, d, kc, wc, code, n_carry, n_word
       real(8) :: com(3), wt, dev, tv(3), tscale
 
       ! 1. parameter validation (fail-loud, naming field + value): one positive
-      !    temperature, one nonempty well-shaped table per selected carrier
-      if (p%t_vib_a <= 0.0d0) then
-         call stop_boltz('boltz_init', 'vibrational temperature t_vib_a must be positive, got', &
-            p%t_vib_a)
+      !    temperature per word carrier, one nonempty well-shaped table per
+      !    selected polyatomic carrier
+      if (.not. allocated(p%t_vib)) then
+         call stop_boltx('boltz_init', 'no temperature rows (t_vib unallocated) - the reg '// &
+            'must stage one row per word-carrying fragment')
       end if
+      do wc = 1, size(p%t_vib)
+         if (p%t_vib(wc) <= 0.0d0) then
+            call stop_boltz('boltz_init', 'vibrational temperature t_vib [K] must be positive '// &
+               '(the carrier wrote no T_VIB bracket name); row =', p%t_vib(wc))
+         end if
+      end do
       if (.not. allocated(p%tbl)) then
          call stop_boltx('boltz_init', 'no mode tables (tbl unallocated) - the frequency-'// &
             'derivation chain produced no tables; a zero spectrum is not a sampleable state')
@@ -112,8 +120,8 @@ contains
       end do
 
       ! 2. carrier binding (the list_atoms fragments whose dist_scheme rows
-      !    select this member, list_atoms order; one parameter set serves
-      !    them all equally)
+      !    select this member, list_atoms order; the temperature rows index
+      !    every word carrier, the tables only the polyatomic ones)
       if (.not. allocated(list_atoms%frag)) then
          call stop_boltx('boltz_init', 'no list_atoms fragment table - the atom list must be '// &
             'assembled before member init (assembly-order error)')
@@ -131,6 +139,15 @@ contains
          call stop_boltx('boltz_init', 'member word "boltzmann" is not in the scheme-code '// &
             'table (incomplete member library assembly)')
       end if
+      n_word = count(reactants%dist_scheme == code)
+      if (n_word == 0) then
+         call stop_boltx('boltz_init', 'no list_atoms fragment carries the boltzmann scheme - '// &
+            'this member would never be dispatched')
+      end if
+      if (size(p%t_vib) /= n_word) then
+         call stop_bolti2('boltz_init', 'the parameter set carries', size(p%t_vib), &
+            'temperature rows but the selection carries word carriers', n_word)
+      end if
       ! count only polyatomic carriers (a monoatomic fragment has no internal
       ! DOFs; the sampler skips it and the reg builds no table for it)
       n_carry = 0
@@ -139,10 +156,6 @@ contains
             n_carry = n_carry + 1
          end if
       end do
-      if (count(reactants%dist_scheme == code) == 0) then
-         call stop_boltx('boltz_init', 'no list_atoms fragment carries the boltzmann scheme - '// &
-            'this member would never be dispatched')
-      end if
       if (size(p%tbl) /= n_carry) then
          call stop_bolti2('boltz_init', 'the parameter set carries', size(p%tbl), &
             'mode tables but the selection carries carriers', n_carry)
@@ -150,8 +163,10 @@ contains
       if (allocated(carry)) deallocate (carry)
       allocate (carry(n_carry))
       kc = 0
+      wc = 0
       do i = 1, size(reactants%dist_scheme)
          if (reactants%dist_scheme(i) /= code) cycle
+         wc = wc + 1                          ! the temperature row of THIS word carrier
          if (list_atoms%frag(i)%nat < 2) cycle   ! monoatomic: no table, skip
          kc = kc + 1
          associate (fr => list_atoms%frag(i), cr => carry(kc))
@@ -211,13 +226,12 @@ contains
             cr%w_c = p%tbl(kc)%w
             cr%c_c = p%tbl(kc)%c
             do k = 1, size(cr%w_c)
-               cr%dum(k) = hc_k*w_to_wvn(cr%w_c(k))/p%t_vib_a
+               cr%dum(k) = hc_k*w_to_wvn(cr%w_c(k))/p%t_vib(wc)
             end do
             cr%n_last = 0
             cr%ph_last = 0.0d0
          end associate
       end do
-      t_vib_c = p%t_vib_a
       inited = .true.
    end subroutine boltz_init
 

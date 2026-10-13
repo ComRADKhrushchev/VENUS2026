@@ -13,7 +13,7 @@ def _src() -> str:
 
 
 def test_key_table_mirror():
-    """keyspec.KEY_TABLE 与 input.f90 key_tab(32 行)逐字段一致。"""
+    """keyspec.KEY_TABLE 与 input.f90 key_tab(27 行)逐字段一致。"""
     text = _src()
     row = re.compile(
         r"key_spec_t\('(\w+)',\s*blk_(\w+),\s*kind_(\w+),\s*enum_(\w+),\s*"
@@ -21,15 +21,15 @@ def test_key_table_mirror():
         r"(?:,\s*slotw=(\d+))?(?:,\s*cond=\.(true|false)\.)?"
     )
     rows = row.findall(text)
-    assert len(rows) == 32, f"key_tab 应 32 行,解析得 {len(rows)}"
-    assert len(keyspec.KEY_TABLE) == 32
+    assert len(rows) == 28, f"key_tab 应 28 行,解析得 {len(rows)}"
+    assert len(keyspec.KEY_TABLE) == 28
     for fort, mine in zip(rows, keyspec.KEY_TABLE):
         name, blk, kind, enum, req, default, slotw, cond = fort
         assert mine.name == name
         assert mine.blk == ("flow" if blk == "flow" else "system"), name
         kind_map = {
             "int": "int", "real": "real", "char": "char", "log": "log",
-            "level": "level", "enum": "enum", "elist": "elist", "posreal": "posreal",
+            "level": "level", "enum": "enum", "elist": "elist", "cell": "cell",
         }
         assert mine.kind == kind_map[kind], name
         assert (mine.enum or "none") == enum, name
@@ -51,7 +51,7 @@ def test_enums_mirror():
     for tbl, want in [
         ("task", keyspec.ENUM_TASK), ("integ", keyspec.ENUM_INTEG),
         ("dist", keyspec.ENUM_DIST), ("bath", keyspec.ENUM_BATH),
-        ("spectrum", keyspec.ENUM_SPECTRUM),
+        ("spectrum", keyspec.ENUM_SPECTRUM), ("scattering", keyspec.ENUM_SCATTERING),
     ]:
         m = re.search(
             rf"enum_row_t\), parameter :: {tbl}_tbl\(\d+\) = \[ &(.*?)\]",
@@ -63,11 +63,14 @@ def test_enums_mirror():
 
 
 def test_dispatch_mirror():
-    """MEMBER_TABLE 键与归属成员与 dispatch_tbl(35 行)一致(类型为 GUI 侧补注)。"""
+    """MEMBER_TABLE 键与归属成员与 dispatch_tbl(13 行通道级键)一致(类型为 GUI 侧补注)。
+
+    方案词自身的参数不设顶层键(2026-10-13 括号裁定)——只经 DIST_SCHEME 括号。
+    """
     text = _src()
     rows = re.findall(r"dispatch_row_t\('(\w+)',\s*'([^']+)'", text)
-    assert len(rows) == 35
-    assert len(keyspec.MEMBER_TABLE) == 35
+    assert len(rows) == 13
+    assert len(keyspec.MEMBER_TABLE) == 13
     for (key, member), mine in zip(rows, keyspec.MEMBER_TABLE):
         assert mine.key == key
         assert mine.member == member
@@ -99,9 +102,9 @@ def test_parse_scalar_domains():
         raise AssertionError
     except ValueError:
         pass
-    assert ps(keyspec.KIND_POSREAL, "", "3.0") == 3.0
+    assert ps(keyspec.KIND_CELL, "", "6 0 0, 0 6 0, 0 0 20") == [[6.0, 0.0, 0.0], [0.0, 6.0, 0.0], [0.0, 0.0, 20.0]]
     try:
-        ps(keyspec.KIND_POSREAL, "", "0.0")
+        ps(keyspec.KIND_CELL, "", "6 0 0, 0 6 0")
         raise AssertionError
     except ValueError:
         pass

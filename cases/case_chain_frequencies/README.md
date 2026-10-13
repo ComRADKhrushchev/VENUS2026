@@ -24,7 +24,7 @@ C5-R1 的链级另一半：**Hessian→eig_sym→频谱→boltzmann/normalmode �
 **通道查明（先行，结论：机制存在但程序内未接线 = 已登记暂不处理，非缺陷）**，四条证据：
 - reg_dist_boltzmann / reg_dist_normalmode 头注与代码逐字记录：频率表
   w_mode_a / w_mode+c_mode 是 "ASSEMBLY DATA, not an input key - **no production
-  source stages it yet**"——两 seam 只暂存 T_VIB_A/T_VIB_B 与 E_VIB 三个标量键，
+  source stages it yet**"——两 seam 只暂存 T_VIB（2026-10-13 由 T_VIB_A/T_VIB_B 合并）与 E_VIB 标量键，
   表本身无任何生产者暂存；选中成员而无表 → 成员自己的 fail-loud 停机
   （check_dist_boltzmann (f) 已证零谱停机路径）。
 - src/ 全树 `hessian_cd` 零生产调用者（仅 scripts/ 判据程序与本 case 探针调用）。
@@ -49,7 +49,7 @@ Hessian→EIGN→填表）尚未落地，登记为候选后续件。
   → samp_run 分发（探针在装配后改写 reactants%dist_scheme 为目标成员码——
   输入文件里 DIST_SCHEME = ROTATION+J_ROT=3 是无害占位成员，两 seam 的
   未选中守卫因此跳过 boltzmann/normalmode 的装配期 init，绕开零谱停机）。
-  T_VIB_A / E_VIB 从暂存行用 seam 自身读法（seam_real）取出。
+  T_VIB / E_VIB 从暂存行用 seam 自身读法（seam_real）取出。
 
 **谐振解析契约（所有判据的手算侧）**：
 - 井 V = K_HARM/2·Σ|q_i|²，K_HARM = 0.04 eV/Å²；力过 force_eval 落内能制：

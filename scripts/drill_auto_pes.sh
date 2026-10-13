@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # drill_auto_pes.sh - the Tier 1 auto-PES container drill (criterion family):
 #   positive legs (clean-tree drag-in first make, woven content, pes-only
-#   partial-shape weave, adiabatic default run with the arm witness ABSENT,
+#   partial-shape weave, adiabatic default run with the init witness ABSENT,
 #   ELEC_METHOD = auto_tdhf run with the witness PRESENT, R_TERM both
 #   branches, double-run determinism) + the runtime negatives (reference +
 #   auto coexistence STOP 1; a package naming itself 'adiabatic' aborts at
@@ -44,9 +44,9 @@ while IFS= read -r pat; do
 done <<'PATS'
 use auto_sample_pot, only: pes, keys, term
 use auto_sample_io, only: load, classify
-use auto_sample_met, only: prop, match, sync, arm, method_name
+use auto_sample_met, only: prop, match, sync, init, method_name
 call method_reg(method_name(), prop, match, sync)
-if (trim(electronic%method) == method_name()) call arm()
+if (trim(electronic%method) == method_name()) call init()
 call auto_slots()
 use container_sched, only: container_sched_bind
 call container_sched_bind(keys = auto_keys, &
@@ -107,13 +107,9 @@ E_REL = 50.0
 B_MAX = 1.0
 R_SEP = 6.0
 DT = 0.05
-DIST_SCHEME = THERMALIZE,ROTATION
+DIST_SCHEME = THERMALIZE[T_EQ=100.0, N_EQ=5, DT_EQ=0.05], ROTATION[J_ROT=3]
 PROJECTILE = frag_a
 TARGET = frag_b
-T_EQ = 100.0
-N_EQ = 5
-DT_EQ = 0.05
-J_ROT = 3
 N_B = 1
 N_TRAJ = 2
 MAX_STEPS = 50
@@ -123,10 +119,10 @@ GWRITE_LEVEL = 2
 K_SPRING = 0.05
 EOF
 cd "$DRILL"
-rm -f auto_arm_witness.txt
+rm -f auto_init_witness.txt
 if "$BLD/venus.e" >stdout_a.txt 2>stderr_a.txt; then ok "adiabatic run (default ELEC_METHOD)"
 else bad "adiabatic run"; cat stderr_a.txt; fi
-[ ! -f auto_arm_witness.txt ] && ok "arm NOT called under adiabatic default" || bad "arm witness present under adiabatic"
+[ ! -f auto_init_witness.txt ] && ok "init NOT called under adiabatic default" || bad "init witness present under adiabatic"
 grep -q "outcome counts: bound=2" stdout_a.txt && ok "classify stub ran (bound=2)" || bad "classify outcome line"
 # determinism: run again, trajectories byte-identical
 cp trajectories.txt /tmp/drill_traj_first.txt
@@ -137,12 +133,12 @@ printf 'R_TERM = 2.0\n' >> input_qct.txt
 if "$BLD/venus.e" >stdout_b.txt 2>stderr_b.txt; then ok "R_TERM run"
 else bad "R_TERM run"; cat stderr_b.txt; fi
 grep -q "outcome counts: bound=2" stdout_b.txt && ok "R_TERM branch classified" || bad "R_TERM outcome"
-# method branch: select the package -> arm witness appears
+# method branch: select the package -> init witness appears
 sed -i '/^K_SPRING = 0.05/a ELEC_METHOD = auto_tdhf' input_qct.txt
-rm -f auto_arm_witness.txt
+rm -f auto_init_witness.txt
 if "$BLD/venus.e" >stdout_c.txt 2>stderr_c.txt; then ok "auto_tdhf run"
 else bad "auto_tdhf run"; cat stderr_c.txt; fi
-[ -f auto_arm_witness.txt ] && ok "arm witness written under ELEC_METHOD = auto_tdhf" || bad "arm witness missing"
+[ -f auto_init_witness.txt ] && ok "init witness written under ELEC_METHOD = auto_tdhf" || bad "init witness missing"
 # method-name collision: the package registering a name already in the table
 # (the built-in 'adiabatic') aborts at assembly (method_reg duplicate)
 sed -i "s/s = 'auto_tdhf'/s = 'adiabatic'/" "$FIX/tdhf_stub.f90"
@@ -218,10 +214,10 @@ drag
 sed -i -e 's/^   subroutine prop(sta, dt)$/! &/' -e 's/^   subroutine match(sta)$/! &/' "$FIX/tdhf_stub.f90"
 neg 7 "sync is defined but prop+match are not"
 
-# 6.8: only method_name kept (prop/match/sync/arm commented out)
+# 6.8: only method_name kept (prop/match/sync/init commented out)
 drag
 sed -i -e 's/^   subroutine prop(sta, dt)$/! &/' -e 's/^   subroutine match(sta)$/! &/' \
-       -e 's/^   subroutine sync(s)$/! &/' -e 's/^   subroutine arm()$/! &/' "$FIX/tdhf_stub.f90"
+       -e 's/^   subroutine sync(s)$/! &/' -e 's/^   subroutine init()$/! &/' "$FIX/tdhf_stub.f90"
 neg 8 "method_name is defined but prop+match are not"
 
 # fixture PARKED (neg 8 left it there); restore reference for the close

@@ -5,15 +5,16 @@
 !   the input grammar accepts for DIST_SCHEME; the reg file is the
 !   atomic registration unit (a new member = its method file + one thin
 !   reg file; zero edits to existing files).
-!   _init is the assembly seam: buffered input keys -> params receiver
-!   (absent keys keep field defaults) -> the member's own init; an
-!   unselected member skips.
+!   _init is the assembly seam: the carrier's bracket parameters
+!   (T_EQ/N_EQ/DT_EQ - one row per carrier, the 2026-10-13 bracket
+!   ruling; a bare word keeps the field defaults and the member's own
+!   validation speaks) -> the member's own init; an unselected member
+!   skips.
 !=====================================================================
 module reg_samp_thermalize
    use sampler,         only: samp_reg, samp_code
    use config,          only: reactants
-   use input,           only: buffer_n_rows, buffer_key, buffer_val, buffer_line
-   use seam_cast,       only: seam_real, seam_int
+   use input,           only: par_real, par_int
    use samp_thermalize, only: thermalize_draw, thermalize_realize, thermalize_params_t, thermalize_init
    implicit none
    private
@@ -27,21 +28,29 @@ contains
    end subroutine reg_samp_thermalize_all
 
    !------------------------------------------------------------------
-   ! reg_samp_thermalize_init() - assembly seam: buffered keys -> receiver ->
-   !                              member init
+   ! reg_samp_thermalize_init() - assembly seam: per-carrier bracket keys ->
+   !                              receiver -> member init (the member owns the
+   !                              one-shared-run constraint on N_EQ/DT_EQ)
+   !------------------------------------------------------------------
    subroutine reg_samp_thermalize_init()
       type(thermalize_params_t) :: p   ! member-parameter receiver (field defaults)
-      character(len=512) :: sval       ! one buffered raw value
-      integer :: i
+      integer :: i, k, code
       if (.not. allocated(reactants%dist_scheme)) return
-      if (count(reactants%dist_scheme == samp_code('thermalize')) == 0) return
-      do i = 1, buffer_n_rows()
-         sval = buffer_val(i)
-         select case (trim(buffer_key(i)))
-         case ('T_EQ');  call seam_real(buffer_key(i), sval, buffer_line(i), p%t_eq)
-         case ('N_EQ');  call seam_int(buffer_key(i), sval, buffer_line(i), p%n_eq)
-         case ('DT_EQ'); call seam_real(buffer_key(i), sval, buffer_line(i), p%dt_eq)
-         end select
+      code = samp_code('thermalize')
+      if (count(reactants%dist_scheme == code) == 0) return
+      allocate (p%t_eq(count(reactants%dist_scheme == code)), &
+                p%n_eq(count(reactants%dist_scheme == code)), &
+                p%dt_eq(count(reactants%dist_scheme == code)))
+      p%t_eq  = 0.0d0                    ! absent bracket names keep the defaults;
+      p%n_eq  = 0                         ! thermalize_init's own validation rejects
+      p%dt_eq = 0.0d0                     ! them (and enforces the shared-run rule)
+      k = 0
+      do i = 1, size(reactants%dist_scheme)
+         if (reactants%dist_scheme(i) /= code) cycle
+         k = k + 1
+         call par_real('THERMALIZE', i, 'T_EQ',  p%t_eq(k))
+         call par_int('THERMALIZE', i, 'N_EQ',  p%n_eq(k))
+         call par_real('THERMALIZE', i, 'DT_EQ', p%dt_eq(k))
       end do
       call thermalize_init(p)
    end subroutine reg_samp_thermalize_init

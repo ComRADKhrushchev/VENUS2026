@@ -3,9 +3,10 @@
 !   sampling - fixed e_vib split over a given orthonormal mass-weighted
 !   mode table (uniform sphere point, uniform phase), COM-origin output
 ! Design:
-!   One e_vib serves every carrier equally; the mode tables arrive as
-!   assembly data - one per carrier (each fragment is its own spectrum);
-!   init validates shape and orthonormality loudly per carrier. Sample
+!   One e_vib row per carrier (the 2026-10-13 bracket ruling realized per
+!   fragment); the mode tables arrive as assembly data - one per carrier
+!   (each fragment is its own spectrum); init validates shape and
+!   orthonormality loudly per carrier. Sample
 !   places the full energy exactly once per carrier - no angular-momentum
 !   stripping or orientation randomization (the rotation member's channel).
 !   Units: e_vib [eV]; E [eV]; w_mode
@@ -34,17 +35,19 @@ module samp_normalmode
 
    ! Member-owned parameters (the mode tables arrive as assembly data)
    type :: normalmode_params_t
-      real(8) :: e_vib = 0.43364194d0         ! total vibrational energy [eV] (every carrier;
-                                              ! default = the pre-2026-10-06 10.0 kcal/mol re-expressed)
+      real(8), allocatable :: e_vib(:)        ! total vibrational energies [eV] (one row per
+                                              ! carrier; default = the pre-2026-10-06 10.0
+                                              ! kcal/mol re-expressed)
       type(mode_tbl_t), allocatable :: tbl(:) ! per-carrier mode tables (list_atoms order)
    end type
 
    ! Derived member state (module-private; rebuilt by every normalmode_init) -
-   ! one row per carrier; e_vib is shared (equal treatment)
+   ! one row per carrier; the energy folds the carrier's own e_vib row
    type :: carry_t
       integer :: frag = 0                     ! carrier list_atoms fragment row [index]
       integer :: nat = 0                      ! carrier atom count [count]
       integer :: n_mode = 0                   ! carrier mode count [count]
+      real(8) :: e_car = 0.0d0                ! the carrier's total vibrational energy [eV]
       integer, allocatable :: list(:)         ! carrier atom index list [global atom index]
       real(8), allocatable :: qz_com(:)       ! COM-shifted seed coordinates [Angstrom]
       real(8), allocatable :: sqm(:)          ! sqrt(mass) replicated per component [sqrt(amu)]
@@ -53,7 +56,6 @@ module samp_normalmode
       real(8), allocatable :: x_s(:), y_s(:)  ! the drawn Cartesian pair (post-draw record) [sqrt(amu)*Ang], [amu*Ang/fs]
    end type carry_t
    type(carry_t), allocatable :: carry(:)     ! carrier rows (list_atoms order)
-   real(8) :: e_tot = 0.0d0                   ! total vibrational energy [eV]
    logical :: inited = .false.                ! init completed [flag]
 contains
    !------------------------------------------------------------------
@@ -64,11 +66,17 @@ contains
       real(8) :: com(3), wt, dev, tv(3), tscale
       integer :: i, k, d, kc, code, n_carry
 
-      ! 1. parameter validation (fail-loud, naming field + value)
-      if (p%e_vib <= 0.0d0) then
-         call stop_nmz('normalmode_init', 'total vibrational energy e_vib [eV] must be '// &
-            'positive, got', p%e_vib)
+      ! 1. parameter validation, per carrier row (fail-loud, naming field + value)
+      if (.not. allocated(p%e_vib)) then
+         call stop_nmx('normalmode_init', 'no energy rows (e_vib unallocated) - the reg must '// &
+            'stage one row per normalmode carrier')
       end if
+      do kc = 1, size(p%e_vib)
+         if (p%e_vib(kc) <= 0.0d0) then
+            call stop_nmz('normalmode_init', 'total vibrational energy e_vib [eV] must be '// &
+               'positive, got', p%e_vib(kc))
+         end if
+      end do
 
       ! 2. carrier binding (assembly-order guards; the atom list fragments whose
       !    dist_scheme rows select this member, list_atoms order)
@@ -94,6 +102,10 @@ contains
          call stop_nmx('normalmode_init', 'no list_atoms fragment carries the normalmode scheme - '// &
             'this member would never be dispatched')
       end if
+      if (size(p%e_vib) /= n_carry) then
+         call stop_nmi2('normalmode_init', 'energy row count', size(p%e_vib), &
+            'does not match the normalmode carrier count', n_carry)
+      end if
       if (.not. allocated(p%tbl) .or. size(p%tbl) /= n_carry) then
          call stop_nmi2('normalmode_init', 'mode-table set mismatch: the parameter carries', &
             merge(size(p%tbl), 0, allocated(p%tbl)), 'tables but the selection carries carriers', n_carry)
@@ -107,6 +119,7 @@ contains
          associate (fr => list_atoms%frag(i), cr => carry(kc))
             cr%frag = i
             cr%nat = fr%nat
+            cr%e_car = p%e_vib(kc)
 
             ! 3. mode-table validation for THIS carrier (shape, contents,
             !    orthonormality, translation orthogonality)
@@ -177,7 +190,6 @@ contains
             cr%c_c = p%tbl(kc)%c
          end associate
       end do
-      e_tot = p%e_vib
       inited = .true.
    end subroutine normalmode_init
 
@@ -211,7 +223,7 @@ contains
             un = 1.0d0
          end if
          do k = 1, cr%n_mode
-            e_i = e_tot*(g_vec(k)/un)**2
+            e_i = cr%e_car*(g_vec(k)/un)**2
             amp = sqrt(2.0d0*e_i*ev_dyn)/cr%w_c(k)
             ph = two_pi*rng_u()
             qmode(k) = amp*cos(ph)

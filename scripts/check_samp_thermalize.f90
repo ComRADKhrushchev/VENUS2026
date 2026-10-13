@@ -10,6 +10,7 @@
 !            globals/config_atoms.f90 globals/state.f90 &
 !            utils/rng.f90 interface/elec_interface.f90 &
 !            utils/linalg.f90 interface/force_interface.f90 dynamics/propagator.f90 &
+!            utils/hessian.f90 utils/geom_init.f90 utils/spectrum.f90 interface/bath.f90 &
 !            methods/reg_prop.f90 utils/geometry.f90 interface/sampler.f90 &
 !            methods/samp_thermalize.f90 methods/seam_cast.f90 &
 !            methods/reg_samp_thermalize.f90 &
@@ -114,7 +115,7 @@ contains
 end module equi_standin
 
 program check_samp_thermalize
-   use consts,        only: kb_code
+   use consts,        only: kb_act, kb_ev
    use rng,           only: rng_init, rng_gauss
    use sampler,       only: samp_run, samp_code
    use config,        only: reactants, propagator
@@ -142,28 +143,32 @@ program check_samp_thermalize
    character(len=32) :: mode
 
    ! ---------- child dispatch: one bad case per spawn, must named abort ----------
+   allocate (par%t_eq(1), par%n_eq(1), par%dt_eq(1))   ! single-carrier check face
+   par%t_eq(1) = 0.0d0
+   par%n_eq(1) = 0
+   par%dt_eq(1) = 0.0d0
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       call state_create(sta, 2)
-      par%t_eq = t_use
-      par%n_eq = n_use
-      par%dt_eq = dt_use
+      par%t_eq(1) = t_use
+      par%n_eq(1) = n_use
+      par%dt_eq(1) = dt_use
       propagator%dt = dt_live
       select case (trim(mode))
       case ('bad-temp')                     ! (g): t_eq = 0
          call setup_mol(1)
          call set_scheme([9])
-         par%t_eq = 0.0d0
+         par%t_eq(1) = 0.0d0
          call thermalize_init(par)
       case ('bad-nsteps')                   ! (h): zero propagation steps
          call setup_mol(1)
          call set_scheme([9])
-         par%n_eq = 0
+         par%n_eq(1) = 0
          call thermalize_init(par)
       case ('bad-dt')                       ! (i): zero equilibration step
          call setup_mol(1)
          call set_scheme([9])
-         par%dt_eq = 0.0d0
+         par%dt_eq(1) = 0.0d0
          call thermalize_init(par)
       case ('bad-bind0')                    ! (j): no fragment carries the code
          call setup_mol(1)
@@ -191,9 +196,9 @@ program check_samp_thermalize
    ! ---------- single carrier: algebra + registration/dispatch ----------
    call setup_mol(1)
    call set_scheme([9])
-   par%t_eq = t_use
-   par%n_eq = n_use
-   par%dt_eq = dt_use
+   par%t_eq(1) = t_use
+   par%n_eq(1) = n_use
+   par%dt_eq(1) = dt_use
    propagator%dt = dt_live
    call rng_init(7717)
    call thermalize_init(par)
@@ -221,7 +226,7 @@ program check_samp_thermalize
 
    ! (b) post-equilibration KE expectation algebra: (3*nat-3)*kb*t_eq/2
    frag_b = thermalize_frag()
-   e_expect = (3.0d0*dble(list_atoms%frag(frag_b)%nat) - 3.0d0)*kb_code*t_use/2.0d0
+   e_expect = (3.0d0*dble(list_atoms%frag(frag_b)%nat) - 3.0d0)*kb_ev*t_use/2.0d0
    if (abs(thermalize_e_kin_expect() - e_expect) > 1.0d-12*e_expect) then
       print '(a,es12.4,a,es12.4)', 'FAIL (b) KE expectation: member ', thermalize_e_kin_expect(), &
          ' vs theory ', e_expect
@@ -280,7 +285,7 @@ program check_samp_thermalize
    call rng_init(7717)
    do i = 1, 2
       do c = 1, 3
-         exp_p(3*(i - 1) + c) = sqrt(list_atoms%mass(list_atoms%frag(1)%list(i))*kb_code*t_use)*rng_gauss()
+         exp_p(3*(i - 1) + c) = sqrt(list_atoms%mass(list_atoms%frag(1)%list(i))*kb_act*t_use)*rng_gauss()
       end do
    end do
    wt = sum(list_atoms%mass(list_atoms%frag(1)%list))
@@ -332,6 +337,9 @@ program check_samp_thermalize
    ! removal, then the ONE shared equilibration run (free flight) ----------
    call setup_mol(2)
    call set_scheme([9, 9])
+   par%t_eq = [ t_use, t_use ]          ! one temperature set, two rows
+   par%n_eq = [ n_use, n_use ]
+   par%dt_eq = [ dt_use, dt_use ]
    call thermalize_init(par)               ! re-bind: two carrier rows
    call state_create(sta, 4)
    sta%q = sentinel
@@ -353,7 +361,7 @@ program check_samp_thermalize
       rel = abs(sta%p(6 + i) + sta%p(9 + i))/max(abs(sta%p(6 + i)) + abs(sta%p(9 + i)), 1.0d-300)
       rel_max = max(rel_max, rel)
    end do
-   e_expect = 2.0d0*(3.0d0*dble(list_atoms%frag(1)%nat) - 3.0d0)*kb_code*t_use/2.0d0
+   e_expect = 2.0d0*(3.0d0*dble(list_atoms%frag(1)%nat) - 3.0d0)*kb_ev*t_use/2.0d0
    if (thermalize_frag(1) /= 1 .or. thermalize_frag(2) /= 2 .or. thermalize_nat(2) /= 2 .or. &
        abs(thermalize_e_kin_expect() - e_expect) > 1.0d-12*e_expect .or. any(sta%p == sentinel) .or. &
        rel_max > 1.0d-10 .or. any(abs(sta%q - qe) > 1.0d-10) .or. propagator%dt /= dt_live .or. &

@@ -7,6 +7,7 @@
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 interface/sysdef_interface.f90 input.f90 &
 !            globals/config_atoms.f90 globals/state.f90 &
+!            utils/linalg.f90 utils/hessian.f90 utils/geom_init.f90 utils/spectrum.f90 interface/elec_interface.f90 interface/force_interface.f90 dynamics/propagator.f90 interface/bath.f90 &
 !            utils/rng.f90 utils/geometry.f90 interface/sampler.f90 methods/samp_normalmode.f90 &
 !            ../scripts/check_samp_normalmode.f90 -o build/check_samp_normalmode.exe
 ! All artifacts are written under build/ - the source tree stays clean.
@@ -31,8 +32,8 @@
 ! the REAL member entry into the stop and must print a naming message on
 ! stderr and exit nonzero. The parent asserts the exit status and the
 ! stderr content.
-! Criteria (carrier: nat = 3, s = n_mode = 6, e_vib = 12.5 kcal/mol ->
-! e_tot = 12.5*e_conv internal; mode-1 marginal of the sphere split is
+! Criteria (carrier: nat = 3, s = n_mode = 6, e_vib = 0.54205243 eV
+! (= 12.5 kcal/mol / 23.0605); mode-1 marginal of the sphere split is
 ! Beta(1/2, 5/2)):
 !   (a) total energy exact: 2000 draws; the energy re-expanded from the
 !       WRITTEN state (Q = C^T sqrt(m)*(q - qz_com), P = C^T p/sqrt(m),
@@ -84,10 +85,10 @@
 !   (p) dual-carrier equal treatment (positive): two fragments, two
 !       tables (the second a copy of the first), one init and one
 !       sampling loop - each carrier's atom block carries E =
-!       e_vib*e_conv exactly (both carriers' q/p are written)
+!       e_vib*ev_dyn exactly (both carriers' q/p are written)
 !=====================================================================
 program check_samp_normalmode
-   use consts,        only: e_conv
+   use consts,        only: ev_dyn
    use rng,           only: rng_init
    use config,        only: reactants
    use config_atoms, only: list_atoms, list_atoms_clear
@@ -111,8 +112,10 @@ program check_samp_normalmode
    character(len=32) :: mode
    logical :: ok_all
 
-   e_vib = 12.5d0
-   e_tot = e_vib*e_conv
+   allocate (par%e_vib(1))   ! single-carrier check face
+   par%e_vib(1) = 0.43364194d0
+   e_vib = 0.54205243d0   ! [eV] = 12.5 kcal/mol / 23.0605
+   e_tot = e_vib*ev_dyn
    mass3 = [ 1.0d0, 2.0d0, 3.0d0 ]
    psc = sqrt(2.0d0*sum(mass3)*e_tot)          ! momentum scale for the (b) tolerance
    w_tab = [ 0.8d0, 1.1d0, 1.4d0, 1.9d0, 2.3d0, 3.1d0 ]
@@ -124,11 +127,11 @@ program check_samp_normalmode
       call get_command_argument(1, mode)
       call state_create(sta, 3)
       call fill_list_atoms(3, qz, mass3)
-      par%e_vib = e_vib
+      par%e_vib(1) = e_vib
       select case (trim(mode))
       case ('bad-evib')                     ! (f): e_vib = 0
          call set_scheme([6])
-         par%e_vib = 0.0d0
+         par%e_vib(1) = 0.0d0
          call table_to_par(par, 1, c_tab, w_tab)
          call normalmode_init(par)
       case ('bad-nmode')                    ! (g): both tables empty
@@ -172,6 +175,7 @@ program check_samp_normalmode
          call fill_two(qz, mass3)
          call set_scheme([6, 6])
          call table_to_par(par, 1, c_tab, w_tab)
+         par%e_vib = [ e_vib, e_vib ]       ! two rows: the TABLE count is the mismatch
          call normalmode_init(par)
       case ('bad-noinit')                   ! (o): sample without init
          call set_scheme([6])
@@ -189,7 +193,7 @@ program check_samp_normalmode
    call set_scheme([6])
    call state_create(sta, 3)
    call table_to_par(par, 1, c_tab, w_tab)
-   par%e_vib = e_vib
+   par%e_vib(1) = e_vib
    call rng_init(104729)
    call normalmode_init(par)
    ok_all = .true.
@@ -210,7 +214,7 @@ program check_samp_normalmode
       if (norm2(com_new) > 1.0d-10) ok_all = .false.                           ! (c)
    end do
    if (ok_all) then
-      print '(a,es12.4,a)', '(a)-(c) energy/momentum/COM: PASS (E = e_vib*e_conv = ', e_tot, &
+      print '(a,es12.4,a)', '(a)-(c) energy/momentum/COM: PASS (E = e_vib*ev_dyn = ', e_tot, &
          ' internal exact 1e-10; |sum p| ~ 0, COM at origin, state in span(C))'
    else
       print '(a)', 'FAIL (a)-(c): energy identity, momentum, COM or subspace containment broke'
@@ -294,7 +298,7 @@ program check_samp_normalmode
    call set_scheme([6, 6])
    call state_create(sta, 6)
    call table_to_par(par, 2, c_tab, w_tab)
-   par%e_vib = e_vib
+   par%e_vib = [ e_vib, e_vib ]      ! one energy, two rows
    call rng_init(611953)
    call normalmode_init(par)
    ok_all = .true.
@@ -306,7 +310,7 @@ program check_samp_normalmode
    end do
    if (ok_all) then
       print '(a,es12.4,a)', '(p) dual-carrier equal treatment: PASS (each carrier block carries E = ', &
-         e_tot, ' = e_vib*e_conv exactly; both fragments are written)'
+         e_tot, ' = e_vib*ev_dyn exactly; both fragments are written)'
    else
       print '(a)', 'FAIL (p) dual-carrier: a fragment block does not carry the full energy'
       nfail = nfail + 1

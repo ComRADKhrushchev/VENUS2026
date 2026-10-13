@@ -7,6 +7,7 @@
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 interface/sysdef_interface.f90 input.f90 &
 !            globals/config_atoms.f90 globals/state.f90 &
+!            utils/hessian.f90 utils/geom_init.f90 utils/spectrum.f90 interface/elec_interface.f90 interface/force_interface.f90 dynamics/propagator.f90 interface/bath.f90 &
 !            utils/rng.f90 utils/linalg.f90 utils/geometry.f90 interface/sampler.f90 &
 !            methods/samp_rotation.f90 &
 !            ../scripts/check_samp_rotation.f90 -o build/check_samp_rotation.exe
@@ -25,9 +26,9 @@
 ! Criteria:
 !   (a) angular-momentum magnitude exact: for J = 0, 1, 2, 3, 4, 5 over a
 !       LINEAR carrier (masses 1/2 amu at +/-0.6 Ang), 500 draws each:
-!       |sum r x p| = sqrt(J(J+1))*hbar_code to 1e-10 relative (J = 0:
+!       |sum r x p| = sqrt(J(J+1))*hbar_act to 1e-10 relative (J = 0:
 !       identically zero momenta)
-!   (b) zero total momentum exact: |sum p| <= 1e-9 hbar_code-scale for
+!   (b) zero total momentum exact: |sum p| <= 1e-9 hbar_act-scale for
 !       every draw of (a) (the construction leaves no residual COM drift)
 !   (c) linear-rotor energy identity: E = sum |p|^2/(2m) equals
 !       |L|^2/(2*I_perp) with I_perp computed here at the WRITTEN
@@ -71,7 +72,7 @@
 !       rotation_init -> stderr names rotation_draw (the two-phase guard site)
 !=====================================================================
 program check_samp_rotation
-   use consts,        only: hbar_code, e_conv
+   use consts,        only: hbar_act
    use rng,           only: rng_init
    use config,        only: reactants
    use config_atoms, only: list_atoms, list_atoms_clear
@@ -95,15 +96,17 @@ program check_samp_rotation
    logical :: ok_all
 
    ! ---------- child dispatch: one bad case per spawn, must named abort ----------
+   allocate (par%j_rot(1))   ! single-carrier check face
+   par%j_rot(1) = 0
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       call state_create(sta, 3)
-      par%j_rot = 2
+      par%j_rot(1) = 2
       select case (trim(mode))
       case ('bad-jneg')                    ! (h): j_rot = -1
          call setup_lin()
          call set_scheme([3])
-         par%j_rot = -1
+         par%j_rot(1) = -1
          call rotation_init(par)
       case ('bad-atom')                    ! (i): single-atom carrier
          call setup_atom()
@@ -135,17 +138,17 @@ program check_samp_rotation
       call setup_lin()
       call set_scheme([3])
       call state_create(sta, 2)
-      par%j_rot = jval
+      par%j_rot(1) = jval
       call rng_init(104729 + jval)
       call rotation_init(par)
-      l_mag = sqrt(dble(jval*(jval + 1)))*hbar_code
+      l_mag = sqrt(dble(jval*(jval + 1)))*hbar_act
       ok_all = .true.
       do draw = 1, ndraw_id
          call rotation_sample(sta)
          call frag_lxpr(sta, 2, l_vec, e_kin)
          if (abs(norm2(l_vec) - l_mag) > 1.0d-10*max(l_mag, 1.0d-12)) ok_all = .false.  ! (a)
          if (jval == 0 .and. any(sta%p(1:6) /= 0.0d0)) ok_all = .false.                ! (a) J=0
-         if (norm2(sta%p(1:3) + sta%p(4:6)) > 1.0d-9*hbar_code) ok_all = .false.  ! (b)
+         if (norm2(sta%p(1:3) + sta%p(4:6)) > 1.0d-9*hbar_act) ok_all = .false.  ! (b)
          ! (c) linear-rotor energy identity at the written geometry
          i_perp = 0.0d0
          com = 0.0d0
@@ -181,10 +184,10 @@ program check_samp_rotation
    call setup_non()
    call set_scheme([3])
    call state_create(sta, 3)
-   par%j_rot = 2
+   par%j_rot(1) = 2
    call rng_init(15485863)
    call rotation_init(par)
-   l_mag = sqrt(6.0d0)*hbar_code
+   l_mag = sqrt(6.0d0)*hbar_act
    ! equilibrium pair distances (rigid-geometry reference)
    do i = 1, 3
       do k = i + 1, 3
@@ -251,7 +254,7 @@ program check_samp_rotation
    call setup_lin()
    call set_scheme([3])
    call state_create(sta, 2)
-   par%j_rot = 1
+   par%j_rot(1) = 1
    call rng_init(32452843)
    call rotation_init(par)
    asum = 0.0d0
@@ -281,19 +284,19 @@ program check_samp_rotation
    call setup_two()
    call set_scheme([3, 3])
    call state_create(sta, 4)
-   par%j_rot = 2
+   par%j_rot = [ 2, 2 ]              ! one J, two rows
    call rng_init(2718281)
    call rotation_init(par)
-   l_mag = sqrt(6.0d0)*hbar_code
+   l_mag = sqrt(6.0d0)*hbar_act
    ok_all = .true.
    do draw = 1, ndraw_id
       call rotation_sample(sta)
       call frag_lxpr(sta, 2, l_vec, e_kin, 1)      ! carrier 1: atoms 1/2
       if (abs(norm2(l_vec) - l_mag) > 1.0d-10*l_mag) ok_all = .false.
-      if (norm2(sta%p(1:3) + sta%p(4:6)) > 1.0d-9*hbar_code) ok_all = .false.
+      if (norm2(sta%p(1:3) + sta%p(4:6)) > 1.0d-9*hbar_act) ok_all = .false.
       call frag_lxpr(sta, 2, l_vec, e_kin, 3)      ! carrier 2: atoms 3/4
       if (abs(norm2(l_vec) - l_mag) > 1.0d-10*l_mag) ok_all = .false.
-      if (norm2(sta%p(7:9) + sta%p(10:12)) > 1.0d-9*hbar_code) ok_all = .false.
+      if (norm2(sta%p(7:9) + sta%p(10:12)) > 1.0d-9*hbar_act) ok_all = .false.
    end do
    nfail0 = nfail
    if (ok_all) then

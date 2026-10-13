@@ -19,10 +19,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # 十名与期望形(prebuild.sh:118-119, 142-143)
-SUB_NAMES = ("pes", "load", "prop", "match", "sync", "arm")          # 期望 subroutine
+SUB_NAMES = ("pes", "load", "prop", "match", "sync", "init")         # 期望 subroutine
 FUNC_NAMES = ("keys", "term", "classify", "method_name")             # 期望 function
 ALL_NAMES = ("pes", "keys", "load", "term", "classify",
-             "prop", "match", "sync", "arm", "method_name")          # 核对顺序
+             "prop", "match", "sync", "init", "method_name")         # 核对顺序
 
 _MODULE_RE = re.compile(r"^module\s+[a-z_]")
 _DEF_RE = re.compile(r"(subroutine|function)\s+[a-z_]")
@@ -31,7 +31,7 @@ _END_TAIL_RE = re.compile(r"end\s*$")
 
 @dataclass
 class NameDef:
-    """一个魔术名的定义(一次出现)。"""
+    """一个预留名的定义(一次出现)。"""
     kind: str      # 's'(subroutine) / 'f'(function)
     name: str
     module: str    # 归属模块名(原始大小写;空 = 模块外)
@@ -149,7 +149,7 @@ def scan_container(folder: str | Path) -> ScanResult:
     f90s = sorted(p.glob("*.f90"))
     res.has_f90 = bool(f90s)
     if not f90s:
-        res.errors.append("文件夹无 .f90 文件(纯势容器须暴露魔术名,势能面组至少 pes)")
+        res.errors.append("文件夹无 .f90 文件(纯势容器须暴露预留名,势能面组至少 pes)")
         return res
     if any(f.name.startswith("reg_") for f in f90s):
         res.is_tier1 = False
@@ -169,17 +169,17 @@ def scan_container(folder: str | Path) -> ScanResult:
         if not got:
             continue
         if len(got) >= 2:
-            res.errors.append(f"魔术名 '{nm}' 定义了 {len(got)} 次(只允许一次)")
+            res.errors.append(f"预留名 '{nm}' 定义了 {len(got)} 次(只允许一次)")
             continue
         d = got[0]
         if d.kind != want:
             res.errors.append(
-                f"魔术名 '{nm}' 须为 {'subroutine' if want == 's' else 'function'},"
+                f"预留名 '{nm}' 须为 {'subroutine' if want == 's' else 'function'},"
                 f"实际是 {'subroutine' if d.kind == 's' else 'function'}"
             )
             continue
         if not d.module:
-            res.errors.append(f"魔术名 '{nm}' 定义在模块之外(织入需要模块归属)")
+            res.errors.append(f"预留名 '{nm}' 定义在模块之外(织入需要模块归属)")
             continue
 
     # 配对规则(prebuild.sh:153-166)
@@ -192,8 +192,8 @@ def scan_container(folder: str | Path) -> ScanResult:
     else:
         if defs["sync"]:
             res.errors.append("sync 已定义但 prop+match 未定义(孤立的 sync 不构成包)")
-        if defs["arm"]:
-            res.errors.append("arm 已定义但 prop+match 未定义(孤立的 arm 不构成包)")
+        if defs["init"]:
+            res.errors.append("init 已定义但 prop+match 未定义(孤立的 init 不构成包)")
         if defs["method_name"]:
             res.errors.append("method_name 已定义但 prop+match 未定义")
     if not defs["pes"]:

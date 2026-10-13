@@ -7,6 +7,7 @@
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 interface/sysdef_interface.f90 input.f90 &
 !            globals/config_atoms.f90 globals/state.f90 &
+!            utils/hessian.f90 utils/geom_init.f90 utils/spectrum.f90 interface/elec_interface.f90 interface/force_interface.f90 dynamics/propagator.f90 interface/bath.f90 &
 !            utils/rng.f90 utils/linalg.f90 utils/geometry.f90 interface/sampler.f90 methods/samp_j.f90 &
 !            ../scripts/check_samp_j.f90 -o build/check_samp_j.exe
 ! All artifacts are written under build/ - the source tree stays clean.
@@ -66,7 +67,7 @@
 !       stderr names j_init, the cap and t_rot
 !=====================================================================
 program check_samp_j
-   use consts,        only: hbar_code, kb_code
+   use consts,        only: hbar_act, kb_act
    use rng,           only: rng_init
    use config,        only: reactants
    use config_atoms, only: list_atoms, list_atoms_clear
@@ -86,20 +87,22 @@ program check_samp_j
    character(len=32) :: mode
 
    ! ---------- child dispatch: one bad case per spawn, must named abort ----------
+   allocate (par%t_rot(1))   ! single-carrier check face
+   par%t_rot(1) = 0.0d0
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       call state_create(sta, 2)
-      par%t_rot = 300.0d0
+      par%t_rot(1) = 300.0d0
       select case (trim(mode))
       case ('bad-temp')                     ! (e): t_rot = 0
          call setup_mol(1, linear_geometry())
          call set_scheme([4])
-         par%t_rot = 0.0d0
+         par%t_rot(1) = 0.0d0
          call j_init(par)
       case ('bad-scan')                     ! (l): ladder flat to the 1e7 cap
          call setup_mol(1, linear_geometry())
          call set_scheme([4])
-         par%t_rot = 1.0d15
+         par%t_rot(1) = 1.0d15
          call j_init(par)
       case ('bad-atom')                     ! (f): single-atom carrier
          call setup_mol(1, atom_geometry())
@@ -133,7 +136,7 @@ program check_samp_j
    call setup_mol(1, linear_geometry())
    call set_scheme([4])
    call state_create(sta, 2)
-   par%t_rot = 300.0d0
+   par%t_rot(1) = 300.0d0
    call rng_init(7319)
    call j_init(par)
 
@@ -152,7 +155,7 @@ program check_samp_j
    ! (trace of the inertia tensor = 2*sum m|r|^2, and the linear rotor's
    ! two equal perpendicular moments make trace = 2*I_perp - so I_perp is
    ! the mass sum itself, no further factor)
-   c_theory = hbar_code**2/(2.0d0*i_perp*kb_code*300.0d0)
+   c_theory = hbar_act**2/(2.0d0*i_perp*kb_act*300.0d0)
 
    nfail0 = nfail
    if (abs(j_c_rot() - c_theory) > 1.0d-12*c_theory) then
@@ -236,7 +239,7 @@ program check_samp_j
    call setup_mol(2, linear_geometry())
    call set_scheme([4, 4])
    call state_create(sta, 4)
-   par%t_rot = 300.0d0
+   par%t_rot = [ 300.0d0, 300.0d0 ]   ! one temperature, two rows
    call rng_init(7331)
    call j_init(par)
    dmean = 0.0d0

@@ -40,6 +40,7 @@ def _gas(page):
 def _surf(page):
     page._sd_line.setText(str(ROOT / "cases" / "case_spectrum_source" / "h2ag_ebk" / "system"))
     page._rescan()
+    page._w["SCATTERING"].setCurrentText("SURFACE")
 
 
 def test_natural_packing():
@@ -62,15 +63,16 @@ def test_natural_packing():
 
 
 def test_member_rows_packed_by_word():
-    """成员参数按方案词打包: THERMALIZE 三键同行; 换词后另一词的键同行。"""
+    """逐片段参数随方案行内联(2026-10-13 括号裁定): 单词全参数一次铺开,
+    无参数词不产生字段;占位符带物理量说明。"""
     page = _page()
     _gas(page)
-    for c in page._scheme_combos:
-        c.setCurrentText("THERMALIZE")
-    assert page._same_row("T_EQ", "N_EQ") and page._same_row("N_EQ", "DT_EQ")
-    for c in page._scheme_combos:
-        c.setCurrentText("EBK")
-    assert page._same_row("N_VIB", "N_ROT")
+    page._scheme_combos[0].setCurrentText("BARRIER_EXCITATION")
+    f = page._scheme_params[0]
+    assert set(f) == {"E_STAB", "N_E_BAR", "E_BAR", "T_BAR"}
+    assert f["T_BAR"].placeholderText(), "占位符载有物理量说明"
+    page._scheme_combos[0].setCurrentText("ROTATION")
+    assert set(page._scheme_params[0]) == {"J_ROT"}
 
 
 def test_mode_combo_value_display():

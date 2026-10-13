@@ -38,9 +38,9 @@ program venus
    use recorder,       only: rec_select, rec_frame, rec_final, rec_n_sel, rec_fin_val
    use final_state,    only: fin_t, fin_eval, container_classify, container_classify_bound
    use density,        only: dens_states, eig_out
-   use hist,           only: hist_spec_t, hist_data_t, lat_t, plot_hist, &
+   use hist,           only: hist_spec_t, hist_data_t, plot_hist, &
                              k_e_hist, k_t_hist
-   use input,          only: read_input, input_audit_declared
+   use input,          only: read_input, input_audit_declared, input_audit_dist_par
    implicit none
 
    ! -- orchestration counters and flags (locals) --
@@ -87,8 +87,6 @@ program venus
    type(hist_data_t) :: data_hist            ! trajectory row table (aggregated from fin truth +
                                              ! the recorder final-state rows; system-diagnostic
                                              ! columns stay unaggregated - no generic producer)
-   type(lat_t) :: lattice                    ! lattice constants (mapped from the atom list unit
-                                             ! cell; consumed by the lattice-aware histogram kinds)
 
    ! ===== Phase 1: assembly (the order below is binding) =====
    call registry_gen_keys()                        ! 1. key-declaration aggregate (the
@@ -105,11 +103,12 @@ program venus
                                                    !    aborts with a named error inside sysdef_load)
    call list_atoms_load()                              ! 5. list_atoms (fragments / masses / equilibrium
                                                    !    placement, from the sysdef products)
-   call state_create(sta, size(list_atoms%mass), max(electronic%n_surf, 1))
+   call state_create(sta, size(list_atoms%mass))
                                                    ! 6. physical state (natoms from the atom list;
-                                                   !    the max() is the N_SURF reconcile - the
-                                                   !    input default 0 folds to the adiabatic
-                                                   !    one-surface point)
+                                                   !    the electronic ontic layer stays at the
+                                                   !    adiabatic degenerate point - a multi-surface
+                                                   !    method member's init reallocates a/rho to
+                                                   !    its own declared shape)
    if (size(sta%q) /= 3*size(list_atoms%mass)) then    ! size-equality guard (drift backstop; both
                                                    ! sides named)
       write (0, '(a,i0,a,i0,a)') 'driver: size guard - the state holds ', size(sta%q), &
@@ -122,7 +121,7 @@ program venus
                                                    !    distribution members, container bindings,
                                                    !    and the integrator closed set)
    call registry_gen_init()                        ! 8. the assembly: the container seam FIRST
-                                                   !    (parameter load / term / classify / arm /
+                                                   !    (parameter load / term / classify / init /
                                                    !    columns - a load-dependent PES is
                                                    !    computable from here on), then buffered
                                                    !    member keys -> each member's own init (an
@@ -137,6 +136,10 @@ program venus
                                                    !    buffered declared key pulled exactly once;
                                                    !    a stranded row is a configuration or
                                                    !    authoring error, named here)
+   call input_audit_dist_par()                    ! 9b. bracket-parameter consumption audit (every
+                                                   !    staged DIST_SCHEME pair pulled exactly once
+                                                   !    by its carrier's member - the 2026-10-13
+                                                   !    bracket ruling's no-silent-swallow gate)
    call container_init()                          ! 10. container assembly + formal validation
                                                    !    (legal with no container dragged in - the
                                                    !    degenerate method row still binds;
@@ -279,18 +282,13 @@ program venus
    if (n_valid >= 1) then
       ! the two plain histogram kinds over the aggregated columns; range rule
       ! [0, column max + 1) keeps every aggregated row in range by construction
-      ! (the v_hi > v_lo invariant is owned by the guard inside plot_hist). The
-      ! lattice feeds only the lattice-aware kinds - the two plain kinds never
-      ! read it
-      lattice%a_lat = list_atoms%a_lat
-      lattice%skew = list_atoms%skew
-      lattice%q_ref = 0.0d0
+      ! (the v_hi > v_lo invariant is owned by the guard inside plot_hist)
       spec_hist = hist_spec_t(k_e_hist, 'hist_e_rel.dat', 0.0d0, &
                               maxval(data_hist%e_rel) + 1.0d0, 40, 0, .true.)
-      call plot_hist(spec_hist, data_hist, lattice)
+      call plot_hist(spec_hist, data_hist)
       spec_hist = hist_spec_t(k_t_hist, 'hist_thta.dat', 0.0d0, &
                               maxval(data_hist%thta) + 1.0d0, 40, 0, .true.)
-      call plot_hist(spec_hist, data_hist, lattice)
+      call plot_hist(spec_hist, data_hist)
       write (*, '(a,i0,a)') 'histograms: rows=', n_valid, &
          ' files=hist_e_rel.dat hist_thta.dat'
    end if

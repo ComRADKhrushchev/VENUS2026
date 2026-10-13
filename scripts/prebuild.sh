@@ -84,7 +84,7 @@ done
 
 # ---------- auto-PES container scan (2026-10-12, docs/plans/2026-10-12-auto-pes-container.md) ----------
 # A systems/* folder WITHOUT reg_*.f90 is a pure-PES container (Tier 1): the
-# ten magic names (pes/keys/load/term/classify + prop/match/sync/arm/method_name)
+# ten reserved names (pes/keys/load/term/classify + prop/match/sync/init/method_name)
 # its modules expose get woven into registry_gen below. A folder WITH reg_*.f90
 # is untouched (the explicit reg is authoritative - Tier 2).
 auto_fatal() { # $1 = message (the design's named aborts, prebuild side)
@@ -104,18 +104,18 @@ for d in "$SRC/../systems"/*/; do
    auto_dir="$d"
 done
 
-# magic-name scan: emits "kind name module" per definition (kind s/f).
+# reserved-name scan: emits "kind name module" per definition (kind s/f).
 # Comment tails are stripped and the keyword may sit behind a type/purity
 # prefix - "logical function term(sta)" is the idiomatic declaration form
 # (reference_box writes it; a line-start anchor would silently MISS it).
 # "end subroutine pes" never matches (the end-prefix exclusion). The name's
-# argument paren is stripped, not demanded: a paren-less magic-name definition
+# argument paren is stripped, not demanded: a paren-less reserved-name definition
 # still counts and fatals as a duplicate/wrong-form - loud, never a wrong weave.
 # A wrong-kind hit (subroutine keys / function pes) emits its actual kind -
 # the caller's form check fatals on it.
 auto_scan_file() { # $1 = source path
    awk '
-      BEGIN { split("pes load prop match sync arm", sa); for (i in sa) sk[sa[i]] = 1
+      BEGIN { split("pes load prop match sync init", sa); for (i in sa) sk[sa[i]] = 1
               split("keys term classify method_name", fa); for (i in fa) fk[fa[i]] = 1 }
       {
          line = $0
@@ -135,19 +135,19 @@ auto_scan_file() { # $1 = source path
       }' "$1"
 }
 
-declare -A auto_mod                     # magic name -> owning module
+declare -A auto_mod                     # reserved name -> owning module
 auto_pair=no
 if [ -n "$auto_dir" ]; then
    defs=$(for f in "$auto_dir"*.f90; do auto_scan_file "$f"; done)
-   for nm in pes keys load term classify prop match sync arm method_name; do
-      case "$nm" in pes|load|prop|match|sync|arm) want=s;; *) want=f;; esac
+   for nm in pes keys load term classify prop match sync init method_name; do
+      case "$nm" in pes|load|prop|match|sync|init) want=s;; *) want=f;; esac
       got=$(printf '%s\n' "$defs" | awk -v n="$nm" '$2 == n {print}')
       cnt=$(printf '%s\n' "$got" | grep -c .) || true
       [ "$cnt" -eq 0 ] && continue
-      [ "$cnt" -ge 2 ] && auto_fatal "magic name '$nm' is defined $cnt times in $auto_dir (exactly one allowed)"
+      [ "$cnt" -ge 2 ] && auto_fatal "reserved name '$nm' is defined $cnt times in $auto_dir (exactly one allowed)"
       read -r kind _ mod _ <<<"$(printf '%s\n' "$got")"
-      [ "$kind" != "$want" ] && auto_fatal "magic name '$nm' must be a $([ "$want" = s ] && echo subroutine || echo function), the other form was found in $auto_dir"
-      [ -z "$mod" ] && auto_fatal "magic name '$nm' sits outside any module in $auto_dir (the weave needs a module owner)"
+      [ "$kind" != "$want" ] && auto_fatal "reserved name '$nm' must be a $([ "$want" = s ] && echo subroutine || echo function), the other form was found in $auto_dir"
+      [ -z "$mod" ] && auto_fatal "reserved name '$nm' sits outside any module in $auto_dir (the weave needs a module owner)"
       auto_mod[$nm]=$mod
    done
    n_pm=0
@@ -161,7 +161,7 @@ if [ -n "$auto_dir" ]; then
       [ -z "${auto_mod[method_name]:-}" ] && auto_fatal "prop+match are defined but method_name is missing in $auto_dir (the registration name is author data)"
    else
       [ -n "${auto_mod[sync]:-}" ] && auto_fatal "sync is defined but prop+match are not (a lone sync member is not a package) in $auto_dir"
-      [ -n "${auto_mod[arm]:-}" ] && auto_fatal "arm is defined but prop+match are not (a lone arm is not a package) in $auto_dir"
+      [ -n "${auto_mod[init]:-}" ] && auto_fatal "init is defined but prop+match are not (a lone init member is not a package) in $auto_dir"
       [ -n "${auto_mod[method_name]:-}" ] && auto_fatal "method_name is defined but prop+match are not in $auto_dir"
    fi
    [ -z "${auto_mod[pes]:-}" ] && auto_fatal "$auto_dir is installed (folder present, no reg_*.f90) but wires nothing: expose exactly one 'pes' entry, or write a reg_*.f90 full container"
@@ -199,11 +199,11 @@ fi
       [ -n "${auto_mod[keys]:-}" ] && echo "   use input,           only: input_declare_keys"
       if [ "$auto_pair" = yes ]; then
          echo "   use elec_interface,  only: method_reg"
-         [ -n "${auto_mod[arm]:-}" ] && echo "   use config,          only: electronic"
+         [ -n "${auto_mod[init]:-}" ] && echo "   use config,          only: electronic"
       fi
       for m in $(printf '%s\n' "${auto_mod[@]}" | sort -u); do
          names=""; first=1
-         for nm in pes keys load term classify prop match sync arm method_name; do
+         for nm in pes keys load term classify prop match sync init method_name; do
             if [ "${auto_mod[$nm]:-}" = "$m" ]; then
                if [ "$first" -eq 1 ]; then names="$nm"; first=0; else names="$names, $nm"; fi
             fi
@@ -232,7 +232,7 @@ fi
       args="$args force"
       [ "$auto_pair" = yes ]         && args="$args method"
       [ -n "${auto_mod[term]:-}" ]     && args="$args term"
-      [ -n "${auto_mod[arm]:-}" ]      && args="$args arm"
+      [ -n "${auto_mod[init]:-}" ]     && args="$args init"
       [ -n "${auto_mod[classify]:-}" ] && args="$args classify"
       echo "   subroutine auto_slots()"
       ia=0
@@ -264,9 +264,9 @@ fi
       [ -n "${auto_mod[term]:-}" ] && { echo "   subroutine auto_term()"
          echo "      call container_bind_term(term)"
          echo "   end subroutine auto_term"; }
-      [ -n "${auto_mod[arm]:-}" ] && { echo "   subroutine auto_arm()"
-         echo "      if (trim(electronic%method) == method_name()) call arm()"
-         echo "   end subroutine auto_arm"; }
+      [ -n "${auto_mod[init]:-}" ] && { echo "   subroutine auto_init()"
+         echo "      if (trim(electronic%method) == method_name()) call init()"
+         echo "   end subroutine auto_init"; }
       [ -n "${auto_mod[classify]:-}" ] && { echo "   subroutine auto_classify()"
          echo "      call container_bind_classify(classify)"
          echo "   end subroutine auto_classify"; }

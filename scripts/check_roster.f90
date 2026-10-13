@@ -37,19 +37,18 @@
 !       the E15 arrayed shape (2 homogeneous rows, nat 2/2, list = contiguous runs
 !       1-2 / 3-4, mass = row sums, qz = packed geometry, name = the file stem);
 !       q0 = the 3N packed
-!       vector; no cell -> skew/box_lx/box_ly 0; a_lat 0; size(frag)
+!       vector; no cell -> skew/box_lx/box_ly 0; size(frag)
 !       = reactants%n_frag; surface_model 0; the role rows resolve through the
 !       names (i_proj = 2 (co), i_targ = 1 (au_cluster) - the name sort puts
 !       au_cluster first)
 !   (b) end-to-end surface chain: skewed-cell POSCAR (a1=(4,0,0), a2=(1,3,0),
 !       Cartesian mode - see the sample note below) + probe.xyz; the input route
-!       supplies the window key (read_input stages A_LAT = 3.0,
-!       list_atoms_load pulls them - input-owned, validated not derived) and the
-!       surface role key (PROJECTILE = probe) ->
+!       supplies the class and cell (read_input stages SCATTERING = SURFACE and
+!       CELL = the same skewed vectors - input-owned, validated not derived)
+!       and the surface role key (PROJECTILE = probe) ->
 !       box_lx = 4, box_ly = sqrt(10),
-!       skew = acos(1/sqrt(10)) exactly (law of cosines on the buffered cell vectors);
-!       a_lat = 3.0 landed from the buffered input; slab rows
-!       before probe (name order: a_slab < probe)
+!       skew = acos(1/sqrt(10)) exactly (law of cosines on the CELL rows);
+!       slab rows before probe (name order: a_slab < probe)
 !   (c) D4 invariants positive-path: on BOTH assembled atom lists every fragment
 !       nat <= atom count, every list index within 1..n_atoms, all masses positive
 !       (the molecular re-load here re-reads the MOLECULAR input first - the input
@@ -57,19 +56,19 @@
 !       into a molecular load)
 !   (d) guard named abort (child): list_atoms_load with no prior sysdef_load -> nonzero
 !       exit, stderr names list_atoms_load and the assembly-order error
-!   (e) missing window key named abort (child): surface folder loaded clean, no
-!       A_LAT buffered -> nonzero exit, stderr names list_atoms_load and the missing
-!       required key A_LAT (a system parameter with no generic default)
-!   (f) degenerate-cell named abort (child): POSCAR with a zero in-plane lattice
+!   (e) missing window key named abort (child): surface class staged, no
+!       CELL buffered -> nonzero exit, stderr names list_atoms_load and the missing
+!       required key CELL (a system parameter with no generic default)
+!   (f) degenerate-cell named abort (child): a CELL with a zero in-plane
 !       vector -> nonzero exit, stderr names list_atoms_load and the degenerate cell
 !       (old SURF.f:74-79 rule)
 !   (g) list_atoms_clear + re-load: clear deallocates every member and resets every
-!       scalar to its default (skew/box_lx/box_ly/a_lat 0, role rows
+!       scalar to its default (skew/box_lx/box_ly 0, role rows
 !       i_proj/i_targ 0); a
 !       molecular re-load (its own input re-read first - same buffer-persistence
 !       rule as (c)) after the surface load leaves exactly the molecular
-!       list_atoms - no cross-load leakage (the window scalars included: the surface
-!       load left a_lat 3.0, the molecular re-load must return it to 0)
+!       list_atoms - no cross-load leakage (the box scalars included: the surface
+!       load left box_lx 4, the molecular re-load must return it to 0)
 !=====================================================================
 program check_roster
    use config_atoms, only: list_atoms, list_atoms_load, list_atoms_clear
@@ -96,8 +95,10 @@ program check_roster
       call get_command_argument(1, mode)
       select case (trim(mode))
       case ('c-guard');  call list_atoms_load()
-      case ('c-alat');   call sysdef_load('build/roster_case_surf'); call list_atoms_load()
-      case ('c-degen');  call sysdef_load('build/roster_case_degen'); call list_atoms_load()
+      case ('c-cell');   call read_input('build/roster_case_surf_nocell_input.txt')
+                        call sysdef_load('build/roster_case_surf'); call list_atoms_load()
+      case ('c-degen');  call read_input('build/roster_case_degen_input.txt')
+                        call sysdef_load('build/roster_case_degen'); call list_atoms_load()
       case default
          print '(a)', 'child: unknown mode '//trim(mode)
          stop 2
@@ -134,13 +135,29 @@ program check_roster
       'check_roster degenerate-cell sample', '1.0', &
       '0.0 0.0 0.0', '0.0 2.0 0.0', '0.0 0.0 2.0', &
       'Si', '1', 'Direct', '0.00 0.00 0.00' ])
-   ! (b) surface-window input: the six required keys + both window keys (the
-   ! values the surface chain must land in the atom list) + the surface role key
+   ! (b) surface-window input: the six required keys + the class/cell keys (the
+   ! box the surface chain must land in the atom list - input-owned, validated
+   ! not derived) + the surface role key
    call write_sample('build/roster_case_surf_input.txt', [ character(len=64) :: &
       'SYSTEM_DIR = build/roster_case_surf', &
       'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
       'DIST_SCHEME = boltzmann', &
-      'A_LAT = 3.0', 'PROJECTILE = probe' ])
+      'SCATTERING = SURFACE', &
+      'CELL = 4.0 0.0 0.0, 1.0 3.0 0.0, 0.0 0.0 5.0', &
+      'PROJECTILE = probe' ])
+   ! (e) surface class with the CELL key removed (the missing-window child input)
+   call write_sample('build/roster_case_surf_nocell_input.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/roster_case_surf', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann', &
+      'SCATTERING = SURFACE' ])
+   ! (f) degenerate CELL (zero-length first in-plane vector; the degenerate child input)
+   call write_sample('build/roster_case_degen_input.txt', [ character(len=64) :: &
+      'SYSTEM_DIR = build/roster_case_degen', &
+      'E_REL = 1.0', 'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.01', &
+      'DIST_SCHEME = boltzmann', &
+      'SCATTERING = SURFACE', &
+      'CELL = 0.0 0.0 0.0, 0.0 2.0 0.0, 0.0 0.0 2.0' ])
    ! the molecular-window input: the six required keys + the role keys (the
    ! molecular paradigm admits no window keys; a two-fragment list_atoms resolves
    ! its roles through the names)
@@ -176,7 +193,7 @@ program check_roster
       nfail = nfail + 1
    end if
    if (nfail == nfail0) print '(a)', &
-      '(b) surface chain: PASS (box_lx=4, box_ly=sqrt(10), skew=acos(1/sqrt(10)) exact, a_lat carried)'
+      '(b) surface chain: PASS (box_lx=4, box_ly=sqrt(10), skew=acos(1/sqrt(10)) exact from the CELL rows)'
 
    ! ---------- (c) D4 invariants positive-path (both paradigms) ----------
    nfail0 = nfail
@@ -197,8 +214,8 @@ program check_roster
    ! ---------- (d)-(f) named-abort criteria (child processes) ----------
    call expect_loudstop('c-guard', 'sysdef_load must run first', 'list_atoms_load', &
                         '(d) no-buffer guard loud-stop')
-   call expect_loudstop('c-alat',  'A_LAT', 'list_atoms_load', &
-                        '(e) missing-A_LAT loud-stop (the required window key)')
+   call expect_loudstop('c-cell',  'CELL', 'list_atoms_load', &
+                        '(e) missing-CELL loud-stop (the required window key)')
    call expect_loudstop('c-degen', 'degenerate unit cell', 'list_atoms_load', &
                         '(f) degenerate-cell loud-stop')
 
@@ -208,7 +225,6 @@ program check_roster
    if (allocated(list_atoms%mass) .or. allocated(list_atoms%symb) .or. &
        allocated(list_atoms%frag) .or. allocated(list_atoms%q0) .or. &
        list_atoms%skew /= 0.0d0 .or. list_atoms%box_lx /= 0.0d0 .or. list_atoms%box_ly /= 0.0d0 .or. &
-       list_atoms%a_lat /= 0.0d0 .or. &
        list_atoms%i_proj /= 0 .or. list_atoms%i_targ /= 0) then
       print '(a)', 'FAIL (g) list_atoms_clear: members not deallocated / scalars not reset'
       nfail = nfail + 1
@@ -253,8 +269,7 @@ contains
       if (list_atoms%i_proj /= 2 .or. list_atoms%i_targ /= 1) return   ! PROJECTILE=co / TARGET=au_cluster
       if (.not. equal_reals(list_atoms%frag(1)%qz, [0.0d0,0.0d0,0.0d0,3.0d0,0.0d0,0.0d0])) return
       if (.not. equal_reals(list_atoms%frag(2)%qz, [0.0d0,0.0d0,0.0d0,1.20d0,0.0d0,0.0d0])) return
-      if (list_atoms%skew /= 0.0d0 .or. list_atoms%box_lx /= 0.0d0 .or. list_atoms%box_ly /= 0.0d0 .or. &
-          list_atoms%a_lat /= 0.0d0) return
+      if (list_atoms%skew /= 0.0d0 .or. list_atoms%box_lx /= 0.0d0 .or. list_atoms%box_ly /= 0.0d0) return
       molecular_list_atoms_ok = .true.
    end function molecular_list_atoms_ok
 
@@ -280,7 +295,6 @@ contains
           trim(list_atoms%frag(2)%name) /= 'probe') return
       if (list_atoms%i_proj /= 2 .or. list_atoms%i_targ /= 0) return   ! PROJECTILE=probe; surface carries no target row
       if (list_atoms%box_lx /= w_lx .or. list_atoms%box_ly /= w_ly .or. abs(list_atoms%skew - w_skew) > 0.0d0) return
-      if (list_atoms%a_lat /= 3.0d0) return   ! window key pulled from the input buffer
       surface_list_atoms_ok = .true.
    end function surface_list_atoms_ok
 

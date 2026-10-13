@@ -4,8 +4,9 @@
 !   virial-matched widths sigma_q = sqrt(E)/w, sigma_p = sqrt(E),
 !   E = e_scale*(hbar/2)*w (the ground state at e_scale = 1)
 ! Design:
-!   One e_scale serves every carrier equally; the mode tables arrive as
-!   assembly data - one per carrier (each fragment is its own spectrum);
+!   One e_scale row per carrier (the 2026-10-13 bracket ruling realized
+!   per fragment); the mode tables arrive as assembly data - one per
+!   carrier (each fragment is its own spectrum);
 !   init validates shape and orthonormality loudly per carrier. A Wigner
 !   draw is an energy DISTRIBUTION, not a fixed shell: the per-mode
 !   energy E*(g1^2+g2^2)/2 is exponential with mean E, so the virial
@@ -40,12 +41,14 @@ module samp_wigner
 
    ! Member-owned parameters (the mode tables arrive as assembly data)
    type :: wigner_params_t
-      real(8) :: e_scale = 1.0d0              ! per-mode energy scale, fraction of the zero-point energy [-] (every carrier)
+      real(8), allocatable :: e_scale(:)      ! per-mode energy scales, fraction of the zero-point
+                                              ! energy [-] (one row per carrier; default 1 = the
+                                              ! ground state)
       type(wigner_tbl_t), allocatable :: tbl(:) ! per-carrier mode tables (list_atoms order)
    end type wigner_params_t
 
    ! Derived member state (module-private; rebuilt by every wigner_init) -
-   ! one row per carrier; the Gaussian widths fold the shared e_scale
+   ! one row per carrier; the Gaussian widths fold the carrier's own row
    type :: carry_t
       integer :: frag = 0                     ! carrier list_atoms fragment row [index]
       integer :: nat = 0                      ! carrier atom count [count]
@@ -69,11 +72,17 @@ contains
       real(8) :: com(3), wt, dev, tv(3), tscale, e_mode
       integer :: i, k, d, kc, code, n_carry
 
-      ! 1. parameter validation (fail-loud, naming field + value)
-      if (p%e_scale <= 0.0d0) then
-         call stop_wgz('wigner_init', 'energy scale e_scale (fraction of the zero-point energy) must be '// &
-            'positive, got', p%e_scale)
+      ! 1. parameter validation, per carrier row (fail-loud, naming field + value)
+      if (.not. allocated(p%e_scale)) then
+         call stop_wgx('wigner_init', 'no scale rows (e_scale unallocated) - the reg must '// &
+            'stage one row per wigner carrier')
       end if
+      do kc = 1, size(p%e_scale)
+         if (p%e_scale(kc) <= 0.0d0) then
+            call stop_wgz('wigner_init', 'energy scale e_scale (fraction of the zero-point '// &
+               'energy) must be positive, got', p%e_scale(kc))
+         end if
+      end do
 
       ! 2. carrier binding (assembly-order guards; the atom list fragments whose
       !    dist_scheme rows select this member, list_atoms order)
@@ -98,6 +107,10 @@ contains
       if (n_carry == 0) then
          call stop_wgx('wigner_init', 'no list_atoms fragment carries the wigner scheme - '// &
             'this member would never be dispatched')
+      end if
+      if (size(p%e_scale) /= n_carry) then
+         call stop_wgi2('wigner_init', 'scale row count', size(p%e_scale), &
+            'does not match the wigner carrier count', n_carry)
       end if
       if (.not. allocated(p%tbl) .or. size(p%tbl) /= n_carry) then
          call stop_wgi2('wigner_init', 'mode-table set mismatch: the parameter carries', &
@@ -181,7 +194,7 @@ contains
             end do
             cr%c_c = p%tbl(kc)%c
             do k = 1, cr%n_mode
-               e_mode = p%e_scale*hbar_evfs*p%tbl(kc)%w(k)/2.0d0   ! E = e_scale*(hbar/2)*w [eV]
+               e_mode = p%e_scale(kc)*hbar_evfs*p%tbl(kc)%w(k)/2.0d0   ! E = e_scale*(hbar/2)*w [eV]
                cr%sig_p(k) = sqrt(e_mode*ev_dyn)                   ! sigma_p = sqrt(E*ev_dyn) (unit-mass dynamical)
                cr%sig_q(k) = cr%sig_p(k)/p%tbl(kc)%w(k)            ! sigma_q = sigma_p/w
             end do

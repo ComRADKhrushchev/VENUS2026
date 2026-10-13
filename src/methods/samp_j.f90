@@ -3,13 +3,13 @@
 !   number J from the thermal linear-rotor ladder
 !   P(J) prop. (2J+1)*exp(-E_J/kT), E_J = hbar^2*J(J+1)/(2*I)
 ! Design:
-!   One temperature serves every carrier equally; the moment of inertia
-!   is derived per carrier from its list_atoms equilibrium geometry (never
-!   duplicated), so the ladder constants, support and envelope are
-!   per-carrier state. Each carrier must be linear. This member draws J
-!   only (read back via j_last_j) and writes no q/p; dist_rotation
-!   realizes the orientation at a given J, and wiring J between them is
-!   assembly-phase business.
+!   One temperature row per carrier (the 2026-10-13 bracket ruling realized
+!   per fragment); the moment of inertia is derived per carrier from its
+!   list_atoms equilibrium geometry (never duplicated), so the ladder
+!   constants, support and envelope are per-carrier state. Each carrier
+!   must be linear. This member draws J only (read back via j_last_j) and
+!   writes no q/p; dist_rotation realizes the orientation at a given J,
+!   and wiring J between them is assembly-phase business.
 !   Units: t_rot [K]; I [amu*Ang^2]; hbar_act/kb_act action-context internal.
 !=====================================================================
 module samp_j
@@ -29,9 +29,12 @@ module samp_j
    real(8), parameter :: tail_cut = 1.0d-10     ! support tail cutoff vs the peak [-]
    real(8), parameter :: lin_tol = 1.0d-8       ! linearity eigenvalue ratio tolerance [-]
 
-   ! Member-owned parameters (the moments of inertia are list_atoms-derived)
+   ! Member-owned parameters, one row per carrier (the moments of inertia are
+   ! list_atoms-derived)
    type :: j_params_t
-      real(8) :: t_rot = 0.0d0     ! rotational temperature [K] (every carrier)
+      real(8), allocatable :: t_rot(:)  ! rotational temperatures [K] (one row per
+                                        ! carrier; 0 = the bracket name was absent
+                                        ! and j_init's own validation rejects it)
    end type
 
    ! Derived member state (module-private; rebuilt by every j_init) - one row
@@ -51,17 +54,25 @@ contains
    !             of inertia of every carrier, precompute the per-carrier
    !             distribution tables, bind the carriers
    subroutine j_init(p)
-      type(j_params_t), intent(in) :: p ! member parameters (rotational temperature)
+      type(j_params_t), intent(in) :: p ! member parameters (rotational
+                                        ! temperatures, one row per carrier)
       real(8) :: com(3), r(3)
       real(8) :: tens(3,3), ev(3)
       real(8) :: i_perp, wt, pj, p_max
       integer :: i, j, k, m, kc, code, n_carry, j_peak
       logical :: cut
 
-      ! 1. parameter validation (fail-loud, naming field + value)
-      if (p%t_rot <= 0.0d0) then
-         call stop_jz('j_init', 'rotational temperature t_rot [K] must be positive, got', p%t_rot)
+      ! 1. parameter validation, per carrier row (fail-loud, naming field + value)
+      if (.not. allocated(p%t_rot)) then
+         call stop_jx('j_init', 'no parameter rows (t_rot unallocated) - the reg must '// &
+            'stage one row per j carrier')
       end if
+      do kc = 1, size(p%t_rot)
+         if (p%t_rot(kc) <= 0.0d0) then
+            call stop_jz('j_init', 'rotational temperature t_rot [K] must be positive '// &
+               '(the carrier wrote no T_ROT bracket name); row =', p%t_rot(kc))
+         end if
+      end do
 
       ! 2. carrier binding (assembly-order guards; the atom list fragments whose
       !    dist_scheme rows select this member, list_atoms order)
@@ -86,6 +97,10 @@ contains
       if (n_carry == 0) then
          call stop_jx('j_init', 'no list_atoms fragment carries the j scheme - this member '// &
             'would never be dispatched')
+      end if
+      if (size(p%t_rot) /= n_carry) then
+         call stop_ji2('j_init', 'parameter row count', size(p%t_rot), &
+            'does not match the j carrier count', n_carry)
       end if
       if (allocated(carry)) deallocate (carry)
       allocate (carry(n_carry))
@@ -139,8 +154,9 @@ contains
                   i_perp)
             end if
 
-            ! 4. exponent constant, support scan, envelope (per carrier)
-            cr%c_rot = hbar_act*hbar_act/(2.0d0*i_perp*kb_act*p%t_rot)
+            ! 4. exponent constant, support scan, envelope (per carrier, from
+            !    the carrier's own temperature row)
+            cr%c_rot = hbar_act*hbar_act/(2.0d0*i_perp*kb_act*p%t_rot(kc))
             p_max = 0.0d0
             j_peak = 0
             cr%j_max = max_support
@@ -160,7 +176,7 @@ contains
             if (.not. cut) then
                call stop_jz('j_init', 'support scan reached the cap 10000000 without the tail cut - '// &
                   'the Boltzmann-J ladder is effectively flat to the cap; rotational temperature '// &
-                  't_rot [K] =', p%t_rot)
+                  't_rot [K] =', p%t_rot(kc))
             end if
             cr%p_env = p_max
             cr%last_j = 0

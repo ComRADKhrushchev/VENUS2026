@@ -6,8 +6,10 @@
 ! out of the source tree):
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 interface/sysdef_interface.f90 input.f90 &
-!            globals/config_atoms.f90 globals/state.f90 &
-!            utils/rng.f90 utils/geometry.f90 interface/sampler.f90 methods/samp_boltzmann.f90 &
+!            globals/config_atoms.f90 globals/state.f90 utils/rng.f90 utils/geometry.f90 &
+!            utils/linalg.f90 utils/hessian.f90 utils/geom_init.f90 utils/spectrum.f90 &
+!            interface/elec_interface.f90 interface/force_interface.f90 dynamics/propagator.f90 &
+!            interface/bath.f90 interface/sampler.f90 methods/samp_boltzmann.f90 &
 !            ../scripts/check_samp_boltzmann.f90 -o build/check_samp_boltzmann.exe
 ! All artifacts are written under build/ - the source tree stays clean.
 ! Synthetic-parameter rule: the member is driven by directly constructed
@@ -32,7 +34,7 @@
 !       <n> = 0.9501, 5 sigma = 0.0153) - the modes do not cross-talk
 !   (d) quantum-number table integrity: every draw of every mode is a
 !       non-negative integer (getter returns integers by type)
-!   (e) non-positive temperature named abort (child): t_vib_a = 0 ->
+!   (e) non-positive temperature named abort (child): t_vib = 0 ->
 !       stderr names boltz_init and the field
 !   (f) zero-spectrum named abort (child): w_mode_c unallocated (the no-op
 !       frequency-derivation chain) -> stderr names boltz_init and the
@@ -63,7 +65,7 @@ program check_samp_boltzmann
    use samp_boltzmann, only: boltz_params_t, boltz_init, boltz_draw, boltz_realize, &
                            boltz_sample, boltz_last_n
    use spectrum,      only: w_to_wvn
-   use consts,        only: hbar_code
+   use consts,        only: hbar_act
    implicit none
    type(state_t) :: sta
    type(boltz_params_t) :: par
@@ -77,38 +79,39 @@ program check_samp_boltzmann
    real(8), parameter :: hc_k = 1.43878d0     ! h*c/k [cm*K] (same constant the member declares)
 
    ! ---------- child dispatch: one bad case per spawn, must named abort ----------
+   allocate (par%t_vib(1))   ! single-carrier check face
+   par%t_vib(1) = 0.0d0
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       call setup_mol(1)
       call set_scheme([1])
       call state_create(sta, 2)
       select case (trim(mode))
-      case ('bad-temp')                     ! (e): t_vib_a = 0
-         par%t_vib_a = 0.0d0
-         par%t_vib_b = 0.0d0
+      case ('bad-temp')                     ! (e): t_vib = 0
+         par%t_vib(1) = 0.0d0
          call fill_tbl(par, [ 1000.0d0 ])
          call boltz_init(par)
       case ('bad-nospec')                   ! (f): unallocated table set
-         par%t_vib_a = 300.0d0
+         par%t_vib(1) = 300.0d0
          call boltz_init(par)
       case ('bad-tbl')                      ! (g): an unallocated inner table
-         par%t_vib_a = 300.0d0
+         par%t_vib(1) = 300.0d0
          allocate (par%tbl(2))
          call fill_tbl(par, [ 1000.0d0 ])   ! (fills row 1; row 2 stays unallocated)
          call boltz_init(par)
       case ('bad-freq')                     ! (h): a zero frequency in the table
-         par%t_vib_a = 300.0d0
+         par%t_vib(1) = 300.0d0
          call fill_tbl(par, [ 1000.0d0, 0.0d0 ])
          call boltz_init(par)
       case ('bad-bind0')                    ! (i): no fragment carries the code
          call set_scheme([2])
-         par%t_vib_a = 300.0d0
+         par%t_vib(1) = 300.0d0
          call fill_tbl(par, [ 1000.0d0 ])
          call boltz_init(par)
       case ('bad-bind2')                    ! (j): two carriers, one table
          call setup_mol(2)
          call set_scheme([1, 1])
-         par%t_vib_a = 300.0d0
+         par%t_vib = [ 300.0d0, 300.0d0 ]
          call fill_tbl(par, [ 1000.0d0 ])
          call boltz_init(par)
       case ('bad-noinit')                   ! (k): sample without init
@@ -125,7 +128,7 @@ program check_samp_boltzmann
    call setup_mol(1)
    call set_scheme([1])
    call state_create(sta, 2)
-   par%t_vib_a = 1000.0d0
+   par%t_vib(1) = 1000.0d0
    call fill_tbl(par, [ 1000.0d0 ])
    call rng_init(20260914)
    call boltz_init(par)
@@ -179,7 +182,7 @@ program check_samp_boltzmann
    pm(1) = dot_product(sta%p(1:3) - sta%p(4:6), [ 1.0d0, 0.0d0, 0.0d0 ])/sqrt(2.0d0)
    w_use = 1000.0d0/w_to_wvn(1.0d0)
    e_shell = 0.5d0*(pm(1)**2 + w_use**2*qm(1)**2)
-   e_theory = (dble(boltz_last_n(1, 1)) + 0.5d0)*hbar_code*w_use
+   e_theory = (dble(boltz_last_n(1, 1)) + 0.5d0)*hbar_act*w_use
    p_tot(1:3) = sta%p(1:3) + sta%p(4:6)
    if (abs(e_shell - e_theory) > 1.0d-9*e_theory .or. norm2(p_tot(1:3)) > 1.0d-9 .or. &
        all(sta%q == 0.0d0)) then
@@ -249,7 +252,7 @@ program check_samp_boltzmann
    call state_destroy(sta)
 
    ! ---------- (e)-(k) named-abort criteria (child processes) ----------
-   call expect_loudstop('bad-temp',   'boltz_init',   't_vib_a',     '(e) non-positive temperature loud-stop')
+   call expect_loudstop('bad-temp',   'boltz_init',   't_vib',      '(e) non-positive temperature loud-stop')
    call expect_loudstop('bad-nospec', 'boltz_init',   'spectrum',    '(f) zero-spectrum loud-stop')
    call expect_loudstop('bad-tbl',    'boltz_init',   'unallocated', '(g) inner-table unallocated loud-stop')
    call expect_loudstop('bad-freq',   'boltz_init',   'frequen',     '(h) non-positive frequency loud-stop')
@@ -283,7 +286,9 @@ contains
    ! two-mode parameter set (local helper keeps the child dispatch uniform)
    function two_mode_params() result(p)
       type(boltz_params_t) :: p
-      p%t_vib_a = 1000.0d0
+      allocate (p%t_vib(1))   ! single-carrier check face
+      p%t_vib(1) = 0.0d0
+      p%t_vib(1) = 1000.0d0
       allocate (p%tbl(1))
       call fill_tbl(p, [ 1000.0d0, 500.0d0 ])
    end function two_mode_params
@@ -291,7 +296,8 @@ contains
    ! (l) two-carrier ragged tables: carrier 1 [1000], carrier 2 [1000, 500]
    function dual_params() result(p)
       type(boltz_params_t) :: p
-      p%t_vib_a = 1000.0d0
+      allocate (p%t_vib(2))   ! dual-carrier check face
+      p%t_vib = 1000.0d0
       allocate (p%tbl(2))
       call fill_tbl(p, [ 1000.0d0 ])                    ! carrier 1: one mode
       call fill_tbl2(p, [ 1000.0d0, 500.0d0 ])          ! carrier 2: two modes

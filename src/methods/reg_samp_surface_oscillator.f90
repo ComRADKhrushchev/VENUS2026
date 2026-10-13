@@ -6,15 +6,15 @@
 !   the input grammar accepts for DIST_SCHEME; the reg file is the
 !   atomic registration unit (a new member = its method file + one thin
 !   reg file; zero edits to existing files).
-!   _init is the assembly seam: buffered input keys -> params receiver
-!   (absent keys keep field defaults) -> the member's own init; an
-!   unselected member skips.
+!   _init is the assembly seam: the carrier's bracket parameters
+!   (N_OSC/T_OSC/N_LEVEL/K_OSC - one row per carrier, the 2026-10-13
+!   bracket ruling; absent names keep the member's field defaults) ->
+!   the member's own init; an unselected member skips.
 !=====================================================================
 module reg_samp_surface_oscillator
    use sampler,                 only: samp_reg, samp_code
    use config,                  only: reactants
-   use input,                   only: buffer_n_rows, buffer_key, buffer_val, buffer_line
-   use seam_cast,               only: seam_real, seam_int
+   use input,                   only: par_real, par_int
    use samp_surface_oscillator, only: surface_oscillator_draw, surface_oscillator_realize, &
                                       surf_osc_params_t, surface_oscillator_init
    implicit none
@@ -29,22 +29,30 @@ contains
    end subroutine reg_samp_surface_oscillator_all
 
    !------------------------------------------------------------------
-   ! reg_samp_surface_oscillator_init() - assembly seam: buffered keys ->
-   !                                       receiver -> member init
+   ! reg_samp_surface_oscillator_init() - assembly seam: per-carrier
+   !                                       bracket keys (defaults first -
+   !                                       absent names keep them) -> member init
+   !------------------------------------------------------------------
    subroutine reg_samp_surface_oscillator_init()
       type(surf_osc_params_t) :: p     ! member-parameter receiver (field defaults)
-      character(len=512) :: sval       ! one buffered raw value
-      integer :: i
+      integer :: i, k, code, n_carry
       if (.not. allocated(reactants%dist_scheme)) return
-      if (count(reactants%dist_scheme == samp_code('surface_oscillator')) == 0) return
-      do i = 1, buffer_n_rows()
-         sval = buffer_val(i)
-         select case (trim(buffer_key(i)))
-         case ('N_OSC');   call seam_int(buffer_key(i), sval, buffer_line(i), p%n_osc)
-         case ('T_OSC');   call seam_real(buffer_key(i), sval, buffer_line(i), p%t_osc)
-         case ('N_LEVEL'); call seam_int(buffer_key(i), sval, buffer_line(i), p%n_level)
-         case ('K_OSC');   call seam_real(buffer_key(i), sval, buffer_line(i), p%k_osc)
-         end select
+      code = samp_code('surface_oscillator')
+      n_carry = count(reactants%dist_scheme == code)
+      if (n_carry == 0) return
+      allocate (p%n_osc(n_carry), p%t_osc(n_carry), p%n_level(n_carry), p%k_osc(n_carry))
+      p%n_osc   = 0                       ! the member's field defaults (a bare
+      p%t_osc   = 300.0d0                 ! word or an absent bracket name keeps
+      p%n_level = 0                       ! them)
+      p%k_osc   = 1.30092582d0
+      k = 0
+      do i = 1, size(reactants%dist_scheme)
+         if (reactants%dist_scheme(i) /= code) cycle
+         k = k + 1
+         call par_int('SURFACE_OSCILLATOR', i, 'N_OSC',   p%n_osc(k))
+         call par_real('SURFACE_OSCILLATOR', i, 'T_OSC',   p%t_osc(k))
+         call par_int('SURFACE_OSCILLATOR', i, 'N_LEVEL', p%n_level(k))
+         call par_real('SURFACE_OSCILLATOR', i, 'K_OSC',   p%k_osc(k))
       end do
       call surface_oscillator_init(p)
    end subroutine reg_samp_surface_oscillator_init

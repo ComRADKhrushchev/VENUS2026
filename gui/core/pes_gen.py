@@ -7,7 +7,7 @@
     term     三变体: 任意原子逃逸 |q|>R / 前两片段 COM 间距>R / 弹丸 z>R
     classify 两变体: COM 距阈值 → 'bound'/'scattered' / 常量标签
     keys+load        键词表声明 + pull 接线(目标 = 作者模块的 real(8) 公共变量)
-  方法组五名(prop/match/sync/arm/method_name)不生成——真实物理;绝热面
+  方法组五名(prop/match/sync/init/method_name)不生成——真实物理;绝热面
   缺省即可跑。产物 = 容器文件夹内单文件 gui_slots.f90(单模块 gui_slots,
   删除该文件即撤销);生成前扫描防撞名,生成后应重扫确认。
   参照: auto_sample 范本(systems/inactive/auto_sample)与 reg_reference.f90

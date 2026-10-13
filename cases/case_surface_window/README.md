@@ -1,4 +1,4 @@
-# case_surface_window — 表面窗口端到端（POSCAR 胞 + A_LAT + verlet）
+# case_surface_window — 表面窗口端到端（SCATTERING/CELL 主控 + verlet, 2026-10-13 批随裁改键）
 
 > 判据编号范围:A1–A6 仅限本文;跨文档引用带 case 前缀(case_surface_window A1)。
 
@@ -13,7 +13,7 @@
 表面范式全链首例：真程序在**派生**表面范式（POSCAR 含胞 → surface_model=1，
 E14 规约"任一文件带胞 → 表面类"）下端到端跑绿——POSCAR 解析（含**速度块跳过**
 路径，C5.6 首件变体的 case 形覆盖）、胞字段派生（box_lx/box_ly/skew）、
-表面窗口键 reconcile（A_LAT 表面范式必键、装配期拉取，E23；BOXPAD 键随簇盒投放于 E29 退役）、单片段
+表面窗口键 reconcile（2026-10-13 裁决改：SCATTERING = SURFACE 主控 + CELL 晶胞键必填、装配期校验；旧 A_LAT 键退役）、单片段
 弹丸入射（胞内投放 N_AIM=1——胞字段的动力学消费面）、谐振物理系统容器传播与统计面。
 与 check_input (o) 族的 input→sysdef→list_atoms 表面链判据同源——判据在 build/ 下
 一次性构造并随判据程序跑，本 case 在 cases/ 下以可重复重跑的运行材料落档

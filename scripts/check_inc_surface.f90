@@ -29,10 +29,8 @@
 !   (j) unit-cell drop (n_aim = 1, box 3x3 skew 60 deg, S1): drop points
 !       fill the parallelogram, both generator marginals uniform (pooled
 !       chi2, df = 38, critical 53.38)
-!   (k) A_LAT commensurability loud-stop (child): a_lat = 2.0 against the
-!       3x3 cell -> stderr names inc_surface_init and the commensurability
-!   (l) missing A_LAT loud-stop (child): a_lat unset -> stderr names
-!       inc_surface_init and the lattice constant
+!       [the (k)/(l) A_LAT legs retired with the key - the commensurability
+!       gate itself left with the site-statistics machinery, 2026-10-13 ruling]
 !   (m) unresolved-projectile loud-stop (child): i_proj = 0 -> stderr
 !       names inc_surface_init and the projectile role
 !   (n) on-site-with-disk loud-stop (child): B_MAX = 0 with N_B = 1 ->
@@ -44,7 +42,7 @@
 !   (r) draw-before-init loud-stop (child): the beam_laws guard site
 !=====================================================================
 program check_inc_surface
-   use consts,       only: pi, two_pi, e_conv
+   use consts,       only: pi, two_pi, dyn_ev
    use rng,          only: rng_init
    use config,       only: reactants
    use config_atoms, only: list_atoms, list_atoms_clear
@@ -71,12 +69,6 @@ program check_inc_surface
       call set_react(5.0d0, 3.0d0, 8.0d0)
       par = surf_params()
       select case (trim(mode))
-      case ('bad-alat')                   ! (k): incommensurate lattice constant
-         list_atoms%a_lat = 2.0d0
-         call inc_surface_init(par)
-      case ('bad-noalat')                 ! (l): no lattice constant buffered
-         list_atoms%a_lat = 0.0d0
-         call inc_surface_init(par)
       case ('bad-noproj')                 ! (m): unresolved projectile role
          list_atoms%i_proj = 0
          call inc_surface_init(par)
@@ -129,7 +121,7 @@ program check_inc_surface
       sinth = sqrt(1.0d0 - costh*costh)
       if (abs(proj_com(3) - 8.0d0) > 1.0d-12 .or. &
           norm2(proj_com(1:2) - (3.0d0 + 8.0d0*sinth)*[ cos(chi_fix), sin(chi_fix) ]) > 1.0d-12 .or. &
-          abs(v - 2.0d0*sqrt(2.0d0*e_conv*5.0d0/2.0d0)) > 1.0d-9*v .or. &
+          abs(v - 2.0d0*sqrt(2.0d0*5.0d0/(2.0d0*dyn_ev))) > 1.0d-9*v .or. &
           abs(costh - cos(thta_fix)) > 1.0d-12 .or. &
           abs(chi_v - chi_fix) > 1.0d-12) ok_place = .false.
    end do
@@ -169,7 +161,7 @@ program check_inc_surface
       lat_exp = [ aim_x_fix, aim_y_fix ] + 8.0d0*sinth*[ cos(chi_fix), sin(chi_fix) ]
       if (abs(proj_com(3) - 8.0d0) > 1.0d-12 .or. &
           norm2(proj_com(1:2) - lat_exp) > 1.0d-12 .or. &
-          abs(v - 2.0d0*sqrt(2.0d0*e_conv*5.0d0/2.0d0)) > 1.0d-9*v) ok_place = .false.
+          abs(v - 2.0d0*sqrt(2.0d0*5.0d0/(2.0d0*dyn_ev))) > 1.0d-9*v) ok_place = .false.
    end do
    if (.not. ok_place) then
       print '(a)', 'FAIL (v) fixed drop site: the placement does not follow AIM_X/AIM_Y'
@@ -208,7 +200,7 @@ program check_inc_surface
       sinth = sqrt(1.0d0 - costh*costh)
       lat_exp = 3.0d0*[ cos(chi_fix), sin(chi_fix) ] + 8.0d0*sinth*[ cos(chi_fix), sin(chi_fix) ]
       if (norm2(sta%q(1:2) - lat_exp) > 1.0d-12 .or. abs(sta%q(3) - 8.0d0) > 1.0d-12 .or. &
-          abs(v - sqrt(2.0d0*e_conv*5.0d0/12.0d0)) > 1.0d-9*v) ok_place = .false.
+          abs(v - sqrt(2.0d0*5.0d0/(12.0d0*dyn_ev))) > 1.0d-9*v) ok_place = .false.
    end do
    if (.not. ok_place) then
       print '(a)', 'FAIL (w) substrate relaxation: the substrate carriers moved or the projectile is misplaced'
@@ -257,8 +249,6 @@ program check_inc_surface
    call state_destroy(sta)
 
    ! ---------- (k)-(r) named-abort criteria (child processes) ----------
-   call expect_loudstop('bad-alat',        'inc_surface_init', 'commensurate', '(k) A_LAT-commensurability loud-stop')
-   call expect_loudstop('bad-noalat',      'inc_surface_init', 'lattice constant', '(l) missing-A_LAT loud-stop')
    call expect_loudstop('bad-noproj',      'inc_surface_init', 'projectile role', '(m) unresolved-projectile loud-stop')
    call expect_loudstop('bad-b0disk',      'inc_surface_init', 'N_B = 0', '(n) on-site-with-disk loud-stop')
    call expect_loudstop('bad-cell',        'inc_surface_init', 'unit cell', '(p) missing-unit-cell loud-stop')
@@ -321,7 +311,6 @@ contains
       list_atoms%box_lx = 3.0d0
       list_atoms%box_ly = 3.0d0
       list_atoms%skew = pi/2.0d0
-      list_atoms%a_lat = 3.0d0
       reactants%surface_model = 1
       if (allocated(reactants%dist_scheme)) deallocate (reactants%dist_scheme)
       allocate (reactants%dist_scheme(1))
@@ -350,7 +339,6 @@ contains
       list_atoms%box_lx = 3.0d0
       list_atoms%box_ly = 3.0d0
       list_atoms%skew = pi/2.0d0
-      list_atoms%a_lat = 3.0d0
       reactants%surface_model = 1
       if (allocated(reactants%dist_scheme)) deallocate (reactants%dist_scheme)
       allocate (reactants%dist_scheme(2))

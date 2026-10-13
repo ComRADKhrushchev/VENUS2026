@@ -36,12 +36,11 @@ contains
    !------------------------------------------------------------------
    ! inc_surface_init(p) - validate the collision geometry (one projectile
    !                 fragment + substrate carriers), bind the projectile,
-   !                 init the beam instance (on-site beam legal), check the
-   !                 A_LAT/cell commensurability
+   !                 init the beam instance (on-site beam legal)
    !------------------------------------------------------------------
    subroutine inc_surface_init(p)
       type(beam_params_t), intent(in) :: p  ! beam shape parameters
-      real(8) :: mu, rlx, rly
+      real(8) :: mu
       integer :: nf, i
       character(len=*), parameter :: here = 'inc_surface_init'
 
@@ -52,8 +51,8 @@ contains
       end if
       nf = size(list_atoms%frag)
       if (reactants%surface_model == 0) then
-         call stop_surfi(here, 'the surface incident channel requires the surface paradigm '// &
-            '(a cell-carrying system file); surface_model =', reactants%surface_model)
+         call stop_surfi(here, 'the surface incident channel requires the surface class '// &
+            '(SCATTERING = SURFACE); surface_model =', reactants%surface_model)
       end if
       if (list_atoms%i_proj < 1 .or. list_atoms%i_proj > nf) then
          call stop_surfx(here, 'no resolved projectile role (list_atoms%i_proj unset or '// &
@@ -71,31 +70,18 @@ contains
       !    concept and must not appear in a surface input at all
       do i = 1, buffer_n_rows()
          if (trim(buffer_key(i)) == 'B_MAX' .and. buffer_line(i) > 0) then
-            call stop_surfx(here, 'B_MAX must not be written in a surface-paradigm input - '// &
+            call stop_surfx(here, 'B_MAX must not be written in a surface-scattering input - '// &
                'the lateral placement belongs to the N_AIM drop-point modes (origin /'// &
                'unit cell / fixed site); the collision-disk radius is a gas-phase'// &
                'pair concept (raised 2026-09-28, ruled 2026-10-01)')
          end if
       end do
 
-      ! 3. beam laws (the unwritten default b_max = 0 = the on-site beam)
+      ! 3. beam laws (the unwritten default b_max = 0 = the on-site beam;
+      !    the drop-site frame is the CELL-derived box - the site statistics
+      !    lattice itself retired with the A_LAT key, 2026-10-13 ruling)
       call beam_init(beam, p, mu, reactants%e_rel, reactants%b_max, reactants%r_sep, &
                      here, onsite_ok=.true.)
-
-      ! 3. A_LAT / cell commensurability (the lattice constant must divide
-      !    both in-plane edges of the buffered cell - the histogram lattice
-      !    and the drop-point cell must describe the same surface)
-      if (list_atoms%a_lat <= 0.0d0) then
-         call stop_surfx(here, 'no surface lattice constant (list_atoms%a_lat unset) - '// &
-            'the surface paradigm requires the A_LAT key')
-      end if
-      rlx = list_atoms%box_lx/list_atoms%a_lat
-      rly = list_atoms%box_ly/list_atoms%a_lat
-      if (abs(rlx - nint(rlx)) > 1.0d-6*max(1.0d0, abs(rlx)) .or. &
-          abs(rly - nint(rly)) > 1.0d-6*max(1.0d0, abs(rly))) then
-         call stop_surfx(here, 'the buffered cell is not commensurate with A_LAT '// &
-            '(box_lx/A_LAT, box_ly/A_LAT must be integers)')
-      end if
    end subroutine inc_surface_init
 
    !------------------------------------------------------------------

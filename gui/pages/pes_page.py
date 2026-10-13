@@ -90,7 +90,7 @@ class PesPage(QWidget):
         l1.addWidget(QLabel("快选"), 1, 0)
         l1.addWidget(self._quick, 1, 1, 1, 3)
         self._table = QTableWidget(0, 5)
-        self._table.setHorizontalHeaderLabels(["魔术名", "期望形", "在场", "实际", "归属模块/文件"])
+        self._table.setHorizontalHeaderLabels(["预留名", "期望形", "在场", "实际", "归属模块/文件"])
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self._table.setMinimumHeight(240)
         l1.addWidget(self._table, 2, 0, 1, 4)
@@ -149,7 +149,7 @@ class PesPage(QWidget):
         l2.addWidget(b_del, 2, 4)
         l2.addWidget(self._kl_table, 3, 0, 1, 5)
         note = QLabel(
-            "方法组五名(prop/match/sync/arm/method_name)不生成——真实物理,作者提供;"
+            "方法组五名(prop/match/sync/init/method_name)不生成——真实物理,作者提供;"
             "未提供时绝热面缺省即可跑。keys+load 需作者模块的公共 real(8) 变量(扫描后自动预填)。"
         )
         note.setWordWrap(True)

@@ -35,8 +35,8 @@ def test_main_window_smoke(tmp_path):
     page1._view.set_mode(PreviewView.MODE_2D)
     # 星号标注约定:无条件必填静态加粗带 *;条件必填随范式增减(标签=物理量,KEY 入 tooltip)
     assert page1._labels["E_REL"].text() == "<b>碰撞能 *</b> [eV]"
-    assert page1._labels["A_LAT"].text() == "晶格常数 [Å]"   # 表面专用,未扫描不带星
-    assert page1.row_hidden("A_LAT") and page1.row_hidden("N_AIM"), "未扫描: 范式键全藏"
+    assert page1._labels["CELL"].text() == "晶胞矢量 [Å]"     # 表面专用,未扫描不带星
+    assert page1.row_hidden("CELL") and page1.row_hidden("N_AIM"), "未选表面: 范式键全藏"
     page1._sd_line.setText(str(ROOT / "cases" / "case_harmonic_scatter" / "system"))
     page1._rescan()
     assert "气相散射" in page1._info.text()
@@ -52,6 +52,9 @@ def test_main_window_smoke(tmp_path):
     for c in page1._scheme_combos:
         c.setCurrentText("THERMALIZE" if not c.currentIndex() else "ROTATION")
     page1._scheme_combos[1].setCurrentText("ROTATION")
+    # 片段 0 THERMALIZE 的必给参数(T_EQ/N_EQ/DT_EQ)内联填写(2026-10-13 括号形式)
+    for name, v in (("T_EQ", "300.0"), ("N_EQ", "25"), ("DT_EQ", "0.5")):
+        page1._scheme_params[0][name].setText(v)
     page1.refresh_preview()
     assert "示意" in page1._notes.text()
     page1.run_validation()
@@ -62,12 +65,13 @@ def test_main_window_smoke(tmp_path):
     # 页1:表面散射切换(h2ag_ebk)
     page1._sd_line.setText(str(ROOT / "cases" / "case_spectrum_source" / "h2ag_ebk" / "system"))
     page1._rescan()
+    page1._w["SCATTERING"].setCurrentText("SURFACE")   # 范式来自主控键(2026-10-13 裁决)
     assert "表面散射" in page1._info.text()
     assert page1.row_hidden("B_MAX") and page1.row_hidden("TARGET"), "表面散射: 整行隐藏(非禁用)"
-    assert page1._labels["A_LAT"].text() == "<b>晶格常数 *</b> [Å]"
+    assert page1._labels["CELL"].text() == "<b>晶胞矢量 *</b> [Å]"
     assert page1._labels["TARGET"].text() == "靶片段"        # 表面散射:无 TARGET 星
     page1._w["PROJECTILE"].setCurrentText("H2")
-    page1._w["A_LAT"].setText("2.9437")
+    page1._w["CELL"].setText("2.9437 0 0, 1.47185 2.5493 0, 0 0 20")
     page1.set_choice("N_AIM", "1")
     for c in page1._scheme_combos:
         c.setCurrentText("EBK")

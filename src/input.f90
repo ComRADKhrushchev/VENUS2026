@@ -4,18 +4,23 @@
 ! Design:
 !   Standalone grammar, no fallback track: a data line without '=' is a parse error;
 !   old key names and MODEL are unknown keys. Two blocks - run control / system
-!   definition; member-parameter keys stage raw (central dispatch table) for the
-!   member inits at assembly; declared container keys (the dragged-in container's
-!   parameter vocabulary, input_declare_keys BEFORE the parse) stage the same way
-!   and are consumed at the assembly seam by pull (absent key keeps the target's
-!   own default; input_audit_declared fatals a buffered-but-unconsumed declared key);
-!   this layer holds zero system knowledge (formal checks
-!   only: kind domains, slot widths). Defaults are per-key, never overriding
-!   user-set keys; required keys are those with no system-independent default
-!   (SYSTEM_DIR, E_REL, B_MAX, R_SEP, DT, DIST_SCHEME). GWRITE_LEVEL defaults to 2;
-!   RANDOM_ORIENT defaults to F (the archived five-case stream). SPECTRUM_SOURCE
-!   defaults to COMPUTE (the internal derivation; MANUAL stages the spectrum-table
-!   file - 2026-10-05 spectrum-source legislation).
+!   definition; CHANNEL-LEVEL member-parameter keys (the incident beam laws and
+!   the bath species) stage raw through the central dispatch table for their member
+!   inits at assembly, while a scheme word's own parameters ride ONLY its
+!   DIST_SCHEME bracket (WORD[NAME=VALUE, ...] - the 2026-10-13 bracket ruling:
+!   no top-level member key for them, no fallback, a bare word keeps the member's
+!   field defaults); declared container keys (the dragged-in container's parameter
+!   vocabulary, input_declare_keys BEFORE the parse) stage the same way and are
+!   consumed at the assembly seam by pull (absent key keeps the target's own
+!   default; input_audit_declared fatals a buffered-but-unconsumed declared key,
+!   input_audit_dist_par the bracket analogue); this layer holds zero system
+!   knowledge (formal checks only: kind domains, slot widths, bracket FORM - which
+!   parameter names a word carries is member-side). Defaults are per-key, never
+!   overriding user-set keys; required keys are those with no system-independent
+!   default (SYSTEM_DIR, E_REL, B_MAX, R_SEP, DT, DIST_SCHEME). GWRITE_LEVEL
+!   defaults to 2; RANDOM_ORIENT defaults to F (the archived five-case stream).
+!   SPECTRUM_SOURCE defaults to COMPUTE (the internal derivation; MANUAL stages
+!   the spectrum-table file - 2026-10-05 spectrum-source legislation).
 !=====================================================================
 module input
    use control, only: task, n_traj, title, i_seed, max_steps
@@ -25,6 +30,7 @@ module input
    public :: read_input
    public :: buffer_n_rows, buffer_key, buffer_block, buffer_line, buffer_val
    public :: input_declare_keys, input_audit_declared, pull
+   public :: par_int, par_real, input_audit_dist_par
 
    integer, parameter :: key_len  = 32     ! keyword capacity [character]
    integer, parameter :: val_len  = 512    ! value capacity [character]
@@ -43,12 +49,12 @@ module input
    integer, parameter :: kind_level = 5    ! integer restricted to {0,1,2,5}
    integer, parameter :: kind_enum = 6     ! registry word -> internal code (scalar)
    integer, parameter :: kind_elist = 7    ! comma list of registry words -> code array
-   integer, parameter :: kind_posreal = 8  ! positive real scalar (parses as real AND > 0 -
-                                           ! the surface lattice length)
+   integer, parameter :: kind_cell = 8     ! 3x3 unit cell: three comma-separated rows of
+                                           ! three reals (the surface CELL key)
 
    ! enumeration families (which registry a kind_enum/kind_elist key maps through)
    integer, parameter :: enum_none = 0, enum_task = 1, enum_integ = 2, enum_dist = 3, &
-                          enum_bath = 4, enum_spectrum = 5
+                          enum_bath = 4, enum_spectrum = 5, enum_scattering = 6
 
    ! Parse buffer (KEYWORD=VALUE row table - module-private, clean slate per
    ! read_input, read out through the public buffer accessors only)
@@ -103,7 +109,7 @@ module input
    ! DT_MIN/DT_MAX (the adaptive member's sequence-length bounds): kind_real, NOT
    ! kind_posreal - a clamp value <= 0 is the legal unclamped default (0 = off);
    ! consumed by the radau member only (fixed-step members ignore them)
-   type(key_spec_t), parameter :: key_tab(32) = [ &
+   type(key_spec_t), parameter :: key_tab(28) = [ &
       key_spec_t('TASK',         blk_flow,   kind_enum,  enum_task,  .false., 'TRAJECTORY'), &
       key_spec_t('N_TRAJ',       blk_flow,   kind_int,   enum_none,  .false., '1'), &
       key_spec_t('TITLE',        blk_flow,   kind_char,  enum_none,  .false., '', slotw=80), &
@@ -115,13 +121,8 @@ module input
       key_spec_t('DT_MIN',       blk_flow,   kind_real,  enum_none,  .false., '0.0'), &
       key_spec_t('DT_MAX',       blk_flow,   kind_real,  enum_none,  .false., '0.0'), &
       key_spec_t('ELEC_METHOD',  blk_flow,   kind_char,  enum_none,  .false., 'ADIABATIC', slotw=32), &
-      key_spec_t('N_SURF',       blk_flow,   kind_int,   enum_none,  .false., '0'), &
-      key_spec_t('PES_MAIN',     blk_flow,   kind_char,  enum_none,  .false., '1', slotw=32), &
       key_spec_t('GWRITE_LEVEL', blk_flow,   kind_level, enum_none,  .false., '2'), &
       key_spec_t('OBSERVABLES',  blk_flow,   kind_char,  enum_none,  .false., '', slotw=256), &
-      key_spec_t('E_KIN',        blk_flow,   kind_log,   enum_none,  .false., 'F'), &
-      key_spec_t('E_POT',        blk_flow,   kind_log,   enum_none,  .false., 'F'), &
-      key_spec_t('E_TOT',        blk_flow,   kind_log,   enum_none,  .false., 'F'), &
       key_spec_t('SYSTEM_DIR',   blk_system, kind_char,  enum_none,  .true.,  '', slotw=128), &
       key_spec_t('E_REL',        blk_system, kind_real,  enum_none,  .true.,  ''), &
       key_spec_t('B_MAX',        blk_system, kind_real,  enum_none,  .false., '0.0'), & ! optional (PAIR channel only): the surface member loud-stops a WRITTEN B_MAX - lateral placement is N_AIM's alone (ruled 2026-10-01); the pair member enforces a positive radius at assembly (beam_init)
@@ -131,11 +132,12 @@ module input
       key_spec_t('BATH',          blk_system, kind_enum, enum_bath,  .false., 'NONE'), &
       key_spec_t('N_BATH',        blk_system, kind_int,  enum_none,  .false., '0'), &
       key_spec_t('DT_BATH',       blk_system, kind_real, enum_none,  .false., '0.0'), &
+      key_spec_t('SCATTERING',    blk_system, kind_enum, enum_scattering, .false., 'GAS'), &
+      key_spec_t('CELL',          blk_system, kind_cell, enum_none,  .false., '', cond=.true.), &
       key_spec_t('SPECTRUM_SOURCE', blk_system, kind_enum, enum_spectrum, .false., 'COMPUTE'), &
       key_spec_t('SPECTRUM_FILE',  blk_system, kind_char, enum_none,  .false., '', slotw=128), &
       key_spec_t('PROJECTILE',   blk_system, kind_char,  enum_none,  .false., '', slotw=64, cond=.true.), &
-      key_spec_t('TARGET',       blk_system, kind_char,  enum_none,  .false., '', slotw=64, cond=.true.), &
-      key_spec_t('A_LAT',        blk_system, kind_posreal, enum_none, .false., '', cond=.true.) ]
+      key_spec_t('TARGET',       blk_system, kind_char,  enum_none,  .false., '', slotw=64, cond=.true.) ]
 
    ! Enumeration registries (table-driven word -> code). task: 1 = TRAJECTORY (the one
    ! task this program runs - an unlisted word aborts with a named error); integ: the propagator
@@ -167,22 +169,29 @@ module input
    type(enum_row_t), parameter :: spectrum_tbl(2) = [ &
       enum_row_t('COMPUTE', 1), enum_row_t('MANUAL', 2) ]
 
+   ! scattering-class words (2026-10-13 ruling: the paradigm is a main-program input
+   ! decision, no longer derived from the system files; GAS keeps the archived stream)
+   type(enum_row_t), parameter :: scattering_tbl(2) = [ &
+      enum_row_t('GAS', 1), enum_row_t('SURFACE', 2) ]
+
 
    ! GWRITE_LEVEL recording-level set - the formal domain of observables%rec_level
    ! (recorder opens sec_qp/sec_frc at >=2/>=5)
    integer, parameter :: level_set(4) = [ 0, 1, 2, 5 ]
 
-   ! Member-parameter central dispatch table (one row per member parameter key -> the
-   ! owning member's init). Key names are the semantic uppercase of the member's field
-   ! names (T_VIB_A for boltzmann's t_vib_a, ...); a member key outside this table is
-   ! an unknown key at parse time (no silent swallowing)
+   ! Member-parameter central dispatch table (one row per CHANNEL-LEVEL member
+   ! parameter key -> the owning member's init). The incident beam laws and the
+   ! bath species keys stage here (they belong to the one-per-process channel,
+   ! not to a fragment); a scheme word's own parameters ride its DIST_SCHEME
+   ! bracket instead (the 2026-10-13 ruling retired their 21 dispatch rows - a
+   ! top-level line of one of those names is an unknown key). Key names are the
+   ! semantic uppercase of the member's field names; a member key outside this
+   ! table is an unknown key at parse time (no silent swallowing)
    type :: dispatch_row_t
-      character(len=key_len) :: key = ''    ! member parameter key (e.g. 'T_VIB_A')
+      character(len=key_len) :: key = ''    ! member parameter key (e.g. 'N_B')
       character(len=32) :: member = ''      ! owning member name (init target)
    end type dispatch_row_t
-   type(dispatch_row_t), parameter :: dispatch_tbl(35) = [ &
-      dispatch_row_t('T_VIB_A',  'boltzmann'), &
-      dispatch_row_t('T_VIB_B',  'boltzmann'), &
+   type(dispatch_row_t), parameter :: dispatch_tbl(13) = [ &
       dispatch_row_t('N_E_REL',  'incident_surface/pair'), &
       dispatch_row_t('T_TRANS',  'incident_surface/pair'), &
       dispatch_row_t('V_WIDTH',  'incident_surface/pair'), &
@@ -194,28 +203,28 @@ module input
       dispatch_row_t('N_AIM',    'incident_surface/pair'), &
       dispatch_row_t('AIM_X',    'incident_surface'), &
       dispatch_row_t('AIM_Y',    'incident_surface'), &
-      dispatch_row_t('T_ROT',    'j'), &
-      dispatch_row_t('J_ROT',    'rotation'), &
-      dispatch_row_t('N_OSC',    'surface_oscillator'), &
-      dispatch_row_t('T_OSC',    'surface_oscillator'), &
-      dispatch_row_t('N_LEVEL',  'surface_oscillator'), &
-      dispatch_row_t('K_OSC',    'surface_oscillator'), &
-      dispatch_row_t('E_VIB',    'normalmode'), &
-      dispatch_row_t('E_STAB',   'barrier_excitation'), &
-      dispatch_row_t('N_E_BAR',  'barrier_excitation'), &
-      dispatch_row_t('E_BAR',    'barrier_excitation'), &
-      dispatch_row_t('T_BAR',    'barrier_excitation'), &
       dispatch_row_t('T_BATH',   'bath_andersen'), &
-      dispatch_row_t('NU_COLL',  'bath_andersen'), &
-      dispatch_row_t('T_GLO',    'glo_target'), &
-      dispatch_row_t('GAMMA_GLO','glo_target'), &
-      dispatch_row_t('W_GHOST',  'glo_target'), &
-      dispatch_row_t('T_EQ',     'thermalize'), &
-      dispatch_row_t('N_EQ',     'thermalize'), &
-      dispatch_row_t('DT_EQ',    'thermalize'), &
-      dispatch_row_t('E_SCALE',  'wigner'), &
-      dispatch_row_t('N_VIB',    'ebk'), &
-      dispatch_row_t('N_ROT',    'ebk') ]
+      dispatch_row_t('NU_COLL',  'bath_andersen') ]
+
+   ! Per-fragment bracket parameters (the 2026-10-13 ruling's delivery form):
+   ! each DIST_SCHEME item may carry WORD[NAME=VALUE, ...]. The parse splits the
+   ! FORM (names/values staged uppercased, duplicate names rejected) and owns no
+   ! member semantics - which parameter names a word carries and their domains
+   ! are the owning member's init business; the member consumes its carriers'
+   ! pairs at the assembly seam through par_int/par_real, and
+   ! input_audit_dist_par fatals a pair nobody consumed (the container-key
+   ! audit's bracket analogue)
+   type :: par_pair_t
+      character(len=key_len) :: name = ''   ! parameter name (uppercased)
+      character(len=val_len) :: val = ''    ! raw value text (uppercased)
+      logical :: used = .false.             ! a member pull consumed the pair
+   end type par_pair_t
+   type :: frag_par_t
+      character(len=key_len) :: word = ''        ! the item's scheme word (uppercased)
+      type(par_pair_t), allocatable :: pair(:)   ! its bracket pairs (unallocated = bare word)
+      integer :: n_pair = 0                      ! staged pair count [-]
+   end type frag_par_t
+   type(frag_par_t), allocatable :: dist_pars(:) ! one row per DIST_SCHEME item
 contains
    !------------------------------------------------------------------
    ! read_input(file) - read and map the input; a bad return from the detection
@@ -457,6 +466,123 @@ contains
    end subroutine input_audit_declared
 
    !------------------------------------------------------------------
+   ! par_int / par_real(word, ifrag, name, target [, found]) - one carrier's
+   !              bracket-parameter consumption at the member-seam: the typed
+   !              value lands in the target; an absent name keeps the caller's
+   !              default (found = F - no fallback anywhere); the owning
+   !              member's init validates domains. One pull marks the pair
+   !              consumed (input_audit_dist_par after the seams)
+   !------------------------------------------------------------------
+   subroutine par_int(word, ifrag, name, target, found)
+      character(len=*), intent(in) :: word, name
+      integer, intent(in) :: ifrag
+      integer, intent(inout) :: target
+      logical, intent(out), optional :: found
+      integer :: j, ios
+      call par_row(word, ifrag, name, j)
+      if (present(found)) found = j > 0
+      if (j == 0) return
+      read (dist_pars(ifrag)%pair(j)%val, *, iostat=ios) target
+      if (ios /= 0) call par_fatal(word, ifrag, name, 'bad integer value "'// &
+         trim(dist_pars(ifrag)%pair(j)%val)//'"')
+   end subroutine par_int
+
+   subroutine par_real(word, ifrag, name, target, found)
+      character(len=*), intent(in) :: word, name
+      integer, intent(in) :: ifrag
+      real(8), intent(inout) :: target
+      logical, intent(out), optional :: found
+      integer :: j, ios
+      call par_row(word, ifrag, name, j)
+      if (present(found)) found = j > 0
+      if (j == 0) return
+      read (dist_pars(ifrag)%pair(j)%val, *, iostat=ios) target
+      if (ios /= 0) call par_fatal(word, ifrag, name, 'bad real value "'// &
+         trim(dist_pars(ifrag)%pair(j)%val)//'"')
+   end subroutine par_real
+
+   ! par_row(word, ifrag, name, j) - the shared consumption locate: pair row of
+   !              a fragment's parameter (0 = not staged, the caller default
+   !              stands); ownership and double-pull are member-authoring
+   !              named aborts (one name, one consumer)
+   subroutine par_row(word, ifrag, name, j)
+      character(len=*), intent(in) :: word, name
+      integer, intent(in) :: ifrag
+      integer, intent(out) :: j
+      integer :: k
+      if (.not. allocated(dist_pars)) then
+         write (0, '(a)') 'par: no DIST_SCHEME pair table staged (read_input must run first)'
+         write (0, '(a)') 'par: fatal (the bracket seam was consulted outside the parse)'
+         stop 1
+      end if
+      if (ifrag < 1 .or. ifrag > size(dist_pars)) then
+         write (0, '(a)') 'par: fragment index '//trim(i2s(ifrag))//' lies outside the '// &
+                          'DIST_SCHEME list of '//trim(i2s(size(dist_pars)))//' item(s)'
+         write (0, '(a)') 'par: fatal (a member pulling a fragment it does not own)'
+         stop 1
+      end if
+      if (trim(dist_pars(ifrag)%word) /= to_upper(trim(word))) then
+         write (0, '(a)') 'par: fragment '//trim(i2s(ifrag))//' carries scheme word '// &
+                          trim(dist_pars(ifrag)%word)//', not '//trim(to_upper(word))
+         write (0, '(a)') 'par: fatal (a member pulling a fragment it does not own)'
+         stop 1
+      end if
+      do j = 1, dist_pars(ifrag)%n_pair
+         if (trim(dist_pars(ifrag)%pair(j)%name) == to_upper(trim(name))) then
+            if (dist_pars(ifrag)%pair(j)%used) then
+               write (0, '(a)') 'par: parameter '//trim(name)//' of fragment '// &
+                                trim(i2s(ifrag))//' pulled twice (one name, one consumer)'
+               write (0, '(a)') 'par: fatal (a double pull is a member-authoring error)'
+               stop 1
+            end if
+            dist_pars(ifrag)%pair(j)%used = .true.
+            return
+         end if
+      end do
+      j = 0
+   end subroutine par_row
+
+   ! par_fatal(word, ifrag, name, why) - a failed cast of a staged pair
+   subroutine par_fatal(word, ifrag, name, why)
+      character(len=*), intent(in) :: word, name, why
+      integer, intent(in) :: ifrag
+      write (0, '(a)') 'par: DIST_SCHEME fragment '//trim(i2s(ifrag))//' ('//trim(to_upper(word))// &
+                       '): parameter '//trim(name)//': '//trim(why)
+      write (0, '(a)') 'par: fatal (a bracket parameter is not consumable)'
+      stop 1
+   end subroutine par_fatal
+
+   !------------------------------------------------------------------
+   ! input_audit_dist_par() - after the member seams: every staged bracket
+   !              pair was pulled exactly once; a pair nobody consumed is a
+   !              named fatal (a parameter name the owning member does not
+   !              know, or the member's seam skipped)
+   !------------------------------------------------------------------
+   subroutine input_audit_dist_par()
+      integer :: i, j
+      logical :: bad
+      if (.not. allocated(dist_pars)) return   ! no DIST_SCHEME staged: clean
+      bad = .false.
+      do i = 1, size(dist_pars)
+         do j = 1, dist_pars(i)%n_pair
+            if (dist_pars(i)%pair(j)%used) cycle
+            if (.not. bad) then
+               bad = .true.
+               write (0, '(a)') 'input_audit_dist_par: unconsumed bracket parameter(s):'
+            end if
+            write (0, '(a)') '  '//trim(dist_pars(i)%word)//' fragment '//trim(i2s(i))//': '// &
+                             trim(dist_pars(i)%pair(j)%name)//' - no member pull consumed it '// &
+                             '(a parameter the owning member does not know?)'
+         end do
+      end do
+      if (bad) then
+         write (0, '(a)') 'input_audit_dist_par: fatal (a bracket parameter outside its '// &
+                          'member seam is a configuration or authoring error)'
+         stop 1
+      end if
+   end subroutine input_audit_dist_par
+
+   !------------------------------------------------------------------
    ! collect_input(file, ok, errmsg) - the whole flow on the soft ok/errmsg channel
    !              (detection layer; read_input converts a bad return into the
    !              named abort): reset buffer -> parse -> required check -> default
@@ -654,7 +780,7 @@ contains
       character(len=val_len) :: sval
       integer :: r, k, ln, ival, d
       integer, allocatable :: ivec(:)
-      real(8) :: rval
+      real(8) :: rval, cvec(3,3)
       logical :: lval
       ok = .false.
       errmsg = ''
@@ -688,8 +814,8 @@ contains
             call parse_enum(sp, sval, ln, ival, ok, errmsg)
          case (kind_elist)
             call parse_elist(sp, sval, ln, ivec, ok, errmsg)
-         case (kind_posreal)
-            call parse_posreal(sp, sval, ln, rval, ok, errmsg)
+         case (kind_cell)
+            call parse_cell(sp, sval, ln, cvec, ok, errmsg)
          case default
             ok = .false.                          ! stale-ok leak guard
             errmsg = 'internal: unhandled key kind for '//trim(sp%name)
@@ -731,20 +857,10 @@ contains
          case ('ELEC_METHOD')
             electronic%method = to_lower(sval)           ! package-name string (lookup at
                                                          ! the interface, not here)
-         case ('N_SURF')
-            electronic%n_surf = ival
-         case ('PES_MAIN')
-            electronic%pes_main = sval                   ! name string, stored as written
          case ('GWRITE_LEVEL')
             observables%rec_level = ival
          case ('OBSERVABLES')
             observables%obs_list = sval                  ! raw comma list (rec_sel_lst input)
-         case ('E_KIN')
-            observables%e_kin = lval
-         case ('E_POT')
-            observables%e_pot = lval
-         case ('E_TOT')
-            observables%e_tot = lval
          case ('SYSTEM_DIR')                             ! block two: system definition
             reactants%system_dir = sval
          case ('E_REL')
@@ -777,10 +893,19 @@ contains
                                                      ! a staged path under COMPUTE never reaches
                                                      ! a pull - the cross rule below stops it)
 
-         case ('A_LAT', 'PROJECTILE', 'TARGET') ! surface-window / role keys: no slot
-            continue                                     ! write here - the values stay buffered and
-                                                         ! list_atoms_load pulls them at assembly time
-                                                         ! (paradigm condition included)
+         case ('SCATTERING')                       ! paradigm master key (2026-10-13 ruling):
+            reactants%surface_model = ival - 1      ! GAS -> 0, SURFACE -> 1 (the input owns
+                                                     ! the decision; the system files carry
+                                                     ! geometry only)
+         case ('CELL')                             ! unit cell by rows [A] (surface-only; the
+            reactants%cell = cvec                  ! window reconcile requires it under
+            reactants%cell_present = .true.        ! SURFACE and rejects it under GAS; the
+                                                     ! box derivation consumes it at list_atoms)
+
+         case ('PROJECTILE', 'TARGET') ! role keys: no slot
+            continue                                 ! write here - the values stay buffered and
+                                                     ! list_atoms_load pulls them at assembly time
+                                                     ! (paradigm condition included)
          case default
             ok = .false.
             errmsg = 'internal: unhandled key slot for '//trim(sp%name)
@@ -874,23 +999,41 @@ contains
       ok = .true.
    end subroutine parse_real
 
-   subroutine parse_posreal(sp, sval, ln, rval, ok, errmsg)
+   subroutine parse_cell(sp, sval, ln, cvec, ok, errmsg)
       type(key_spec_t), intent(in) :: sp
       character(len=*), intent(in) :: sval
       integer, intent(in) :: ln
-      real(8), intent(out) :: rval
+      real(8), intent(out) :: cvec(3,3)
       logical, intent(out) :: ok
       character(len=*), intent(out) :: errmsg
-      call parse_real(sp, sval, ln, rval, ok, errmsg)
-      if (.not. ok) return
-      if (rval <= 0.0d0) then
-         ok = .false.
-         errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': value must be positive ("'// &
-                  trim(sval)//'" - the surface-window keys carry lengths)'
+      character(len=len_trim(sval)) :: rest, grp
+      integer :: i, ic, ios
+      ok = .false.
+      ! exactly three comma-separated groups (the three lattice-vector rows)
+      if (count([(sval(i:i) == ',', i = 1, len_trim(sval))]) /= 2) then
+         errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': bad CELL value "'//trim(sval)// &
+                  '" (exactly three comma-separated vector rows expected)'
          return
       end if
+      rest = adjustl(sval)
+      do i = 1, 3
+         ic = index(trim(rest), ',')
+         if (ic == 0) then
+            grp = adjustl(trim(rest))
+            rest = ''
+         else
+            grp = adjustl(rest(:ic-1))
+            rest = adjustl(rest(ic+1:))
+         end if
+         read (grp, *, iostat=ios) cvec(i,1), cvec(i,2), cvec(i,3)
+         if (ios /= 0) then
+            errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': bad CELL row '//trim(i2s(i))// &
+                     ' "'//trim(grp)//'" (three numbers per row expected)'
+            return
+         end if
+      end do
       ok = .true.
-   end subroutine parse_posreal
+   end subroutine parse_cell
 
    subroutine parse_log(sp, sval, ln, lval, ok, errmsg)
       type(key_spec_t), intent(in) :: sp
@@ -954,6 +1097,14 @@ contains
       ok = .true.
    end subroutine parse_enum
 
+   !------------------------------------------------------------------
+   ! parse_elist(sp, ...) - comma list of registry words -> code array. The
+   !              split runs at TOP-LEVEL commas only (depth 0 outside
+   !              brackets): under enum_dist each item may carry
+   !              WORD[NAME=VALUE, ...] - the word maps to its code and the
+   !              bracket pairs stage per item in dist_pars (form only); a
+   !              bracket under any other enum family is an illegal value
+   !              (brackets are the dist family's form)
    subroutine parse_elist(sp, sval, ln, ivec, ok, errmsg)
       type(key_spec_t), intent(in) :: sp
       character(len=*), intent(in) :: sval
@@ -961,44 +1112,240 @@ contains
       integer, allocatable, intent(out) :: ivec(:)
       logical, intent(out) :: ok
       character(len=*), intent(out) :: errmsg
-      character(len=len_trim(sval)) :: rest
-      character(len=key_len) :: tok
-      integer :: n, i, ic, code
+      character(len=len_trim(sval)) :: rest, item
+      integer :: n, i, ic, depth, code, nw
+      type(frag_par_t), allocatable :: pars(:)
       ok = .false.
       errmsg = ''
-      n = 1 + count([(sval(i:i) == ',', i = 1, len_trim(sval))])
-      allocate (ivec(n))
-      n = 0
+      ! 1. whole-value bracket balance BEFORE splitting (a value-wide net-open
+      !    bracket is a form defect no per-item check would place correctly)
+      depth = 0
+      do i = 1, len_trim(sval)
+         select case (sval(i:i))
+         case ('['); depth = depth + 1
+         case (']'); depth = depth - 1
+         end select
+      end do
+      if (depth /= 0) then
+         errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': unbalanced bracket in "'// &
+                  trim(sval)//'" (every bracket opens and closes inside its list item)'
+         return
+      end if
+      ! 2. split at top-level commas; one code row and one pair row per item
+      n = 1 + count_top_commas(sval)
+      allocate (ivec(n), pars(n))
+      nw = 0
       rest = adjustl(sval)
       do while (len_trim(rest) > 0)
-         ic = index(trim(rest), ',')
+         ic = top_comma(trim(rest))
          if (ic == 0) then
-            tok = adjustl(trim(rest))
+            item = adjustl(trim(rest))
             rest = ''
          else
-            tok = adjustl(rest(:ic-1))
+            item = adjustl(rest(:ic-1))
             rest = adjustl(rest(ic+1:))
          end if
-         if (len_trim(tok) == 0) then
+         if (len_trim(item) == 0) then
             errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': empty item in the value list'
             return
          end if
-         code = enum_lookup(sp%enum_id, to_upper(trim(tok)))
-         if (code == 0) then
-            errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': illegal value "'//trim(tok)// &
-                     '" (legal: '//trim(legal_words(sp%enum_id))//')'
-            return
-         end if
-         n = n + 1
-         ivec(n) = code
+         nw = nw + 1
+         call scheme_item(sp, item, ln, code, pars(nw), ok, errmsg)
+         if (.not. ok) return
+         ivec(nw) = code
       end do
-      if (n == 0) then
+      if (nw == 0) then
          errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': empty value list'
          return
       end if
-      ivec = ivec(1:n)
+      if (allocated(dist_pars)) deallocate (dist_pars)
+      call move_alloc (pars, dist_pars)
       ok = .true.
    end subroutine parse_elist
+
+   ! scheme_item(sp, item, ...) - one list item: WORD or WORD[PARAMS] -> the
+   !              word's enum code + the item's staged pair row (form checks
+   !              here: word present, bracket closed once, no nesting, no
+   !              trailing text; the pairs themselves split in parse_par_pairs)
+   subroutine scheme_item(sp, item, ln, code, prow, ok, errmsg)
+      type(key_spec_t), intent(in) :: sp
+      character(len=*), intent(in) :: item
+      integer, intent(in) :: ln
+      integer, intent(out) :: code
+      type(frag_par_t), intent(out) :: prow
+      logical, intent(out) :: ok
+      character(len=*), intent(out) :: errmsg
+      character(len=len_trim(item)) :: tail
+      character(len=val_len) :: raw
+      character(len=key_len) :: word
+      integer :: br, lt
+      ok = .false.
+      errmsg = ''
+      raw = ''
+      br = index(item, '[')
+      if (br == 0) then
+         word = to_upper(trim(item))
+      else
+         if (sp%enum_id /= enum_dist) then     ! brackets are the dist family's form
+            errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': illegal value "'//trim(item)// &
+                     '" (legal: '//trim(legal_words(sp%enum_id))//')'
+            return
+         end if
+         word = to_upper(adjustl(trim(item(:br-1))))
+         if (len_trim(word) == 0) then
+            errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': no scheme word before the '// &
+                     'bracket in "'//trim(item)//'"'
+            return
+         end if
+         tail = adjustl(trim(item(br+1:)))
+         lt = len_trim(tail)
+         if (lt == 0 .or. tail(lt:lt) /= ']') then
+            ! the whole value balanced (step 1), so the bracket closed early:
+            ! text trails the closing bracket
+            errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': trailing text after the '// &
+                     'closing bracket in "'//trim(item)//'"'
+            return
+         end if
+         raw = tail(:lt-1)
+         if (len_trim(raw) == 0) then
+            errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': empty bracket in "'//trim(item)// &
+                     '" (a word without parameters is written bare)'
+            return
+         end if
+         if (scan(raw, '[') > 0 .or. scan(raw, ']') > 0) then
+            errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': nested bracket in "'//trim(item)// &
+                     '" (bracket parameters are flat NAME=VALUE pairs)'
+            return
+         end if
+      end if
+      code = enum_lookup(sp%enum_id, word)
+      if (code == 0) then
+         errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': illegal value "'//trim(item)// &
+                  '" (legal: '//trim(legal_words(sp%enum_id))//')'
+         return
+      end if
+      prow%word = word
+      if (len_trim(raw) > 0) then
+         call parse_par_pairs(sp, item, raw, ln, prow, ok, errmsg)
+         if (.not. ok) return
+      end if
+      ok = .true.
+   end subroutine scheme_item
+
+   ! parse_par_pairs(sp, item, raw, ...) - split the bracket content on commas
+   !              into NAME=VALUE pairs (uppercased; empty names/values,
+   !              non-identifier names, over-wide names and duplicate names are
+   !              named form errors)
+   subroutine parse_par_pairs(sp, item, raw, ln, prow, ok, errmsg)
+      type(key_spec_t), intent(in) :: sp
+      character(len=*), intent(in) :: item, raw
+      integer, intent(in) :: ln
+      type(frag_par_t), intent(inout) :: prow
+      logical, intent(out) :: ok
+      character(len=*), intent(out) :: errmsg
+      character(len=len_trim(raw)) :: rest, pair
+      character(len=key_len) :: name
+      character(len=val_len) :: val
+      integer :: np, ic, eq, j, k, m
+      ok = .false.
+      np = 1 + count([(raw(j:j) == ',', j = 1, len_trim(raw))])
+      allocate (prow%pair(np))
+      prow%n_pair = 0
+      rest = adjustl(raw)
+      do while (len_trim(rest) > 0)
+         ic = index(trim(rest), ',')
+         if (ic == 0) then
+            pair = adjustl(trim(rest))
+            rest = ''
+         else
+            pair = adjustl(rest(:ic-1))
+            rest = adjustl(rest(ic+1:))
+         end if
+         if (len_trim(pair) == 0) then
+            errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': empty parameter in "'// &
+                     trim(item)//'" (bracket parameters are NAME=VALUE)'
+            return
+         end if
+         eq = index(pair, '=')
+         if (eq == 0) then
+            errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': bracket item "'//trim(pair)// &
+                     '" of "'//trim(item)//'" is not a NAME=VALUE parameter'
+            return
+         end if
+         name = to_upper(adjustl(trim(pair(:eq-1))))
+         val = to_upper(adjustl(trim(pair(eq+1:))))
+         if (len_trim(name) == 0) then
+            errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': bracket item "'//trim(pair)// &
+                     '" of "'//trim(item)//'" is not a NAME=VALUE parameter'
+            return
+         end if
+         if (len_trim(name) > key_len) then
+            errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': parameter name "'//trim(name)// &
+                     '" exceeds the name width '//trim(i2s(key_len))//' in "'//trim(item)//'"'
+            return
+         end if
+         if (len_trim(val) == 0) then
+            errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': empty parameter value in "'// &
+                     trim(item)//'" (the parameter '//trim(name)//' would receive nothing)'
+            return
+         end if
+         do k = 1, len_trim(name)           ! identifier charset: A-Z/0-9/_ (folded)
+            m = iachar(name(k:k))
+            if (.not. ((m >= iachar('A') .and. m <= iachar('Z')) .or. &
+                       (m >= iachar('0') .and. m <= iachar('9')) .or. &
+                       m == iachar('_'))) then
+               errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': bad parameter name "'// &
+                        trim(name)//'" in "'//trim(item)//'" (names are letters/digits/underscore)'
+               return
+            end if
+         end do
+         do j = 1, prow%n_pair
+            if (trim(prow%pair(j)%name) == trim(name)) then
+               errmsg = 'key '//trim(sp%name)//trim(line_tag(ln))//': duplicate parameter '// &
+                        trim(name)//' in "'//trim(item)//'" (one value per carrier)'
+               return
+            end if
+         end do
+         prow%n_pair = prow%n_pair + 1
+         prow%pair(prow%n_pair)%name = trim(name)
+         prow%pair(prow%n_pair)%val = trim(val)
+      end do
+      ok = .true.
+   end subroutine parse_par_pairs
+
+   ! count_top_commas(s) - commas at bracket depth 0 [-] (the list separators)
+   pure integer function count_top_commas(s)
+      character(len=*), intent(in) :: s
+      integer :: i, d
+      count_top_commas = 0
+      d = 0
+      do i = 1, len_trim(s)
+         select case (s(i:i))
+         case ('['); d = d + 1
+         case (']'); d = d - 1
+         case (','); if (d == 0) count_top_commas = count_top_commas + 1
+         end select
+      end do
+   end function count_top_commas
+
+   ! top_comma(s) - position of the first depth-0 comma (0 = none)
+   pure integer function top_comma(s)
+      character(len=*), intent(in) :: s
+      integer :: i, d
+      top_comma = 0
+      d = 0
+      do i = 1, len_trim(s)
+         select case (s(i:i))
+         case ('['); d = d + 1
+         case (']'); d = d - 1
+         case (',')
+            if (d == 0) then
+               top_comma = i
+               return
+            end if
+         end select
+      end do
+   end function top_comma
 
    !------------------------------------------------------------------
    ! private helpers (pure string/table mechanics - no system knowledge)
@@ -1006,10 +1353,11 @@ contains
    subroutine reset_buffer()
       if (allocated(kv_tbl)) deallocate (kv_tbl)
       allocate (kv_tbl(size(key_tab) + size(dispatch_tbl) + n_declared))   ! one row per
-      n_kv = 0                           ! registry key PLUS one per dispatch row (member
-                                         ! keys stage too) PLUS one per declared container
-                                         ! key; both fill sites guard their increment
+      n_kv = 0                           ! registry key PLUS one per dispatch row (channel-
+                                         ! level member keys stage too) PLUS one per declared
+                                         ! container key; both fill sites guard their increment
                                          ! with a capacity named abort
+      if (allocated(dist_pars)) deallocate (dist_pars)   ! fresh pair table per parse
    end subroutine reset_buffer
 
    ! key_index(key) - registry row of a key (0 = not a key-table key)
@@ -1107,6 +1455,13 @@ contains
                exit
             end if
          end do
+      case (enum_scattering)
+         do i = 1, size(scattering_tbl)
+            if (trim(scattering_tbl(i)%word) == trim(word)) then
+               enum_lookup = scattering_tbl(i)%code
+               exit
+            end if
+         end do
       end select
    end function enum_lookup
 
@@ -1141,6 +1496,11 @@ contains
          do i = 1, size(spectrum_tbl)
             if (i > 1) s = trim(s)//', '
             s = trim(s)//trim(spectrum_tbl(i)%word)
+         end do
+      case (enum_scattering)
+         do i = 1, size(scattering_tbl)
+            if (i > 1) s = trim(s)//', '
+            s = trim(s)//trim(scattering_tbl(i)%word)
          end do
       end select
    end function legal_words

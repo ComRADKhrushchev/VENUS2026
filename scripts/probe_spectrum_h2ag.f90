@@ -30,7 +30,7 @@ program probe_spectrum_h2ag
    type(h2ag111_params_t) :: p
    real(8) :: qz(6), hess(6, 6), mass(2)
    real(8), allocatable :: w(:), c(:,:)
-   call read_input('input_qct.txt')           ! the grammar stages A_LAT (surface window)
+   call read_input('input_qct.txt')           ! the grammar stages SCATTERING/CELL (the surface window)
    call sysdef_load(reactants%system_dir)     ! stage the case's system definition
    call list_atoms_load()                     ! assemble the atom list (2 atoms)
    call h2ag111_load(p)                       ! reads weights/biases from cwd

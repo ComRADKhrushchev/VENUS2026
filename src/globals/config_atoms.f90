@@ -4,19 +4,20 @@
 ! Design:
 !   list_atoms_load pulls one-way from the sysdef interface buffer (sysdef_load must run
 !   first - assembly-order error otherwise): per-atom transfer, contiguous fragment
-!   runs, q0 packing, unit-cell derivation (law of cosines, radians), validation,
-!   then the A_LAT/BOXPAD window reconcile - their single write site (molecular
-!   paradigm forbids both keys, surface paradigm requires both) - and the
-!   PROJECTILE/TARGET role reconcile (its single write site: gas pairs require
-!   both keys naming distinct fragments, surface requires PROJECTILE alone,
-!   single-fragment gas rejects either).
-!   a_lat is the input-owned window scalar; all other members are derived.
+!   runs, q0 packing, unit-cell derivation (law of cosines, radians; source = the
+!   CELL input key under the surface class, 2026-10-13 ruling), validation, then
+!   the CELL window reconcile (molecular forbids the key, surface requires it)
+!   and the PROJECTILE/TARGET role reconcile (gas pairs require both keys naming
+!   distinct fragments, surface requires PROJECTILE alone, single-fragment gas
+!   rejects either).
+!   All members are derived or transferred; the window fields' gate is the
+!   SCATTERING-key class.
 !=====================================================================
 module config_atoms
    use config, only: reactants
    use sysdef_interface, only: buffer_loaded, buffer_frag_count, buffer_frag_nat, &
                             buffer_frag_name, buffer_atom_symbols, buffer_atom_masses, &
-                            buffer_atom_geometry, buffer_cell_present, buffer_unit_cell
+                            buffer_atom_geometry
    use input, only: buffer_n_rows, buffer_key, buffer_val, buffer_line
    implicit none
    private
@@ -47,14 +48,9 @@ module config_atoms
       real(8), allocatable :: q0(:)            ! whole-system equilibrium geometry [Å] (assembled
                                                 ! from the fragment geometries by atom index)
       real(8) :: skew = 0.0d0                  ! unit-cell skew angle [rad] (derived from the
-                                                ! buffered cell vectors, in radians)
+                                                ! CELL input vectors, in radians)
       real(8) :: box_lx = 0.0d0                ! unit-cell x edge length [Å]
       real(8) :: box_ly = 0.0d0                ! unit-cell y edge length [Å]
-      real(8) :: a_lat = 0.0d0                ! surface lattice constant [Å] (system parameter with
-                                               ! no generic default: surface paradigms must supply
-                                               ! the A_LAT input key - the list_atoms_load window
-                                               ! reconcile intercepts a missing value and is its
-                                               ! only write site)
       integer :: i_proj = 0                   ! projectile fragment row [-] (the role reconcile's
                                                ! single write: the PROJECTILE key names
                                                ! frag(i_proj); 0 = no collision roles in this run)
@@ -146,14 +142,17 @@ contains
          list_atoms%q0(3*k-2:3*k) = geom(:,k)
       end do
 
-      ! 4. unit cell (periodic-box route: law of cosines on the buffered cell vectors)
-      if (buffer_cell_present()) then
-         cell = buffer_unit_cell()
+      ! 4. unit cell (periodic-box route: law of cosines on the CELL input vectors;
+      !    the window reconcile below gates its presence under the surface class -
+      !    it runs here so the box never derives from an ungated cell)
+      call window_reconcile()
+      if (reactants%surface_model /= 0) then
+         cell = reactants%cell
          box_lx = sqrt(dot_product(cell(1,:), cell(1,:)))
          box_ly = sqrt(dot_product(cell(2,:), cell(2,:)))
          if (box_lx <= 0.0d0 .or. box_ly <= 0.0d0) then
             write (msg, '(a,es12.4,a,es12.4,a)') 'degenerate unit cell: box_lx=', box_lx, &
-               ' box_ly=', box_ly, ' - zero-length in-plane cell vector in the buffered unit cell'
+               ' box_ly=', box_ly, ' - zero-length in-plane cell vector in the CELL value'
             call stop_assembly(trim(msg))
          end if
          cos_skew = dot_product(cell(1,:), cell(2,:))/(box_lx*box_ly)
@@ -186,11 +185,7 @@ contains
          end if
       end do
 
-      ! 6. surface-window reconcile (the paradigm condition of A_LAT/BOXPAD - the
-      !    single write site of the window scalars)
-      call window_reconcile()
-
-      ! 7. role reconcile (the paradigm condition of PROJECTILE/TARGET - the single
+      ! 6. role reconcile (the paradigm condition of PROJECTILE/TARGET - the single
       !    write site of the collision-role rows)
       call role_reconcile()
    end subroutine list_atoms_load
@@ -207,7 +202,6 @@ contains
       list_atoms%skew = 0.0d0
       list_atoms%box_lx = 0.0d0
       list_atoms%box_ly = 0.0d0
-      list_atoms%a_lat = 0.0d0
       list_atoms%i_proj = 0
       list_atoms%i_targ = 0
    end subroutine list_atoms_clear
@@ -216,9 +210,9 @@ contains
    ! private helpers
    !------------------------------------------------------------------
 
-   ! reset_derived() - drop the DERIVED members ahead of a re-fill; the window scalars
+   ! reset_derived() - drop the DERIVED members ahead of a re-fill; the box scalars
    !                    reset to generic defaults too, so a re-load cannot inherit the
-   !                    previous load's window values (step 6 re-pulls from the buffer)
+   !                    previous load's box values (step 4 re-derives from CELL)
    subroutine reset_derived()
       if (allocated(list_atoms%mass)) deallocate (list_atoms%mass)
       if (allocated(list_atoms%symb)) deallocate (list_atoms%symb)
@@ -227,45 +221,27 @@ contains
       list_atoms%skew = 0.0d0
       list_atoms%box_lx = 0.0d0
       list_atoms%box_ly = 0.0d0
-      list_atoms%a_lat = 0.0d0
       list_atoms%i_proj = 0
       list_atoms%i_targ = 0
    end subroutine reset_derived
 
-   ! window_reconcile() - the A_LAT paradigm condition at assembly time:
-   ! molecular paradigm: the key may not appear; surface paradigm: required,
-   ! buffered values pulled into the atom list (the single write site of the window
-   ! scalars). The buffered-value pulls are named interceptions (key + source line +
-   ! the quoted raw string on an unreadable value); unreadable values abort with a named error in
-   ! read_input's kind check first, guarded anyway per the fail-safe stance
+   ! window_reconcile() - the CELL paradigm condition at assembly time:
+   ! gas class (SCATTERING = GAS): the key may not appear; surface class
+   ! (SCATTERING = SURFACE): required. The value itself was parsed into
+   ! reactants%cell at slot mapping (kind_cell); presence is checked against the
+   ! buffered user row so an injected default can never satisfy the gate
    subroutine window_reconcile()
-      integer :: k, ios
-      real(8) :: v
-      character(len=512) :: sval    ! buffer-value buffer (an internal read needs a
-                                    ! variable, not an accessor call, as its unit)
-      character(len=640) :: msg     ! named abort message buffer (key + line + quoted value)
       if (reactants%surface_model == 0) then
-         if (user_row('A_LAT') > 0) then
-            call stop_assembly('key A_LAT is a surface-paradigm key, but this system derived '// &
-                               'the molecular paradigm (surface_model = 0) - the molecular '// &
-                               'paradigm carries no surface lattice constant')
+         if (user_row('CELL') > 0) then
+            call stop_assembly('key CELL is a surface-scattering key, but this run is '// &
+                               'SCATTERING = GAS - the gas class carries no unit cell')
          end if
          return
       end if
-      k = user_row('A_LAT')
-      if (k == 0) then
-         call stop_assembly('surface paradigm (surface_model = 1) is missing the required key '// &
-                            'A_LAT - the surface lattice constant has no generic default; '// &
-                            'supply it in the input')
+      if (user_row('CELL') == 0) then
+         call stop_assembly('surface scattering (SCATTERING = SURFACE) is missing the required '// &
+                            'key CELL - the unit cell has no generic default; supply it in the input')
       end if
-      sval = buffer_val(k)
-      read (sval, *, iostat=ios) v
-      if (ios /= 0) then
-         write (msg, '(a,i0,a,a,a)') 'key A_LAT (line ', buffer_line(k), &
-            '): bad real value "', trim(sval), '"'
-         call stop_assembly(trim(msg))
-      end if
-      list_atoms%a_lat = v
    end subroutine window_reconcile
 
    ! role_reconcile() - the PROJECTILE/TARGET paradigm condition at assembly time (the

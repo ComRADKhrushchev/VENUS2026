@@ -31,7 +31,7 @@ module container_sched
    end interface
 
    ! The eight wiring slots: slot 1 input (keys / load), slot 2 regular
-   ! (force / method), slot 3 initialization (term / arm),
+   ! (force / method), slot 3 initialization (term / init),
    ! slot 4 output (classify / columns)
    type :: sched_slots_t
       procedure(slot_i), pointer, nopass :: keys     => null() ! declare the key vocabulary (before the parse)
@@ -39,7 +39,7 @@ module container_sched
       procedure(slot_i), pointer, nopass :: force    => null() ! bind the force slot (registration)
       procedure(slot_i), pointer, nopass :: method   => null() ! register the method rows (registration)
       procedure(slot_i), pointer, nopass :: term     => null() ! bind the termination slot (seam, key-gated)
-      procedure(slot_i), pointer, nopass :: arm      => null() ! arm the method package (seam, selection-gated)
+      procedure(slot_i), pointer, nopass :: init     => null() ! initialize the method package (seam, selection-gated)
       procedure(slot_i), pointer, nopass :: classify => null() ! bind the classification slot (seam, key-gated)
       procedure(slot_i), pointer, nopass :: columns  => null() ! register the recorder columns (seam, selection-gated)
    end type
@@ -52,15 +52,15 @@ contains
    !                 author's full menu); an already-filled slot aborts
    !------------------------------------------------------------------
    subroutine container_sched_bind(keys, load, force, method, term, &
-                                    arm, classify, columns)
+                                    init, classify, columns)
       procedure(slot_i), optional :: keys, load, force, method, term, &
-                                     arm, classify, columns ! the container's slot bodies
+                                     init, classify, columns ! the container's slot bodies
       if (present(keys))     call bind_one('keys',     w%keys,     keys)
       if (present(load))     call bind_one('load',     w%load,     load)
       if (present(force))    call bind_one('force',    w%force,    force)
       if (present(method))   call bind_one('method',   w%method,   method)
       if (present(term))     call bind_one('term',     w%term,     term)
-      if (present(arm))      call bind_one('arm',      w%arm,      arm)
+      if (present(init))     call bind_one('init',     w%init,     init)
       if (present(classify)) call bind_one('classify', w%classify, classify)
       if (present(columns))  call bind_one('columns',  w%columns,  columns)
    end subroutine container_sched_bind
@@ -89,15 +89,15 @@ contains
    !                 then the seam slots in fixed order
    !------------------------------------------------------------------
    subroutine container_sched_init()
-      ! 1. the guard: nothing buffered -> skip (no load, no bind, no arm)
+      ! 1. the guard: nothing buffered -> skip (no load, no bind, no init)
       if (len_trim(reactants%system_dir) == 0) return
       ! 2. the seam slots in fixed order: parameter load, termination
-      !    slot, classification slot, method arming, recorder columns
+      !    slot, classification slot, method initialization, recorder columns
       !    (column registration order = the slot body's call order)
       if (associated(w%load))     call w%load()
       if (associated(w%term))     call w%term()
       if (associated(w%classify)) call w%classify()
-      if (associated(w%arm))      call w%arm()
+      if (associated(w%init))     call w%init()
       if (associated(w%columns))  call w%columns()
    end subroutine container_sched_init
 

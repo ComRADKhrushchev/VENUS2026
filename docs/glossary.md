@@ -39,6 +39,7 @@
 | samp_ 前缀族 | the per-fragment initial-state distribution family file/module prefix (renamed from dist_ 2026-09-28; registration words unchanged) | 采样分布成员前缀 | samp_*/reg_samp_*/check_samp_* | the incident family uses inc_*/beam_laws |
 | 演化循环前的碰撞平衡机制（BATH=ANDERSEN 时启用，thermostat 摘出 dist 家族 2026-09-22） | **浴循环** | bath loop | species=bath 物种（模块 bath_andersen，Andersen 重置）；循环含环内抽签的明文豁免 |
 | BATH 激活即隐含：无主原子（基板）从 list_atoms%q0 就位；有方案的片段 q/p 逐位冻结并经 geom_sep_probe 摆到无相互作用距离（兼作 PES 健康检查） | **浴前置播种 / 冻结立法** | bath seeding / freeze statute | 探针度量=片段对环境受力的扰动（全局场在差分中消去） |
+| Tier 1 纯势容器自动接线识别的十个 public 过程名（pes/keys/load/term/classify + prop/match/sync/init/method_name；术语定名与方法包初始化名 arm→init 均 2026-10-13 用户决定——名称须自释初始化义） | **预留名** | reserved names | 魔数名（史层不改：裁决记录 docs/plans/2026-10-12-auto-pes-container.md 原词保留）；arm/武装（史层：arm→init 更名前的槽位与预留名，docs/plans 与既有裁决记录原词不改） |
 
 ### 1.2 已清除的特殊说法（用常规陈述代替）
 

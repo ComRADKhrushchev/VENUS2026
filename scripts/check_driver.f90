@@ -153,7 +153,7 @@
 !            -> sysdef_load -> list_atoms_load -> state_create -> registry_gen_all
 !            -> registry_gen_init -> input_audit_declared -> container_init ->
 !            rec_select level entry):
-!            the input keys T_GLO=350 / GAMMA_GLO=0.04 / W_GHOST=1.25 / DT=
+!            the carrier bracket GLO_TARGET[T_GLO=350, GAMMA_GLO=0.04, W_GHOST=1.25] / DT=
 !            0.05 / DIST_SCHEME=GLO_TARGET -> the member getters read the
 !            exact values back (glo_target_t_glo / _gamma / _w), and
 !            glo_target_dt_loaded() = DT (the dt-ordering contract); also
@@ -227,7 +227,7 @@
 !=====================================================================
 program check_driver
    use control,       only: i_seed
-   use consts,        only: e_conv, hbar_code
+   use consts,        only: dyn_ev, hbar_act
    use config,        only: reactants, observables, electronic, prop_cfg => propagator
    use config_atoms, only: list_atoms, list_atoms_load
    use state,         only: state_t, state_create
@@ -238,7 +238,7 @@ program check_driver
    use sampler,       only: samp_n_dist
    use recorder,      only: rec_select, rec_n_sel
    use final_state,   only: fin_t, fin_eval, container_classify
-   use hist,          only: hist_spec_t, hist_data_t, lat_t, plot_hist, k_e_hist
+   use hist,          only: hist_spec_t, hist_data_t, plot_hist, k_e_hist
    use elec_interface,   only: method_bind
    use reg_adiabatic, only: reg_adiabatic_all
    use reference_pot, only: harm_set_constant
@@ -315,7 +315,7 @@ contains
       call rng_init(i_seed(1))
       call sysdef_load(reactants%system_dir)
       call list_atoms_load()
-      call state_create(stc, size(list_atoms%mass), max(electronic%n_surf, 1))
+      call state_create(stc, size(list_atoms%mass), 1)   ! the degenerate adiabatic surface count
       call registry_gen_all()
       call registry_gen_init()     ! container keys absent -> slots stay unbound
       call input_audit_declared()
@@ -331,12 +331,11 @@ contains
    subroutine child_phguard()
       type(hist_spec_t) :: sh
       type(hist_data_t) :: dh
-      type(lat_t) :: la
       allocate (dh%e_rel(1))
       dh%e_rel = 1.0d0
       dh%n_traj = 1
       sh = hist_spec_t(k_e_hist, 'build/drv_phg.dat', 2.0d0, 1.0d0, 4, 0, .true.)
-      call plot_hist(sh, dh, la)   ! the inverted range - must named abort here
+      call plot_hist(sh, dh)       ! the inverted range - must named abort here
    end subroutine child_phguard
 
    !------------------------------------------------------------------
@@ -363,7 +362,7 @@ contains
       call method_bind('adiabatic')
       call container_bind_pes(reference_pes)
       call harm_set_constant(kk)
-      call state_create(stc, size(list_atoms%mass), max(electronic%n_surf, 1))
+      call state_create(stc, size(list_atoms%mass), 1)   ! the degenerate adiabatic surface count
       ! conversion calibration: one force_eval at a single-offset geometry with
       ! p = 0 (V = kk/2 * |q|^2 eV) measures the kcal/mol-per-eV factor through
       ! the bound container - the conversion literal never lands here
@@ -398,14 +397,14 @@ contains
       stc%t = 0.4d0
       call fin_eval(stc, fc)
       ! ---- anchors ----
-      call chk_nl('(q) j_a(3)', fc%j_a(3), ii_zz*omg/hbar_code)
+      call chk_nl('(q) j_a(3)', fc%j_a(3), ii_zz*omg/hbar_act)
       call chk_z('(q) j_a(1)', fc%j_a(1))
       call chk_z('(q) j_a(2)', fc%j_a(2))
-      call chk_nl('(q) j_mag_a', fc%j_mag_a, ii_zz*omg/hbar_code)
+      call chk_nl('(q) j_mag_a', fc%j_mag_a, ii_zz*omg/hbar_act)
       call chk_nl('(q) e_rot_a [inertia-tensor path]', fc%e_rot_a, &
-                  0.5d0*ii_zz*omg*omg/e_conv)
+                  0.5d0*ii_zz*omg*omg*dyn_ev)
       call chk_nl('(q) e_int_a(1) [COM-frame path - the cross-identity]', fc%e_int_a(1), &
-                  0.5d0*ii_zz*omg*omg/e_conv)
+                  0.5d0*ii_zz*omg*omg*dyn_ev)
       call chk_nl('(q) e_int_a(2) [buffered well, check-buffered constant]', fc%e_int_a(2), &
                   cal*(kk/2.0d0)*sq)
       call chk_z('(q) e_cm [pure rotation carries no net momentum]', fc%e_cm)
@@ -414,7 +413,7 @@ contains
       call chk_z('(q) b_fin [single fragment]', fc%b_fin)
       call chk_z('(q) ang(19) [gas: no surface pair]', fc%ang(19))
       call chk_z('(q) e_int_b(1) [no second fragment]', fc%e_int_b(1))
-      call chk_nl('(q) t_life', fc%t_life, 4.0d0)
+      call chk_nl('(q) t_life', fc%t_life, 0.4d0)   ! 4.0 x 10-fs units -> 0.4 fs (2026-10-06 rebase)
       ! the archive: rotation stripped (THE non-linear anchor) + COM-shifted rows
       pmax = 0.0d0
       do d = 1, 9
@@ -922,7 +921,7 @@ contains
       call rng_init(i_seed(1))
       call sysdef_load(reactants%system_dir)
       call list_atoms_load()
-      call state_create(st, size(list_atoms%mass), max(electronic%n_surf, 1))
+      call state_create(st, size(list_atoms%mass), 1)   ! the degenerate adiabatic surface count
       call registry_gen_all()
       call registry_gen_init()
       call input_audit_declared()
@@ -1267,9 +1266,9 @@ contains
    !                  trees are probed and a missing exe is a NAMED failure)
    subroutine make_cases()
       character(len=80) :: xyza(4), xyzb(4), xyz1(4), xyz3(5)
-      character(len=80) :: la(16), lb(6), ld(9), ldp(9), lec(12)
-      character(len=80) :: lm(9), lt(18)
-      character(len=80) :: lr(17), lo(10), ln(7)
+      character(len=80) :: la(12), lb(6), ld(6), ldp(6), lec(9)
+      character(len=80) :: lm(9), lt(14)
+      character(len=80) :: lr(13), lo(10), ln(7)
       logical :: have_g, have_i
       character(len=64) :: srcexe, srcw
       integer :: j
@@ -1293,30 +1292,29 @@ contains
       ! section); NO container parameter file -> termination and
       ! classification unbound
       la = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 1.0', 'B_MAX = 2.0', &
-             'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = THERMALIZE,ROTATION', &
-             'PROJECTILE = pair_a', 'TARGET = pair_b', &
-             'T_EQ = 300.0', 'N_EQ = 25', 'DT_EQ = 0.05', 'J_ROT = 3', 'N_TRAJ = 3', &
+             'R_SEP = 8.0', 'DT = 0.05', &
+             'DIST_SCHEME = THERMALIZE[T_EQ=300.0, N_EQ=25, DT_EQ=0.05], ROTATION[J_ROT=3]', &
+             'PROJECTILE = pair_a', 'TARGET = pair_b', 'N_TRAJ = 3', &
              'MAX_STEPS = 40', 'ISEED = 20260915', 'GWRITE_LEVEL = 2' ]
       ! (h): the bad system_dir case (the folder does not exist)
       lb = [ character(len=80) :: 'SYSTEM_DIR = no_such_system', 'E_REL = 1.0', 'B_MAX = 2.0', &
              'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = ROTATION' ]
       ! (j2): the bad member value (driver child, cwd-relative system dir)
       ld = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 1.0', 'B_MAX = 2.0', &
-             'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = GLO_TARGET', 'T_GLO = -5.0', &
-             'GAMMA_GLO = 0.04', 'W_GHOST = 1.25' ]
+             'R_SEP = 8.0', 'DT = 0.05', &
+             'DIST_SCHEME = GLO_TARGET[T_GLO=-5.0, GAMMA_GLO=0.04, W_GHOST=1.25]' ]
       ! (j1): the positive round-trip (the check parent reads it from src/, so the
       ! system dir is build-relative)
       ldp = [ character(len=80) :: 'SYSTEM_DIR = build/drv_case_d/system', 'E_REL = 1.0', &
-              'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = GLO_TARGET', &
-              'T_GLO = 350.0', 'GAMMA_GLO = 0.04', 'W_GHOST = 1.25' ]
+              'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.05', &
+              'DIST_SCHEME = GLO_TARGET[T_GLO=350.0, GAMMA_GLO=0.04, W_GHOST=1.25]' ]
       ! (k): the eclass child input (build-relative; the child runs from src/,
       ! whose run directory carries no container parameter file; one member
       ! per fragment - a member instance carries one parameter set)
       lec = [ character(len=80) :: 'SYSTEM_DIR = build/drv_case_a/system', 'E_REL = 1.0', &
               'B_MAX = 2.0', 'R_SEP = 8.0', 'DT = 0.05', &
-              'DIST_SCHEME = THERMALIZE,ROTATION', 'PROJECTILE = pair_a', 'TARGET = pair_b', &
-              'T_EQ = 300.0', 'N_EQ = 25', &
-              'DT_EQ = 0.05', 'N_TRAJ = 1' ]
+              'DIST_SCHEME = THERMALIZE[T_EQ=300.0, N_EQ=25, DT_EQ=0.05], ROTATION', &
+              'PROJECTILE = pair_a', 'TARGET = pair_b', 'N_TRAJ = 1' ]
       ! (d): the MAX_STEPS safety-net case - one trajectory, five steps
       lm = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 1.0', 'B_MAX = 2.0', &
              'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = ROTATION', 'N_TRAJ = 1', &
@@ -1327,15 +1325,15 @@ contains
       ! the run light at ~44 force calls per boot sequence)
       lr = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 1.0', 'B_MAX = 2.0', &
              'R_SEP = 8.0', 'DT = 0.05', 'INTEGRATOR = RADAU', 'ORDER = 8', &
-             'DIST_SCHEME = THERMALIZE,ROTATION', 'PROJECTILE = pair_a', 'TARGET = pair_b', &
-             'T_EQ = 300.0', 'N_EQ = 25', 'DT_EQ = 0.05', 'J_ROT = 3', 'N_TRAJ = 2', 'MAX_STEPS = 40', &
+             'DIST_SCHEME = THERMALIZE[T_EQ=300.0, N_EQ=25, DT_EQ=0.05], ROTATION[J_ROT=3]', &
+             'PROJECTILE = pair_a', 'TARGET = pair_b', 'N_TRAJ = 2', 'MAX_STEPS = 40', &
              'ISEED = 20260915' ]
       ! (e)/(f): the term+classify bound case - a high collision energy so the
       ! amplitude climb crosses Q_TERM mid-run; MAX_STEPS=400 is the safety net
       lt = [ character(len=80) :: 'SYSTEM_DIR = system', 'E_REL = 200.0', 'B_MAX = 2.0', &
-             'R_SEP = 8.0', 'DT = 0.05', 'DIST_SCHEME = THERMALIZE,ROTATION', &
-             'PROJECTILE = pair_a', 'TARGET = pair_b', &
-             'T_EQ = 300.0', 'N_EQ = 25', 'DT_EQ = 0.05', 'J_ROT = 3', 'N_TRAJ = 2', &
+             'R_SEP = 8.0', 'DT = 0.05', &
+             'DIST_SCHEME = THERMALIZE[T_EQ=300.0, N_EQ=25, DT_EQ=0.05], ROTATION[J_ROT=3]', &
+             'PROJECTILE = pair_a', 'TARGET = pair_b', 'N_TRAJ = 2', &
              'MAX_STEPS = 400', 'ISEED = 20260915', &
              'K_HARM = 0.04', 'Q_TERM = 9.5', 'E_SPLIT = 1.0' ]   ! container keys
       ! (n): the occupation-column case - the list entry appends occ/n_hop to

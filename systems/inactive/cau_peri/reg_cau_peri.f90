@@ -43,7 +43,7 @@ contains
                                 force   =bind_force, &
                                 method  =register_method, &
                                 term    =bind_term, &
-                                arm     =arm_method, &
+                                init    =init_method, &
                                 columns =register_columns)
    end subroutine reg_cau_peri_slots
 
@@ -98,21 +98,21 @@ contains
       if (cau_peri_term_on()) call container_bind_term(cau_peri_term)
    end subroutine bind_term
 
-   ! arm_method() - arm the TDHF package when the run selected it
-   subroutine arm_method()
+   ! init_method() - initialize the TDHF package when the run selected it
+   subroutine init_method()
       if (trim(electronic%method) == 'tdhf_hub') then
          call cau_peri_tdhf_setup(cau_pars_norb, cau_pars_bw, cau_pars_telec, &
                                   cau_pars_start, cau_pars_msbstp, &
                                   cau_pars_pmode, cau_pars_pamp)
       end if
-   end subroutine arm_method
+   end subroutine init_method
 
    !===== output wiring ======================================
 
    ! register_columns() - the container observables: obs_list-only recorder
    !                columns (the run opts in via OBS_LIST = n_imp_up,
    !                n_imp_dn, mag_mom, ...); registration order = column
-   !                order. Selection-gated like the arm slot
+   !                order. Selection-gated like the init slot
    subroutine register_columns()
       if (trim(electronic%method) == 'tdhf_hub') then
          call rec_reg_col('n_imp_up', cau_peri_col_nup)

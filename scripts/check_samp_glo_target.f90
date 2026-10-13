@@ -7,6 +7,7 @@
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 interface/sysdef_interface.f90 input.f90 &
 !            globals/config_atoms.f90 globals/state.f90 &
+!            utils/linalg.f90 utils/hessian.f90 utils/geom_init.f90 utils/spectrum.f90 interface/elec_interface.f90 interface/force_interface.f90 dynamics/propagator.f90 interface/bath.f90 &
 !            utils/rng.f90 utils/geometry.f90 interface/sampler.f90 methods/samp_glo_target.f90 &
 !            methods/seam_cast.f90 methods/reg_samp_glo_target.f90 &
 !            ../scripts/check_samp_glo_target.f90 -o build/check_samp_glo_target.exe
@@ -93,7 +94,7 @@ contains
 end module glo_standin
 
 program check_samp_glo_target
-   use consts,        only: kb_code
+   use consts,        only: kb_act
    use rng,           only: rng_init
    use sampler,       only: samp_run, samp_code
    use config,        only: reactants, propagator
@@ -120,28 +121,32 @@ program check_samp_glo_target
    character(len=32) :: mode
 
    ! ---------- child dispatch: one bad case per spawn, must named abort ----------
+   allocate (par%t_glo(1), par%gamma_glo(1), par%w_ghost(1))   ! single-carrier check face
+   par%t_glo(1) = 0.0d0
+   par%gamma_glo(1) = 0.0d0
+   par%w_ghost(1) = 0.0d0
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       call state_create(sta, 2)
-      par%t_glo = t_use
-      par%gamma_glo = g_use
-      par%w_ghost = w_use
+      par%t_glo(1) = t_use
+      par%gamma_glo(1) = g_use
+      par%w_ghost(1) = w_use
       propagator%dt = dt_use
       select case (trim(mode))
       case ('bad-temp')                     ! (f): t_glo = 0
          call setup_mol(1)
          call set_scheme([8])
-         par%t_glo = 0.0d0
+         par%t_glo(1) = 0.0d0
          call glo_target_init(par)
       case ('bad-gamma')                    ! (g): damping zero
          call setup_mol(1)
          call set_scheme([8])
-         par%gamma_glo = 0.0d0
+         par%gamma_glo(1) = 0.0d0
          call glo_target_init(par)
       case ('bad-w')                        ! (h): ghost frequency zero
          call setup_mol(1)
          call set_scheme([8])
-         par%w_ghost = 0.0d0
+         par%w_ghost(1) = 0.0d0
          call glo_target_init(par)
       case ('bad-dt')                       ! (i): propagator step zero at init
          call setup_mol(1)
@@ -167,9 +172,9 @@ program check_samp_glo_target
    ! ---------- single carrier: registration/dispatch + algebra ----------
    call setup_mol(1)
    call set_scheme([8])
-   par%t_glo = t_use
-   par%gamma_glo = g_use
-   par%w_ghost = w_use
+   par%t_glo(1) = t_use
+   par%gamma_glo(1) = g_use
+   par%w_ghost(1) = w_use
    propagator%dt = dt_use
    call rng_init(6613)
    call glo_target_init(par)
@@ -198,7 +203,7 @@ program check_samp_glo_target
    dev_max = 0.0d0
    do i = 1, glo_target_nat()
       g_atom = list_atoms%frag(frag_b)%list(i)
-      s_theory = sqrt(2.0d0*g_use*list_atoms%mass(g_atom)*kb_code*t_use/dt_use)
+      s_theory = sqrt(2.0d0*g_use*list_atoms%mass(g_atom)*kb_act*t_use/dt_use)
       dev_max = max(dev_max, abs(glo_target_sigma_noise(i) - s_theory)/s_theory)
    end do
    if (dev_max > 1.0d-12) then
@@ -212,9 +217,9 @@ program check_samp_glo_target
    dev_max = 0.0d0
    do i = 1, glo_target_nat()
       g_atom = list_atoms%frag(frag_b)%list(i)
-      s_theory = sqrt(list_atoms%mass(g_atom)*kb_code*t_use)
+      s_theory = sqrt(list_atoms%mass(g_atom)*kb_act*t_use)
       dev_max = max(dev_max, abs(glo_target_sigma_p(i) - s_theory)/s_theory)
-      s_theory = sqrt(kb_code*t_use/(list_atoms%mass(g_atom)*w_use**2))
+      s_theory = sqrt(kb_act*t_use/(list_atoms%mass(g_atom)*w_use**2))
       dev_max = max(dev_max, abs(glo_target_sigma_q(i) - s_theory)/s_theory)
    end do
    if (dev_max > 1.0d-12) then
@@ -260,16 +265,19 @@ program check_samp_glo_target
    ! ---------- (k) dual-carrier equal treatment: one bath, two ghost sets ----
    call setup_mol(2)
    call set_scheme([8, 8])
+   par%t_glo = [ t_use, t_use ]          ! one bath, two rows
+   par%gamma_glo = [ g_use, g_use ]
+   par%w_ghost = [ w_use, w_use ]
    call glo_target_init(par)               ! re-bind: two carrier rows
    frag_b = glo_target_frag(2)
    dev_max = 0.0d0                          ! the (c)/(d)-style algebra, carrier 2
    do i = 1, glo_target_nat(2)
       g_atom = list_atoms%frag(frag_b)%list(i)
-      s_theory = sqrt(2.0d0*g_use*list_atoms%mass(g_atom)*kb_code*t_use/dt_use)
+      s_theory = sqrt(2.0d0*g_use*list_atoms%mass(g_atom)*kb_act*t_use/dt_use)
       dev_max = max(dev_max, abs(glo_target_sigma_noise(i, 2) - s_theory)/s_theory)
-      s_theory = sqrt(list_atoms%mass(g_atom)*kb_code*t_use)
+      s_theory = sqrt(list_atoms%mass(g_atom)*kb_act*t_use)
       dev_max = max(dev_max, abs(glo_target_sigma_p(i, 2) - s_theory)/s_theory)
-      s_theory = sqrt(kb_code*t_use/(list_atoms%mass(g_atom)*w_use**2))
+      s_theory = sqrt(kb_act*t_use/(list_atoms%mass(g_atom)*w_use**2))
       dev_max = max(dev_max, abs(glo_target_sigma_q(i, 2) - s_theory)/s_theory)
    end do
    call state_create(sta, 4)

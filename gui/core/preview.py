@@ -19,16 +19,38 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from .keyspec import KIND_CELL, parse_scalar
 from .sysdir import SysDef, Frag
 
 DYN_EV = 103.6426965  # 1 amu·Å²/fs² 折 eV(consts.f90 dyn_ev,镜像不得重推)
 
 
 def incident_word(surface_model: int, n_frag: int) -> str:
-    """入射通道选择(sampler.f90:132-146 规则)。"""
+    """入射通道选择(sampler.f90:132-146 规则;surface_model 来自 SCATTERING 键)。"""
     if surface_model != 0:
         return "incident_surface"
     return "incident_pair" if n_frag > 1 else "incident_single"
+
+
+def cell_from_values(values: dict[str, str]):
+    """解析 CELL 键(三行晶矢);缺席或坏值返回 None(2026-10-13 裁决:胞来自输入)。"""
+    raw = values.get("CELL", "").strip()
+    if not raw:
+        return None
+    try:
+        cell = parse_scalar(KIND_CELL, "", raw)
+    except ValueError:
+        return None
+    return cell
+
+
+def box_from_cell(cell) -> tuple[float, float, float]:
+    """面内盒标量(box_lx/box_ly/skew)——余弦定理,镜像 config_atoms 装配步 4。"""
+    a1, a2 = cell[0], cell[1]
+    lx = math.sqrt(sum(c * c for c in a1))
+    ly = math.sqrt(sum(c * c for c in a2))
+    cos_skew = max(-1.0, min(1.0, sum(x * y for x, y in zip(a1, a2)) / (lx * ly)))
+    return lx, ly, math.acos(cos_skew)
 
 
 def _com(frag: Frag) -> list[float]:
@@ -108,11 +130,14 @@ def assemble_preview(
         except ValueError:
             return default
 
-    scene = PreviewScene(cell=sysdef.cell if sysdef.has_cell else None)
+    scat = (values.get("SCATTERING", "") or "GAS").strip().upper() or "GAS"
+    surf = scat == "SURFACE"
+    cell = cell_from_values(values) if surf else None
+    scene = PreviewScene(cell=cell)
     scene.notes.append("预览为示意:片段内部几何取文件平衡坐标(未抽样振动/转动)")
 
     n_frag = len(sysdef.frags)
-    channel = incident_word(sysdef.surface_model, n_frag)
+    channel = incident_word(1 if surf else 0, n_frag)
     e_rel = num("E_REL")
     r_sep = num("R_SEP")
 
@@ -146,9 +171,13 @@ def assemble_preview(
 
         n_aim = integer("N_AIM", 0)
         if n_aim == 1:
-            a1 = (sysdef.box_lx, 0.0)
-            a2 = (sysdef.box_ly * math.cos(sysdef.skew), sysdef.box_ly * math.sin(sysdef.skew))
-            drop = [0.5 * a1[0] + 0.5 * a2[0], 0.5 * a1[1] + 0.5 * a2[1]]
+            if cell is not None:
+                lx, ly, skew = box_from_cell(cell)
+                a1 = (lx, 0.0)
+                a2 = (ly * math.cos(skew), ly * math.sin(skew))
+                drop = [0.5 * a1[0] + 0.5 * a2[0], 0.5 * a1[1] + 0.5 * a2[1]]
+            else:
+                drop = [0.0, 0.0]
             scene.notes.append("N_AIM=1 胞内均匀采样,预览取胞心为代表值")
         elif n_aim == 2:
             drop = [num("AIM_X"), num("AIM_Y")]

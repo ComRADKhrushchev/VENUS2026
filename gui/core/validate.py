@@ -15,8 +15,8 @@ from __future__ import annotations
 import math
 
 from .keyspec import (
-    KEY_TABLE, KEY_NAMES, MEMBER_TABLE, MEMBER_KEY_NAMES, SCHEME_MEMBER_KEYS,
-    parse_scalar, CONTAINER_KEY_MAX, CONTAINER_KEY_LEN,
+    KEY_TABLE, KEY_NAMES, MEMBER_TABLE, MEMBER_KEY_NAMES, SCHEME_PARAMS,
+    parse_scalar, parse_dist_scheme, CONTAINER_KEY_MAX, CONTAINER_KEY_LEN,
 )
 from .sysdir import SysDef
 
@@ -123,9 +123,11 @@ def validate(
     if _written(values, "SPECTRUM_FILE") and spec_src != "MANUAL":
         err("SPECTRUM_FILE", "SPECTRUM_SOURCE≠MANUAL 时不得写谱表文件")
 
-    # ---- 5. system/ 与范式相关(config_atoms / sysdef)----
+    # ---- 5. system/ 与散射类相关(config_atoms / sysdef;范式来自 SCATTERING 键,
+    #      2026-10-13 裁决:主控键决定,不再由扫描推导)----
     if sysdef is not None and sysdef.ok:
-        surf = sysdef.surface_model == 1
+        scat = (values.get("SCATTERING", "") or "GAS").strip().upper() or "GAS"
+        surf = scat == "SURFACE"
         names = [f.name.lower() for f in sysdef.frags]
         n_frag = len(sysdef.frags)
         proj = values.get("PROJECTILE", "").strip()
@@ -139,19 +141,11 @@ def validate(
                 err("PROJECTILE", "表面散射须提供 PROJECTILE")
             elif proj.lower() not in names:
                 err("PROJECTILE", f"PROJECTILE 未命中片段(可用: {', '.join(sysdef.frag_names)})")
-            a_lat = _num(values, "A_LAT")
-            if a_lat is None:
-                err("A_LAT", "表面散射须提供晶格常数 A_LAT")
-            elif sysdef.box_lx > 0:
-                rlx = sysdef.box_lx / a_lat
-                rly = sysdef.box_ly / a_lat
-                tol = 1.0e-6
-                if abs(rlx - round(rlx)) > tol * max(1.0, abs(rlx)) or \
-                   abs(rly - round(rly)) > tol * max(1.0, abs(rly)):
-                    err("A_LAT", "A_LAT 与胞不可公度(box_lx/A_LAT、box_ly/A_LAT 须为整数)")
+            if not _written(values, "CELL"):
+                err("CELL", "表面散射须提供晶胞 CELL(三行晶矢, 如 '6 0 0, 0 6 0, 0 0 20')")
         else:
-            if _written(values, "A_LAT"):
-                err("A_LAT", "气相散射不支持 A_LAT(表面散射专用键)")
+            if _written(values, "CELL"):
+                err("CELL", "气相散射不支持 CELL(表面散射专用键)")
             if n_frag == 1:
                 if proj:
                     err("PROJECTILE", "单片段体系不支持 PROJECTILE")
@@ -168,16 +162,20 @@ def validate(
                     err("TARGET", f"TARGET 未命中片段(可用: {', '.join(sysdef.frag_names)})")
                 if proj and targ and proj.lower() == targ.lower():
                     err("TARGET", "PROJECTILE 与 TARGET 须指向不同片段")
-        # DIST_SCHEME 长度 = 片段数(sampler.f90:193-198)
+        # DIST_SCHEME 长度 = 片段数(sampler.f90:193-198);括号形式
         ds = values.get("DIST_SCHEME", "")
         if ds.strip():
-            words = [t.strip().upper() for t in ds.split(",") if t.strip()]
-            if len(words) != n_frag:
-                err("DIST_SCHEME", f"DIST_SCHEME 词数({len(words)})须等于片段数({n_frag})")
+            try:
+                items = parse_dist_scheme(ds)
+            except ValueError as exc:
+                err("DIST_SCHEME", str(exc))
+                items = []
+            if items and len(items) != n_frag:
+                err("DIST_SCHEME", f"DIST_SCHEME 片段数({len(items)})须等于片段数({n_frag})")
             # ebk 载体须双原子(samp_ebk.f90:135)
-            for i, w in enumerate(words):
+            for i, (w, _pars) in enumerate(items):
                 if w == "EBK" and i < n_frag and sysdef.frags[i].nat != 2:
-                    err("N_VIB", f"EBK 载体 {sysdef.frags[i].name} 非双原子")
+                    err("N_VIB", f"EBK 载体 {sysdef.frags[i].name} 非双原子(片段 {i + 1})")
     else:
         if sysdef is not None and sysdef.errors:
             err("SYSTEM_DIR", f"system/ 扫描有错: {sysdef.errors[0]}")
@@ -225,19 +223,20 @@ def validate(
     n_aim = _int(values, "N_AIM")
     if n_aim is not None and n_aim not in (0, 1, 2):
         err("N_AIM", "须为 0(原点)/1(胞内)/2(定点)")
-    if n_aim == 1 and (sysdef is None or not sysdef.has_cell):
-        err("N_AIM", "落点模式 1 须有晶胞(表面散射)")
+    scat = (values.get("SCATTERING", "") or "GAS").strip().upper() or "GAS"
+    if n_aim == 1 and scat != "SURFACE":
+        err("N_AIM", "落点模式 1(胞内)须 SCATTERING = SURFACE")
     if n_aim == 2:
         if not (_written(values, "AIM_X") and _written(values, "AIM_Y")):
             err("AIM_X", "N_AIM=2 须同时给 AIM_X 与 AIM_Y")
-        if sysdef is not None and sysdef.ok and sysdef.surface_model == 0:
+        if scat != "SURFACE":
             err("N_AIM", "落点模式 2(定点)仅表面散射可用")
     e_rel = _num(values, "E_REL")
     if n_e_rel in (1, 2) and e_rel is not None and e_rel <= 0.0:
         err("E_REL", "碰撞能模式 1/2 须 E_REL > 0")
     b_max = _num(values, "B_MAX")
     r_sep = _num(values, "R_SEP")
-    pairish = sysdef is not None and sysdef.ok and sysdef.surface_model == 0 and len(sysdef.frags) > 1
+    pairish = sysdef is not None and sysdef.ok and scat != "SURFACE" and len(sysdef.frags) > 1
     if pairish:
         if b_max is not None and b_max <= 0.0:
             err("B_MAX", "气相散射碰撞盘半径须 > 0")
@@ -264,68 +263,128 @@ def validate(
         if (_num(values, "NU_COLL") or 0.0) <= 0.0:
             err("NU_COLL", "BATH=ANDERSEN 须 NU_COLL > 0")
 
-    # ---- 8. 成员参数(选中才生效;samp_*.f90 init 正性约束)----
-    ds = values.get("DIST_SCHEME", "")
-    words = [t.strip().upper() for t in ds.split(",") if t.strip()]
-    selected = set(words)
+    # ---- 8. 方案词括号参数(2026-10-13 裁定: 逐片段取参;samp_*.f90 init 约束)----
+    ds = values.get("DIST_SCHEME", "").strip()
+    items: list[tuple[str, dict[str, str]]] = []
+    if ds:
+        try:
+            items = parse_dist_scheme(ds)
+        except ValueError as exc:
+            err("DIST_SCHEME", str(exc))
 
-    def pos(key: str, msg: str, strict_zero=True):
-        v = _num(values, key)
-        if v is None:
-            return
-        if (strict_zero and v <= 0.0) or (not strict_zero and v < 0.0):
-            err(key, msg)
+    # 各词的必给参数(缺省走成员字段默认;标注"须 >0"默认 0 的参数必须显式给)
+    word_required = {
+        "BOLTZMANN": {"T_VIB"}, "J": {"T_ROT"},
+        "GLO_TARGET": {"T_GLO", "GAMMA_GLO", "W_GHOST"},
+        "THERMALIZE": {"T_EQ", "N_EQ", "DT_EQ"},
+    }
 
-    if "BOLTZMANN" in selected:
-        pos("T_VIB_A", "选中 boltzmann 须 T_VIB_A > 0")
-    if "J" in selected:
-        pos("T_ROT", "选中 j 须 T_ROT > 0")
-    if "ROTATION" in selected:
-        j = _int(values, "J_ROT")
-        if j is not None and j < 0:
-            err("J_ROT", "须 ≥ 0")
-    if "EBK" in selected:
-        for k in ("N_VIB", "N_ROT"):
-            v = _int(values, k)
+    def _pf(params: dict, name: str, i: int):
+        """片段参数的数值解释(非数值报错,缺失/非数值返回 None)。"""
+        raw = params.get(name)
+        if raw is None:
+            return None
+        try:
+            return float(raw.replace("D", "E").replace("d", "e"))
+        except ValueError:
+            err(name, f"片段 {i + 1} 的 {name} 不是数值: '{raw}'")
+            return None
+
+    def _pi(params: dict, name: str, i: int):
+        raw = params.get(name)
+        if raw is None:
+            return None
+        try:
+            return int(raw)
+        except ValueError:
+            err(name, f"片段 {i + 1} 的 {name} 不是整数: '{raw}'")
+            return None
+
+    for i, (word, params) in enumerate(items):
+        tag = f"片段 {i + 1}({word})"
+        legal = {sp.name for sp in SCHEME_PARAMS.get(word, [])}
+        for name in params:
+            if name not in legal:
+                err(name, f"{tag}: {name} 不是 {word} 的参数(合法: {', '.join(sorted(legal)) or '无'})")
+        for name in word_required.get(word, set()):
+            if name not in params:
+                err(name, f"{tag}: 须给 {name}(其成员默认不合法)")
+        if word == "BOLTZMANN":
+            v = _pf(params, "T_VIB", i)
+            if v is not None and v <= 0.0:
+                err("T_VIB", f"{tag}: 须 T_VIB > 0")
+        elif word == "J":
+            v = _pf(params, "T_ROT", i)
+            if v is not None and v <= 0.0:
+                err("T_ROT", f"{tag}: 须 T_ROT > 0")
+        elif word == "ROTATION":
+            v = _pi(params, "J_ROT", i)
             if v is not None and v < 0:
-                err(k, "须 ≥ 0")
-    if "SURFACE_OSCILLATOR" in selected:
-        n_osc = _int(values, "N_OSC")
-        if n_osc is not None and n_osc not in (0, 1):
-            err("N_OSC", "须为 0(热)/1(定态)")
-        if n_osc == 0:
-            pos("T_OSC", "N_OSC=0 须 T_OSC > 0")
-        if n_osc == 1:
-            n_lev = _int(values, "N_LEVEL")
-            if n_lev is not None and n_lev < 0:
-                err("N_LEVEL", "须 ≥ 0")
-        pos("K_OSC", "须 K_OSC > 0")
-    if "NORMALMODE" in selected:
-        pos("E_VIB", "须 E_VIB > 0")
-    if "BARRIER_EXCITATION" in selected:
-        es = _num(values, "E_STAB")
-        if es is not None and es < 0.0:
-            err("E_STAB", "须 ≥ 0")
-        n_e_bar = _int(values, "N_E_BAR")
-        if n_e_bar is not None and n_e_bar not in (0, 1):
-            err("N_E_BAR", "须为 0/1")
-        eb = _num(values, "E_BAR")
-        if eb is not None and eb < 0.0:
-            err("E_BAR", "须 ≥ 0")
-        if n_e_bar == 1:
-            pos("T_BAR", "N_E_BAR=1 须 T_BAR > 0")
-    if "GLO_TARGET" in selected:
-        pos("T_GLO", "须 > 0")
-        pos("GAMMA_GLO", "须 > 0")
-        pos("W_GHOST", "须 > 0")
-    if "THERMALIZE" in selected:
-        pos("T_EQ", "须 T_EQ > 0")
-        n_eq = _int(values, "N_EQ")
-        if n_eq is not None and n_eq < 1:
-            err("N_EQ", "须 ≥ 1")
-        pos("DT_EQ", "须 DT_EQ > 0")
-    if "WIGNER" in selected:
-        pos("E_SCALE", "须 E_SCALE > 0")
+                err("J_ROT", f"{tag}: 须 ≥ 0")
+        elif word == "EBK":
+            for k in ("N_VIB", "N_ROT"):
+                v = _pi(params, k, i)
+                if v is not None and v < 0:
+                    err(k, f"{tag}: 须 ≥ 0")
+        elif word == "SURFACE_OSCILLATOR":
+            n_osc = _pi(params, "N_OSC", i)
+            if n_osc is not None and n_osc not in (0, 1):
+                err("N_OSC", f"{tag}: 须为 0(热)/1(定态)")
+            if n_osc == 0:
+                v = _pf(params, "T_OSC", i)
+                if v is not None and v <= 0.0:
+                    err("T_OSC", f"{tag}: N_OSC=0 须 T_OSC > 0(缺省 300 合法)")
+            if n_osc == 1:
+                v = _pi(params, "N_LEVEL", i)
+                if v is not None and v < 0:
+                    err("N_LEVEL", f"{tag}: 须 ≥ 0")
+            v = _pf(params, "K_OSC", i)
+            if v is not None and v <= 0.0:
+                err("K_OSC", f"{tag}: 须 > 0")
+        elif word == "NORMALMODE":
+            v = _pf(params, "E_VIB", i)
+            if v is not None and v <= 0.0:
+                err("E_VIB", f"{tag}: 须 > 0")
+        elif word == "BARRIER_EXCITATION":
+            v = _pf(params, "E_STAB", i)
+            if v is not None and v < 0.0:
+                err("E_STAB", f"{tag}: 须 ≥ 0")
+            n_e_bar = _pi(params, "N_E_BAR", i)
+            if n_e_bar is not None and n_e_bar not in (0, 1):
+                err("N_E_BAR", f"{tag}: 须为 0/1")
+            v = _pf(params, "E_BAR", i)
+            if v is not None and v < 0.0:
+                err("E_BAR", f"{tag}: 须 ≥ 0")
+            if n_e_bar == 1:
+                v = _pf(params, "T_BAR", i)
+                if v is not None and v <= 0.0:
+                    err("T_BAR", f"{tag}: N_E_BAR=1 须 T_BAR > 0")
+        elif word == "GLO_TARGET":
+            for k in ("T_GLO", "GAMMA_GLO", "W_GHOST"):
+                v = _pf(params, k, i)
+                if v is not None and v <= 0.0:
+                    err(k, f"{tag}: 须 > 0")
+        elif word == "THERMALIZE":
+            v = _pf(params, "T_EQ", i)
+            if v is not None and v <= 0.0:
+                err("T_EQ", f"{tag}: 须 T_EQ > 0")
+            n_eq = _pi(params, "N_EQ", i)
+            if n_eq is not None and n_eq < 1:
+                err("N_EQ", f"{tag}: 须 ≥ 1")
+            v = _pf(params, "DT_EQ", i)
+            if v is not None and v <= 0.0:
+                err("DT_EQ", f"{tag}: 须 DT_EQ > 0")
+        elif word == "WIGNER":
+            v = _pf(params, "E_SCALE", i)
+            if v is not None and v <= 0.0:
+                err("E_SCALE", f"{tag}: 须 > 0")
+
+    # THERMALIZE 共享一次平衡跑: N_EQ/DT_EQ 各片段须一致(samp_thermalize init)
+    th = [(i, p) for i, (w, p) in enumerate(items) if w == "THERMALIZE"]
+    for k in ("N_EQ", "DT_EQ"):
+        vals = {p.get(k) for _, p in th if k in p}
+        if len(vals) > 1:
+            err(k, f"THERMALIZE 各片段的 {k} 须一致(共享一次平衡跑): {sorted(vals)}")
 
     # ---- 9. MANUAL 谱表(bath 同级的显式检查)----
     if spec_src == "MANUAL" and not _written(values, "SPECTRUM_FILE"):

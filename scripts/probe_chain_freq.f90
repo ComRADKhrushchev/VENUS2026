@@ -40,11 +40,10 @@
 ! The harmonic analytic contracts (hand side of every anchor):
 !   well            V = K_HARM/2*sum|q_i|^2, K_HARM [eV/A^2] (the
 !                   container parameter file, read from cwd); F =
-!                   -grad V through force_eval lands in internal units
-!                   per A with the single fixed conversion pair
-!                   ev_kcal*e_conv = 23.0605*0.04184 = 0.96485132
-!                   internal per eV (program constants, restated here
-!                   as the analytic formula's own literals)
+!                   -grad V through force_eval lands in dynamical units
+!                   [amu*A/fs^2] with the rebase fold ev_dyn
+!                   (the eV/A^2 container force times ev_dyn; the analytic
+!                   formulas below carry their own literals)
 !   Cartesian H     K_int = K_HARM*0.96485132 [internal/A^2] on every
 !                   diagonal; coordinate i's force never reads
 !                   coordinate j, so every off-diagonal is the
@@ -94,7 +93,7 @@
 !        non-negative integer (getter returns integers by type)
 ! Criteria (normalmode leg, H3 carrier - three EQUAL masses make the
 ! projected spectrum analytically uniform; s = 3N-3 = 6 modes,
-! e_vib = 12.5 kcal/mol -> e_tot = 12.5*e_conv = 0.523 internal):
+! e_vib = 0.54205243 eV -> e_tot = e_vib*ev_dyn dynamical):
 !   (F3) projected spectrum + table contract: the 3 null eigenvalues
 !        <= 1e-10 absolute; each mode omega within 1e-10 relative of
 !        sqrt(K_int/m); the eigenvector table orthonormal (C^T*C - I)
@@ -156,10 +155,10 @@ end module chain_probe_support
 
 program probe_chain_freq
    use spectrum,     only: spectrum_modes
-   use consts,        only: e_conv, pi, two_pi
+   use consts,        only: ev_dyn, pi, two_pi
    use rng,           only: rng_init
    use control,       only: i_seed
-   use input,         only: read_input, buffer_n_rows, buffer_key, buffer_val, buffer_line
+   use input,         only: read_input
    use config,        only: reactants
    use config_atoms, only: list_atoms, list_atoms_load
    use state,         only: state_t, state_create, state_destroy
@@ -167,7 +166,6 @@ program probe_chain_freq
    use registry_gen,  only: registry_gen_all, registry_gen_init, registry_gen_keys
    use force_interface,  only: container_init
    use sampler,       only: samp_code, samp_run, samp_incident_word
-   use seam_cast,     only: seam_real
    use hessian,       only: hessian_cd
    use linalg,        only: eig_sym
    use reference_box, only: reference_k
@@ -176,12 +174,11 @@ program probe_chain_freq
    use chain_probe_support, only: probe_force_setup, probe_force
    implicit none
 
-   ! analytic-side constants (the formulas' own literals; ev_kcal and
-   ! e_conv are the program's fixed pair, restated here)
-   real(8), parameter :: ev_kcal_lit = 23.0605d0      ! kcal/mol per eV (the interface's literal)
+   ! analytic-side constants (the formulas' own literals; the rebase's
+   ! ev_dyn fold replaces the retired kcal-era pair)
    real(8), parameter :: hc_k_lit    = 1.43878d0      ! h*c/k [cm*K] (the member's literal)
-   real(8), parameter :: c_light     = 2.99792458d-4 ! speed of light [cm per 10 fs]
-   real(8), parameter :: w_per_rad   = 1.0d0/(two_pi*c_light) ! cm^-1 per rad/(10 fs)
+   real(8), parameter :: c_light     = 2.99792458d-5 ! speed of light [cm per fs]
+   real(8), parameter :: w_per_rad   = 1.0d0/(two_pi*c_light) ! cm^-1 per rad/fs (w_to_wvn's fold)
 
    ! sample sizes (the anchors' statistical bands are quoted for these)
    integer, parameter :: ndraw_boltz = 200000
@@ -232,7 +229,7 @@ program probe_chain_freq
    if (trim(leg) == 'boltz' .and. nat /= 2) stop 'probe_chain_freq: boltz fixture expects 2 atoms'
    if (trim(leg) == 'normalmode' .and. nat /= 3) stop 'probe_chain_freq: normalmode fixture expects 3 atoms'
 
-   k_int = reference_k()*ev_kcal_lit*e_conv    ! analytic Cartesian Hessian [internal/A^2]
+   k_int = reference_k()*ev_dyn                ! analytic Cartesian Hessian [amu/fs^2] (K_HARM eV/A^2)
    print '(a,a,a,i0,a)', 'probe: leg = ', trim(leg), '  (list_atoms atoms = ', nat, &
       ')  - real container forces through force_eval'
    print '(a,es12.6,a)', 'probe: K_HARM buffered -> analytic K_int = K*23.0605*0.04184 = ', k_int, &
@@ -310,15 +307,10 @@ program probe_chain_freq
             ' = analytic {sqrt(K_int/m_a)} within 1e-10 rel)'
       end if
 
-      ! buffered T_VIB_A (the seam's own read pattern)
-      t_vib = 0.0d0
-      do i = 1, buffer_n_rows()
-         if (trim(buffer_key(i)) == 'T_VIB_A') then
-            sval = buffer_val(i)
-            call seam_real(buffer_key(i), sval, buffer_line(i), t_vib)
-         end if
-      end do
-      if (t_vib <= 0.0d0) stop 'probe_chain_freq: T_VIB_A not buffered (boltz leg needs it)'
+      ! the boltz leg's temperature is PROBE-OWNED (the 2026-10-13 bracket
+      ! ruling retired top-level member keys; the case file's documented
+      ! constant, formerly the buffered T_VIB row, is carried here)
+      t_vib = 104.0d0   ! [K] - case_chain_frequencies/boltz chain constant
 
       ! the member's public face: derived table -> init -> samp_run dispatch.
       ! The member's contract takes translation-free orthonormal tables (the
@@ -337,7 +329,8 @@ program probe_chain_freq
          ! pair the derived top frequency with the analytic translation-free
          ! stretch column of the 2-atom fixture (realization algebra itself
          ! carries check_dist_boltzmann (i))
-         par%t_vib_a = t_vib
+         allocate (par%t_vib(1))
+         par%t_vib(1) = t_vib
          n_vib = 1
          allocate (par%tbl(1))
          allocate (par%tbl(1)%w(n_vib))
@@ -501,21 +494,17 @@ program probe_chain_freq
             print '(a)', '     translation-orthogonal 1e-12, eigen-residual within 1e-10 of the scale'
          end if
 
-         ! buffered E_VIB (the seam's own read pattern)
-         e_vib = 0.0d0
-         do i = 1, buffer_n_rows()
-            if (trim(buffer_key(i)) == 'E_VIB') then
-               sval = buffer_val(i)
-               call seam_real(buffer_key(i), sval, buffer_line(i), e_vib)
-            end if
-         end do
-         if (e_vib <= 0.0d0) stop 'probe_chain_freq: E_VIB not buffered (normalmode leg needs it)'
-         e_tot = e_vib*e_conv
+         ! the normalmode leg's energy is PROBE-OWNED (the 2026-10-13
+         ! bracket ruling retired top-level member keys; the case file's
+         ! documented constant, formerly the buffered E_VIB row)
+         e_vib = 0.54205243d0   ! [eV] = 12.5 kcal/mol / 23.0605 (case constant)
+         e_tot = e_vib*ev_dyn
          psc = sqrt(2.0d0*m_sum*e_tot)
 
          ! the member's public face: derived table -> init (its own 1e-8 battery
          ! re-validates the DERIVED table) -> samp_run dispatch
-         par%e_vib = e_vib
+         allocate (par%e_vib(1))
+         par%e_vib(1) = e_vib
          allocate (par%tbl(1))
          allocate (par%tbl(1)%w(s_mode), par%tbl(1)%c(9, s_mode))
          par%tbl(1)%w = w_tab
@@ -549,7 +538,7 @@ program probe_chain_freq
             if (norm2(com3) > 1.0d-10) ok_all = .false.
          end do
          if (ok_all) then
-            print '(a,es12.4,a)', '(N1) exact identities: PASS (E = e_vib*e_conv = ', e_tot, &
+            print '(a,es12.4,a)', '(N1) exact identities: PASS (E = e_vib*ev_dyn = ', e_tot, &
                ' internal to 1e-10; |sum p| <= 1e-9*sqrt(2*M*E); state in span(C); COM at origin;'
             print '(a,i0,a)', '     N = ', ndraw_exact, ' draws)'
          else

@@ -3,9 +3,9 @@
 !   (e_stab split over given stable modes + reaction-coordinate
 !   momentum kick, fresh-uniform sign, zero rc displacement)
 ! Design:
-!   One parameter set serves every carrier equally; saddle data arrives
-!   as assembly data - one table per carrier - and init validates it
-!   loudly per carrier. Sample writes each carrier's q/p about its COM
+!   One parameter row per carrier (the 2026-10-13 bracket ruling realized
+!   per fragment); saddle data arrives as assembly data - one table per
+!   carrier - and init validates it loudly per carrier. Sample writes each carrier's q/p about its COM
 !   origin (list_atoms order). The barrier-momentum sign is a fresh uniform
 !   independent of the magnitude.
 !   Units: e_stab/e_bar [eV], t_bar [K], E [amu*Ang^2/fs^2], w_mode
@@ -33,21 +33,26 @@ module samp_barrier_excitation
       real(8), allocatable :: rc(:)      ! unit mass-weighted reaction coordinate (3*nat)
    end type saddle_tbl_t
 
-   ! Member-owned parameters (the saddle tables arrive as assembly data)
+   ! Member-owned parameters, one row per carrier (the saddle tables arrive
+   ! as assembly data; the defaults below are the member's own)
    type :: barrier_excitation_params_t
-      real(8) :: e_stab = 0.34691355d0        ! stabilization energy [eV] (>= 0, every carrier;
-                                              ! default = the pre-2026-10-06 8.0 kcal/mol re-expressed)
-      integer :: n_e_bar = 0                  ! barrier energy law: 0 fixed e_bar, 1 thermal t_bar
-      real(8) :: e_bar = 0.21682097d0         ! barrier energy [eV] (mode 0; default = the
+      real(8), allocatable :: e_stab(:)       ! stabilization energies [eV] (>= 0; default = the
+                                              ! pre-2026-10-06 8.0 kcal/mol re-expressed)
+      integer, allocatable :: n_e_bar(:)      ! barrier energy laws: 0 fixed e_bar, 1 thermal t_bar
+      real(8), allocatable :: e_bar(:)        ! barrier energies [eV] (mode 0; default = the
                                               ! pre-2026-10-06 5.0 kcal/mol re-expressed)
-      real(8) :: t_bar = 900.0d0              ! barrier temperature [K] (mode 1)
+      real(8), allocatable :: t_bar(:)        ! barrier temperatures [K] (mode 1; default 900)
       type(saddle_tbl_t), allocatable :: tbl(:)  ! per-carrier saddle tables (list_atoms order)
    end type
 
    ! Derived member state (module-private; rebuilt by every init) - one row
-   ! per carrier; the energy-law constants are shared (equal treatment)
+   ! per carrier; the energy-law constants fold the carrier's own row
    type :: carry_t
       integer :: frag = 0                     ! carrier list_atoms fragment row [index]
+      real(8) :: e_stab_int = 0.0d0           ! stabilization energy [amu*Ang^2/fs^2]
+      integer :: n_e_bar_c = 0                ! validated barrier energy law [-]
+      real(8) :: pbar_fix = 0.0d0             ! mode-0 barrier momentum magnitude [mass-weighted]
+      real(8) :: t_bar_c = 0.0d0              ! validated barrier temperature [K]
       integer :: nat = 0                      ! carrier atom count [count]
       integer :: n_mode = 0                   ! carrier stable-mode count [count]
       integer, allocatable :: list(:)         ! carrier atom index list [global atom index]
@@ -57,10 +62,6 @@ module samp_barrier_excitation
       real(8), allocatable :: x_s(:), y_s(:)  ! the drawn Cartesian pair incl. the rc kick (post-draw record)
    end type carry_t
    type(carry_t), allocatable :: carry(:)     ! carrier rows (list_atoms order)
-   real(8) :: e_stab_int = 0.0d0              ! stabilization energy [amu*Ang^2/fs^2]
-   integer :: n_e_bar_c = 0                   ! validated barrier energy law [-]
-   real(8) :: pbar_fix = 0.0d0                ! mode-0 barrier momentum magnitude [mass-weighted]
-   real(8) :: t_bar_c = 0.0d0                 ! validated barrier temperature [K]
    logical :: inited = .false.                ! init completed [flag]
 contains
    !------------------------------------------------------------------
@@ -71,23 +72,30 @@ contains
       real(8) :: com(3), wt, dev, tv(3), tscale
       integer :: i, k, d, kc, code, n_carry
 
-      ! 1. parameter validation (fail-loud, naming field + value)
-      if (p%e_stab < 0.0d0) then
+      ! 1. parameter validation, per carrier row (fail-loud, naming field + value)
+      if (.not. allocated(p%e_stab) .or. .not. allocated(p%n_e_bar) .or. &
+          .not. allocated(p%e_bar) .or. .not. allocated(p%t_bar)) then
+         call stop_bex('barrier_excitation_init', 'parameter rows unallocated - the reg must '// &
+            'stage one row per barrier_excitation carrier')
+      end if
+      do kc = 1, size(p%e_stab)
+         if (p%e_stab(kc) < 0.0d0) then
          call stop_bez('barrier_excitation_init', 'stabilization energy e_stab [eV] must '// &
-            'be >= 0 (zero = pure barrier kick), got', p%e_stab)
-      end if
-      if (p%n_e_bar /= 0 .and. p%n_e_bar /= 1) then
-         call stop_bei('barrier_excitation_init', 'barrier energy-law selector n_e_bar must be 0 '// &
-            '(fixed e_bar) or 1 (thermal t_bar), got', p%n_e_bar)
-      end if
-      if (p%n_e_bar == 0 .and. p%e_bar < 0.0d0) then
-         call stop_bez('barrier_excitation_init', 'barrier energy e_bar [eV] must be >= 0 '// &
-            'in the fixed mode, got', p%e_bar)
-      end if
-      if (p%n_e_bar == 1 .and. p%t_bar <= 0.0d0) then
-         call stop_bez('barrier_excitation_init', 'barrier temperature t_bar [K] must be positive '// &
-            'in the thermal mode, got', p%t_bar)
-      end if
+            'be >= 0 (zero = pure barrier kick), got', p%e_stab(kc))
+         end if
+         if (p%n_e_bar(kc) /= 0 .and. p%n_e_bar(kc) /= 1) then
+            call stop_bei('barrier_excitation_init', 'barrier energy-law selector n_e_bar '// &
+               'must be 0 (fixed e_bar) or 1 (thermal t_bar), got', p%n_e_bar(kc))
+         end if
+         if (p%n_e_bar(kc) == 0 .and. p%e_bar(kc) < 0.0d0) then
+            call stop_bez('barrier_excitation_init', 'barrier energy e_bar [eV] must be >= 0 '// &
+               'in the fixed mode, got', p%e_bar(kc))
+         end if
+         if (p%n_e_bar(kc) == 1 .and. p%t_bar(kc) <= 0.0d0) then
+            call stop_bez('barrier_excitation_init', 'barrier temperature t_bar [K] must be '// &
+               'positive in the thermal mode, got', p%t_bar(kc))
+         end if
+      end do
 
       ! 2. carrier binding (assembly-order guards; list_atoms order)
       if (.not. allocated(list_atoms%frag)) then
@@ -111,6 +119,10 @@ contains
       if (n_carry == 0) then
          call stop_bex('barrier_excitation_init', 'no list_atoms fragment carries the '// &
             'barrier_excitation scheme - this member would never be dispatched')
+      end if
+      if (size(p%e_stab) /= n_carry) then
+         call stop_bei2('barrier_excitation_init', 'parameter row count', size(p%e_stab), &
+            'does not match the barrier_excitation carrier count', n_carry)
       end if
       if (.not. allocated(p%tbl) .or. size(p%tbl) /= n_carry) then
          call stop_bei2('barrier_excitation_init', 'saddle-table set mismatch: the parameter '// &
@@ -151,7 +163,7 @@ contains
                   'leaves no room for the three translations and the reaction coordinate (max =', &
                   3*cr%nat - 4)
             end if
-            if (p%e_stab > 0.0d0 .and. cr%n_mode < 1) then
+            if (p%e_stab(kc) > 0.0d0 .and. cr%n_mode < 1) then
                call stop_bex('barrier_excitation_init', 'stabilization energy e_stab > 0 with an empty '// &
                   'stable-mode table - no stable support to absorb it')
             end if
@@ -225,12 +237,12 @@ contains
                cr%c_c(:, 1:cr%n_mode) = p%tbl(kc)%c
             end if
             cr%rc_c = p%tbl(kc)%rc
+            cr%e_stab_int = p%e_stab(kc)*ev_dyn
+            cr%n_e_bar_c = p%n_e_bar(kc)
+            cr%pbar_fix = sqrt(2.0d0*p%e_bar(kc)*ev_dyn)
+            cr%t_bar_c = p%t_bar(kc)
          end associate
       end do
-      e_stab_int = p%e_stab*ev_dyn
-      n_e_bar_c = p%n_e_bar
-      pbar_fix = sqrt(2.0d0*p%e_bar*ev_dyn)
-      t_bar_c = p%t_bar
       inited = .true.
    end subroutine barrier_excitation_init
 
@@ -269,17 +281,17 @@ contains
                un = 1.0d0
             end if
             do k = 1, cr%n_mode
-               e_i = e_stab_int*(g_vec(k)/un)**2
+               e_i = cr%e_stab_int*(g_vec(k)/un)**2
                amp = sqrt(2.0d0*e_i)/cr%w_c(k)
                ph = two_pi*rng_u()
                qmode(k) = amp*cos(ph)
                pmode(k) = -cr%w_c(k)*amp*sin(ph)
             end do
          end if
-         if (n_e_bar_c == 0) then
-            pbar = pbar_fix
+         if (cr%n_e_bar_c == 0) then
+            pbar = cr%pbar_fix
          else
-            pbar = sqrt(2.0d0*kb_act*t_bar_c*rng_gamma(1))
+            pbar = sqrt(2.0d0*kb_act*cr%t_bar_c*rng_gamma(1))
          end if
          if (rng_u() < 0.5d0) pbar = -pbar
          cr%x_s = 0.0d0

@@ -22,17 +22,18 @@ module samp_surface_oscillator
    public :: surf_osc_params_t, surface_oscillator_init, surface_oscillator_draw, surface_oscillator_realize, &
              surface_oscillator_sample, surface_oscillator_last_e
 
-   ! Member-owned parameters
+   ! Member-owned parameters, one row per carrier (the 2026-10-13 bracket
+   ! ruling realized per fragment; the defaults below are the member's own)
    type :: surf_osc_params_t
-      integer :: n_osc = 0         ! energy-law selector: 0 thermal, 1 quantum level [-]
-      real(8) :: t_osc = 300.0d0   ! oscillator temperature [K] (mode 0)
-      integer :: n_level = 0       ! vibrational quantum number n [-] (mode 1)
-      real(8) :: k_osc = 1.30092582d0 ! harmonic force constant [eV/Ang^2] (default = the
-                                      ! pre-2026-10-06 30.0 kcal/mol/Ang^2 re-expressed)
+      integer, allocatable :: n_osc(:)   ! energy-law selectors: 0 thermal, 1 quantum level [-]
+      real(8), allocatable :: t_osc(:)   ! oscillator temperatures [K] (mode 0)
+      integer, allocatable :: n_level(:) ! vibrational quantum numbers n [-] (mode 1)
+      real(8), allocatable :: k_osc(:)   ! harmonic force constants [eV/Ang^2] (default = the
+                                         ! pre-2026-10-06 30.0 kcal/mol/Ang^2 re-expressed)
    end type
 
    ! Derived member state (module-private; rebuilt by every surface_oscillator_init) -
-   ! one row per carrier; the law constants are shared (equal treatment)
+   ! one row per carrier; the law constants fold the carrier's own parameter row
    type :: carry_t
       integer :: frag = 0                   ! carrier list_atoms fragment row [index]
       integer, allocatable :: list(:)       ! carrier atom index list [global atom index]
@@ -41,15 +42,15 @@ module samp_surface_oscillator
       real(8) :: qz_a(3) = 0.0d0, qz_b(3) = 0.0d0  ! equilibrium positions [Angstrom]
       real(8) :: u_bond(3) = 0.0d0          ! equilibrium bond unit direction (a -> b) [-]
       real(8) :: fr_a = 0.0d0, fr_b = 0.0d0 ! COM partition fractions m_b/m_tot, m_a/m_tot [-]
+      real(8) :: k_int = 0.0d0              ! force constant [amu/fs^2] (= k_osc [eV/Ang^2] * ev_dyn)
+      real(8) :: t_c = 0.0d0                ! validated oscillator temperature (mode 0) [K]
+      integer :: n_osc_c = 0                ! validated energy-law selector [-]
       real(8) :: om_c = 0.0d0               ! harmonic frequency [rad/fs]
       real(8) :: e_quant = 0.0d0            ! fixed quantum energy (mode 1) [eV]
       real(8) :: last_e = 0.0d0             ! energy of the last realization [eV]
       real(8) :: del_s = 0.0d0, vel_s = 0.0d0 ! the drawn stretch/velocity pair (post-draw record) [Ang], [Ang/fs]
    end type carry_t
    type(carry_t), allocatable :: carry(:)   ! carrier rows (list_atoms order)
-   real(8) :: k_int = 0.0d0                 ! force constant [amu/fs^2] (= k_osc [eV/Ang^2] * ev_dyn)
-   real(8) :: t_c = 0.0d0                   ! validated oscillator temperature (mode 0) [K]
-   integer :: n_osc_c = 0                   ! validated energy-law selector [-]
    logical :: inited = .false.              ! init completed [flag]
 contains
    !------------------------------------------------------------------
@@ -57,27 +58,34 @@ contains
    !                              atom-anchor carrier, precompute the
    !                              harmonic constants
    subroutine surface_oscillator_init(p)
-      type(surf_osc_params_t), intent(in) :: p  ! member parameters
+      type(surf_osc_params_t), intent(in) :: p  ! member parameters (one row per carrier)
       real(8) :: r0(3), r_len, m_tot
       integer :: i, kc, code, n_carry
 
-      ! 1. parameter validation (fail-loud, naming field + value)
-      if (p%n_osc /= 0 .and. p%n_osc /= 1) then
-         call stop_soi('surface_oscillator_init', 'energy-law selector n_osc must be 0 (thermal) '// &
-            'or 1 (quantum level), got', p%n_osc)
+      ! 1. parameter validation, per carrier row (fail-loud, naming the field)
+      if (.not. allocated(p%n_osc) .or. .not. allocated(p%t_osc) .or. &
+          .not. allocated(p%n_level) .or. .not. allocated(p%k_osc)) then
+         call stop_sox('surface_oscillator_init', 'parameter rows unallocated - the reg must '// &
+            'stage one row per surface_oscillator carrier')
       end if
-      if (p%n_osc == 0 .and. p%t_osc <= 0.0d0) then
-         call stop_soiz('surface_oscillator_init', 'oscillator temperature t_osc [K] must be '// &
-            'positive in the thermal mode, got', p%t_osc)
-      end if
-      if (p%n_osc == 1 .and. p%n_level < 0) then
-         call stop_soi('surface_oscillator_init', 'vibrational quantum number n_level must be '// &
-            '>= 0, got', p%n_level)
-      end if
-      if (p%k_osc <= 0.0d0) then
-         call stop_soiz('surface_oscillator_init', 'force constant k_osc [eV/Ang^2] must '// &
-            'be positive (a silent substitute is not drawn), got', p%k_osc)
-      end if
+      do kc = 1, size(p%n_osc)
+         if (p%n_osc(kc) /= 0 .and. p%n_osc(kc) /= 1) then
+            call stop_soi('surface_oscillator_init', 'energy-law selector n_osc must be 0 '// &
+               '(thermal) or 1 (quantum level), got', p%n_osc(kc))
+         end if
+         if (p%n_osc(kc) == 0 .and. p%t_osc(kc) <= 0.0d0) then
+            call stop_soiz('surface_oscillator_init', 'oscillator temperature t_osc [K] must '// &
+               'be positive in the thermal mode, got', p%t_osc(kc))
+         end if
+         if (p%n_osc(kc) == 1 .and. p%n_level(kc) < 0) then
+            call stop_soi('surface_oscillator_init', 'vibrational quantum number n_level '// &
+               'must be >= 0, got', p%n_level(kc))
+         end if
+         if (p%k_osc(kc) <= 0.0d0) then
+            call stop_soiz('surface_oscillator_init', 'force constant k_osc [eV/Ang^2] '// &
+               'must be positive (a silent substitute is not drawn), got', p%k_osc(kc))
+         end if
+      end do
 
       ! 2. fragment binding (assembly-order and carrier guards first)
       if (.not. allocated(list_atoms%frag)) then
@@ -102,8 +110,10 @@ contains
          call stop_sox('surface_oscillator_init', 'no list_atoms fragment carries the '// &
             'surface_oscillator scheme - this member would never be dispatched')
       end if
-      k_int = p%k_osc*ev_dyn
-      n_osc_c = p%n_osc
+      if (size(p%n_osc) /= n_carry) then
+         call stop_soi2('surface_oscillator_init', 'parameter row count', size(p%n_osc), &
+            'does not match the surface_oscillator carrier count', n_carry)
+      end if
       if (allocated(carry)) deallocate (carry)
       allocate (carry(n_carry))
       kc = 0
@@ -133,11 +143,13 @@ contains
             cr%u_bond = r0/r_len
             cr%fr_a = cr%m_b/m_tot                ! position partition: r_a shifts by -fr_a*delta
             cr%fr_b = cr%m_a/m_tot                ! r_b shifts by +fr_b*delta
-            cr%om_c = sqrt(k_int/cr%mu_c)
-            cr%e_quant = (dble(p%n_level) + 0.5d0)*hbar_evfs*cr%om_c
+            cr%k_int = p%k_osc(kc)*ev_dyn
+            cr%t_c = p%t_osc(kc)
+            cr%n_osc_c = p%n_osc(kc)
+            cr%om_c = sqrt(cr%k_int/cr%mu_c)
+            cr%e_quant = (dble(p%n_level(kc)) + 0.5d0)*hbar_evfs*cr%om_c
          end associate
       end do
-      t_c = p%t_osc
       inited = .true.
    end subroutine surface_oscillator_init
 
@@ -160,14 +172,14 @@ contains
       end if
       do kc = 1, size(carry)
          associate (cr => carry(kc))
-         if (n_osc_c == 0) then
+         if (cr%n_osc_c == 0) then
             u = rng_u()
             if (u <= 0.0d0) u = 1.0d-300          ! degenerate-draw clamp (idle in practice)
-            e_draw = -kb_ev*t_c*log(u)
+            e_draw = -kb_ev*cr%t_c*log(u)
          else
             e_draw = cr%e_quant
          end if
-         amp = sqrt(2.0d0*e_draw*ev_dyn/k_int)
+         amp = sqrt(2.0d0*e_draw*ev_dyn/cr%k_int)
          ph = two_pi*rng_u()
          cr%del_s = amp*cos(ph)
          cr%vel_s = -cr%om_c*amp*sin(ph)

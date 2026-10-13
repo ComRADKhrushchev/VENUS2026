@@ -45,8 +45,9 @@ contains
   subroutine state_create(st, natoms, n_surf)
      type(state_t), intent(out) :: st
      integer, intent(in) :: natoms
-     integer, intent(in), optional :: n_surf ! number of surfaces [-] (default 1;
-                                              ! multi-surface takes config%electronic%n_surf)
+     integer, intent(in), optional :: n_surf ! number of surfaces [-] (default 1; a
+                                              ! multi-surface method member reallocates a/rho
+                                              ! to its own declared shape at member init)
      integer :: n_s, stat
      ! 1. validate n_surf
      n_s = 1

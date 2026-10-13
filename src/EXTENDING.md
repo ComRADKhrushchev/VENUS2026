@@ -2,38 +2,38 @@
 
 接一个自定义势能面（含可选非绝热方法包）的**最短路径是 Tier 1**：一个文件夹、
 若干 .f90、零 reg 文件。需要更复杂的接线（多方法包、自定义记录列、复杂参数体）
-时升级 Tier 2（§1b 的 reg 三件套——reg 在场则自动接线静默退出，pot 侧魔数名
+时升级 Tier 2（§1b 的 reg 三件套——reg 在场则自动接线静默退出，pot 侧预留名
 函数全部可被 reg 直接复用，升级零迁移）。
 
-## 1a. Tier 1 纯势容器——十魔数名词表（封闭集合）
+## 1a. Tier 1 纯势容器——十预留名词表（封闭集合）
 
 `systems/<sys>/` 文件夹**不含 reg_\*.f90** 即 Tier 1 容器。文件夹内 .f90 暴露
-下列魔数名（名字即约定，签名即既有接口，编译期核对；裁决记录
+下列预留名（名字即约定，签名即既有接口，编译期核对；裁决记录
 docs/plans/2026-10-12-auto-pes-container.md）：
 
 **势能面组**
 
-| 魔数名 | 形 | 必备性 | 说明 |
+| 预留名 | 形 | 必备性 | 说明 |
 |---|---|---|---|
 | `pes(q, mass, g, v)` | subroutine | 恰一个 | E27 力交付：q[A]/mass[amu] 进（q/g 一维展平 size=3×nat），g[eV/Å]/v[eV] 全赋值出 |
 | `keys()` | function | 可选 | `character(len=16)` 数组容器键词表（parse 前声明） |
-| `load()` | subroutine | 可选 | 无参自持 `pull`；**亦即 seam 期初始化钩子**——读参数文件（NN 权重模式）/分配在此，先于一切力消费者与 arm |
+| `load()` | subroutine | 可选 | 无参自持 `pull`；**亦即 seam 期初始化钩子**——读参数文件（NN 权重模式）/分配在此，先于一切力消费者与 init |
 | `term(sta)` | function | 可选 | 终止判断（键缺席门控用 found 旗标自实现；未绑 = 跑满 MAX_STEPS） |
 | `classify(fin)` | function | 可选 | 通道分类（返回通道名） |
 
 **方法包组**（自定义非绝热方法）
 
-| 魔数名 | 形 | 必备性 | 说明 |
+| 预留名 | 形 | 必备性 | 说明 |
 |---|---|---|---|
 | `prop(sta, dt)` | subroutine | 与 match 成对 | 电子传播成员（`elec_prop_i` 同型） |
 | `match(sta)` | subroutine | 与 prop 成对 | 统计匹配成员（跳变、occ/n_hop 写回） |
 | `sync(s)` | subroutine | 可选随对 | a↔rho 表象换算尾巴 |
-| `arm()` | subroutine | 可选随对 | 选中后初始化（门控归生成代码；参数自持走 keys/load） |
+| `init()` | subroutine | 可选随对 | 选中后初始化（门控归生成代码；参数自持走 keys/load） |
 | `method_name()` | function | 随对必备 | 返回 `character(len=32)` **小写**注册名；`ELEC_METHOD = <名>` 选用 |
 
-规则一句话：势能面组在场即绑；方法组注册无条件、武装有门；reg 在场则十名全忽略
+规则一句话：势能面组在场即绑；方法组注册无条件、初始化有门；reg 在场则十名全忽略
 （reg 权威）；名字须 public；prebuild 对 pes 0/≥2、任一名 ≥2、形不符、prop 与
-match 不成对、method_name 缺对、sync/arm 孤立、双自动文件夹各有一条指名中止。
+match 不成对、method_name 缺对、sync/init 孤立、双自动文件夹各有一条指名中止。
 
 现成范本：`systems/inactive/auto_sample/`（pot.f90 / io.f90 / tdhf_stub.f90；
 判据 `scripts/check_auto_pes.f90` + 演练 `scripts/drill_auto_pes.sh`）。
@@ -52,7 +52,7 @@ systems/mysystem/
                     reg_mysystem_slots() 一次交接填满 interface/container_sched
                     的八个槽(2026-10-05: 注册期谱导出槽废除); 区体全部私有, 按
                     declare_keys/load_params(输入), bind_force/register_method
-                    (常规), bind_term/arm_method(初始化),
+                    (常规), bind_term/init_method(初始化),
                     bind_classify/register_columns(输出)分组——空槽合法跳过,
                     时序与守卫归 container_sched
   system/           反应物构型(2026-09-22 裁决): 一反应物一文件(.xyz 无晶胞 /
@@ -70,7 +70,7 @@ subroutine reg_mysystem_slots()          ! 唯一公共入口: 一次交接
                              force   =bind_force, &    ! container_bind_pes(my_pes)
                              method  =register_method, &   ! method_reg(体系专属方法包, 可无)
                              term    =bind_term, &     ! 键门控 container_bind_term
-                             arm     =arm_method, &      ! 方法包武装(ELEC_METHOD 门控)
+                             init    =init_method, &     ! 方法包初始化(ELEC_METHOD 门控)
                              classify=bind_classify, & ! 键门控 container_bind_classify
                              columns =register_columns)    ! rec_reg_col(选择门控)
 end subroutine

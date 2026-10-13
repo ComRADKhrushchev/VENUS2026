@@ -7,6 +7,7 @@
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 interface/sysdef_interface.f90 input.f90 &
 !            globals/config_atoms.f90 globals/state.f90 &
+!            utils/linalg.f90 utils/hessian.f90 utils/geom_init.f90 utils/spectrum.f90 interface/elec_interface.f90 interface/force_interface.f90 dynamics/propagator.f90 interface/bath.f90 &
 !            utils/rng.f90 utils/geometry.f90 interface/sampler.f90 methods/samp_wigner.f90 &
 !            ../scripts/check_samp_wigner.f90 -o build/check_samp_wigner.exe
 ! All artifacts are written under build/ - the source tree stays clean.
@@ -19,8 +20,8 @@
 ! - the member's contract is the measure on a GIVEN table (frequency
 ! derivation from a Hessian is assembly-phase mechanism, not member code).
 ! Expected distributions are computed here from theory, not from the
-! member output. Theory anchor (the ground-state Wigner law, hbar the
-! legislative hbar_code = 0.063508 the member consumes):
+! member output. Theory anchor (the ground-state Wigner law, energies in
+! dynamical units - hbar_evfs*ev_dyn, the member's own fold):
 !   per mode E = (hbar/2)*w; sigma_p = sqrt(E), sigma_q = sqrt(E)/w;
 !   Q, P independent Gaussians N(0, sigma^2); per-mode energy
 !   E*(g1^2+g2^2)/2 exponential with mean E, so <T> = <V> = E/2,
@@ -83,7 +84,7 @@
 !       with no wigner_init -> stderr names wigner_draw (the two-phase guard site)
 !=====================================================================
 program check_samp_wigner
-   use consts,         only: hbar_code
+   use consts,         only: hbar_evfs, ev_dyn
    use rng,            only: rng_init
    use config,         only: reactants
    use config_atoms,  only: list_atoms, list_atoms_clear
@@ -115,6 +116,8 @@ program check_samp_wigner
    character(len=32) :: mode
 
    ! ---------- child dispatch: one bad case per spawn, must named abort ----------
+   allocate (par%e_scale(1))   ! single-carrier check face
+   par%e_scale(1) = 1.0d0
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       call fill_list_atoms(g1, mss1)
@@ -124,7 +127,7 @@ program check_samp_wigner
          call set_scheme([code_w])
          call build_table(mss1, nmode1, ctab1)
          call table_to_par(1.0d0, w1, ctab1, par)
-         par%e_scale = 0.0d0
+         par%e_scale(1) = 0.0d0
          call wigner_init(par)
       case ('bad-bind0')                    ! (j): no fragment carries the code
          call set_scheme([1])
@@ -133,7 +136,7 @@ program check_samp_wigner
          call wigner_init(par)
       case ('bad-notbl')                    ! (k): unallocated table set
          call set_scheme([code_w])
-         par%e_scale = 1.0d0
+         par%e_scale(1) = 1.0d0
          call wigner_init(par)
       case ('bad-tblcount')                 ! (l): two carriers, one table
          call fill_two(g1, mss1, g2, mss2)
@@ -142,11 +145,12 @@ program check_samp_wigner
          call set_scheme([code_w, code_w])
          call build_table(mss1, nmode1, ctab1)
          call table_to_par(1.0d0, w1, ctab1, par)
+         par%e_scale = [ 1.0d0, 1.0d0 ]     ! two rows: the TABLE count is the mismatch
          call wigner_init(par)
       case ('bad-empty')                    ! (m): unallocated eigenvector component
          call set_scheme([code_w])
          allocate (par%tbl(1))
-         par%e_scale = 1.0d0
+         par%e_scale(1) = 1.0d0
          allocate (par%tbl(1)%w(nmode1))
          par%tbl(1)%w = w1
          call wigner_init(par)
@@ -173,8 +177,8 @@ program check_samp_wigner
    end if
 
    ! ---------- theory constants (the anchor, independent of the member) ----------
-   e1 = hbar_code*w1/2.0d0
-   e2 = hbar_code*w2/2.0d0
+   e1 = hbar_evfs*ev_dyn*w1/2.0d0      ! [amu*Ang^2/fs^2] per mode
+   e2 = hbar_evfs*ev_dyn*w2/2.0d0
    sig_q2_1 = e1/w1**2
    sig_q2_2 = e2/w2**2
    esum = sum(e1)
@@ -344,7 +348,7 @@ program check_samp_wigner
    call state_create(sta, 5)
    if (allocated(par%tbl)) deallocate (par%tbl)
    allocate (par%tbl(2))
-   par%e_scale = 1.0d0
+   par%e_scale = [ 1.0d0, 1.0d0 ]        ! one scale, two rows
    allocate (par%tbl(1)%w(nmode1), par%tbl(1)%c(9, nmode1))
    par%tbl(1)%w = w1
    par%tbl(1)%c = ctab1
@@ -394,7 +398,8 @@ contains
       real(8), intent(in) :: scale
       real(8), intent(in) :: wtab(:), ctab(:,:)
       type(wigner_params_t), intent(out) :: p
-      p%e_scale = scale
+      allocate (p%e_scale(1))
+      p%e_scale(1) = scale
       allocate (p%tbl(1))
       allocate (p%tbl(1)%w(size(wtab)), p%tbl(1)%c(size(ctab, 1), size(ctab, 2)))
       p%tbl(1)%w = wtab

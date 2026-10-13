@@ -5,9 +5,11 @@
 ! Design:
 !   The COM-velocity projection p'_i = p_i - (m_i/M)*P removes exactly
 !   three degrees of freedom per carrier, so E[KE] = sum over carriers of
-!   (3*nat-3)*kb*t_eq/2 exactly. One parameter set serves every carrier
-!   equally: each carrier is seeded and drift-removed in list_atoms order,
-!   then ONE shared equilibration run propagates the whole state (no
+!   (3*nat-3)*kb*t_eq/2 exactly. One temperature row per carrier (the
+!   2026-10-13 bracket ruling realized per fragment): each carrier is
+!   seeded and drift-removed in list_atoms order at its own temperature,
+!   then ONE shared equilibration run propagates the whole state (N_EQ/
+!   DT_EQ describe the shared run and must agree across carriers; no
 !   bystander freezing - co-selected carriers ride the same bath run; no
 !   in-run bath coupling, that is the thermostat's face). The member
 !   writes its carriers' owned momenta, swaps the global step to dt_eq
@@ -28,11 +30,12 @@ module samp_thermalize
              thermalize_t_eq, thermalize_n_eq, thermalize_dt_eq, thermalize_e_kin_expect, &
              thermalize_frag, thermalize_nat
 
-   ! Member-owned parameters
+   ! Member-owned parameters, one row per carrier (N_EQ/DT_EQ describe the
+   ! ONE shared run - the member enforces agreement across the rows)
    type :: thermalize_params_t
-      real(8) :: t_eq = 0.0d0    ! target temperature [K] (every carrier)
-      integer :: n_eq = 0        ! equilibration step count [-] (one shared run)
-      real(8) :: dt_eq = 0.0d0   ! equilibration step size [fs]
+      real(8), allocatable :: t_eq(:)   ! target temperatures [K] (one row per carrier)
+      integer, allocatable :: n_eq(:)   ! equilibration step counts [-] (must agree)
+      real(8), allocatable :: dt_eq(:)  ! equilibration step sizes [fs] (must agree)
    end type
 
    ! Derived member state (module-private; rebuilt by every thermalize_init) -
@@ -40,13 +43,13 @@ module samp_thermalize
    type :: carry_t
       integer :: frag = 0             ! carrier list_atoms fragment row [-]
       integer :: nat = 0              ! carrier atom count [-]
+      real(8) :: t_eq = 0.0d0         ! the carrier's target temperature [K]
       real(8), allocatable :: sigma(:) ! per-atom seed widths sqrt(m*kb*t_eq) [amu*Ang/fs]
       real(8), allocatable :: p_seed(:) ! the drawn drift-removed seed momenta (3*nat record) [amu*Ang/fs]
    end type carry_t
    type(carry_t), allocatable :: carry(:)  ! carrier rows (list_atoms order)
-   real(8) :: t_eq_c = 0.0d0        ! target temperature [K]
-   integer :: n_eq_c = 0            ! step count [-]
-   real(8) :: dt_eq_c = 0.0d0       ! step size [fs]
+   integer :: n_eq_c = 0            ! step count [-] (the shared run's one value)
+   real(8) :: dt_eq_c = 0.0d0       ! step size [fs] (the shared run's one value)
    real(8) :: e_expect_c = 0.0d0    ! declared KE expectation, all carriers [eV]
    logical :: inited = .false.      ! init completed [flag]
 contains
@@ -57,19 +60,35 @@ contains
       type(thermalize_params_t), intent(in) :: p ! member parameters (equilibration)
       integer :: i, k, code, n_carry
 
-      ! 1. parameter validation (fail-loud, naming field + value)
-      if (p%t_eq <= 0.0d0) then
-         call stop_equiz('thermalize_init', 'target temperature t_eq [K] must be positive, got', &
-            p%t_eq)
+      ! 1. parameter validation, per carrier row (fail-loud, naming field +
+      !    value); N_EQ/DT_EQ additionally describe the ONE shared run, so the
+      !    rows must agree (a divergent carrier is a named error)
+      if (.not. allocated(p%t_eq) .or. .not. allocated(p%n_eq) .or. .not. allocated(p%dt_eq)) then
+         call stop_equix('thermalize_init', 'parameter rows unallocated - the reg must stage '// &
+            'one row per thermalize carrier')
       end if
-      if (p%n_eq < 1) then
-         call stop_equii('thermalize_init', 'equilibration step count n_eq must be at least 1, got', &
-            p%n_eq)
-      end if
-      if (p%dt_eq <= 0.0d0) then
-         call stop_equiz('thermalize_init', 'equilibration step size dt_eq [fs] must be '// &
-            'positive, got', p%dt_eq)
-      end if
+      do k = 1, size(p%t_eq)
+         if (p%t_eq(k) <= 0.0d0) then
+            call stop_equiz('thermalize_init', 'target temperature t_eq [K] must be positive '// &
+               '(the carrier wrote no T_EQ bracket name); row =', p%t_eq(k))
+         end if
+         if (p%n_eq(k) < 1) then
+            call stop_equii('thermalize_init', 'equilibration step count n_eq must be at '// &
+               'least 1, got', p%n_eq(k))
+         end if
+         if (p%dt_eq(k) <= 0.0d0) then
+            call stop_equiz('thermalize_init', 'equilibration step size dt_eq [fs] must be '// &
+               'positive, got', p%dt_eq(k))
+         end if
+         if (p%n_eq(k) /= p%n_eq(1)) then
+            call stop_equii2('thermalize_init', 'equilibration step count n_eq of carrier', k, &
+               'differs from carrier 1 (the run is shared - one n_eq for every carrier):', p%n_eq(1))
+         end if
+         if (p%dt_eq(k) /= p%dt_eq(1)) then
+            call stop_equiz('thermalize_init', 'equilibration step size dt_eq differs between '// &
+               'carriers (the run is shared - one dt_eq for every carrier); row =', p%dt_eq(k))
+         end if
+      end do
 
       ! 2. carrier binding (assembly-order guards; the atom list fragments whose
       !    dist_scheme rows select this member, list_atoms order - one parameter
@@ -96,6 +115,10 @@ contains
          call stop_equix('thermalize_init', 'no list_atoms fragment carries the thermalize '// &
             'scheme - this member would never be dispatched')
       end if
+      if (size(p%t_eq) /= n_carry) then
+         call stop_equii2('thermalize_init', 'parameter row count', size(p%t_eq), &
+            'does not match the thermalize carrier count', n_carry)
+      end if
       if (allocated(carry)) deallocate (carry)
       allocate (carry(n_carry))
       k = 0
@@ -112,15 +135,16 @@ contains
       e_expect_c = 0.0d0
       do k = 1, n_carry
          carry(k)%nat = list_atoms%frag(carry(k)%frag)%nat
+         carry(k)%t_eq = p%t_eq(k)
          allocate (carry(k)%sigma(carry(k)%nat), carry(k)%p_seed(3*carry(k)%nat))
          do i = 1, carry(k)%nat
-            carry(k)%sigma(i) = sqrt(list_atoms%mass(list_atoms%frag(carry(k)%frag)%list(i))*kb_act*p%t_eq)
+            carry(k)%sigma(i) = sqrt(list_atoms%mass(list_atoms%frag(carry(k)%frag)%list(i)) &
+                                     *kb_act*p%t_eq(k))
          end do
-         e_expect_c = e_expect_c + (3.0d0*dble(carry(k)%nat) - 3.0d0)*kb_ev*p%t_eq/2.0d0
+         e_expect_c = e_expect_c + (3.0d0*dble(carry(k)%nat) - 3.0d0)*kb_ev*p%t_eq(k)/2.0d0
       end do
-      t_eq_c = p%t_eq
-      n_eq_c = p%n_eq
-      dt_eq_c = p%dt_eq
+      n_eq_c = p%n_eq(1)
+      dt_eq_c = p%dt_eq(1)
       inited = .true.
    end subroutine thermalize_init
 
@@ -222,8 +246,13 @@ contains
    !------------------------------------------------------------------
    ! getters (copies of the derived member state)
    !------------------------------------------------------------------
-   pure real(8) function thermalize_t_eq()
-      thermalize_t_eq = t_eq_c
+   pure real(8) function thermalize_t_eq(k)
+      integer, intent(in), optional :: k     ! carrier row (default 1)
+      integer :: kc
+      kc = 1
+      if (present(k)) kc = k
+      thermalize_t_eq = 0.0d0
+      if (inited .and. kc >= 1 .and. kc <= size(carry)) thermalize_t_eq = carry(kc)%t_eq
    end function thermalize_t_eq
 
    pure integer function thermalize_n_eq()

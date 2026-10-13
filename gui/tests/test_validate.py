@@ -16,10 +16,9 @@ def _surf_sd():
 def _pair_values():
     return {
         "SYSTEM_DIR": "system", "E_REL": "200.0", "R_SEP": "8.0", "DT": "0.05",
-        "DIST_SCHEME": "THERMALIZE,ROTATION",
+        "DIST_SCHEME": "THERMALIZE[T_EQ=300.0, N_EQ=25, DT_EQ=0.05], ROTATION[J_ROT=3]",
         "PROJECTILE": "frag_a", "TARGET": "frag_b",
         "B_MAX": "2.0", "N_B": "1",
-        "T_EQ": "300.0", "N_EQ": "25", "DT_EQ": "0.05", "J_ROT": "3",
     }
 
 
@@ -39,8 +38,9 @@ def test_surface_rules():
     sd = _surf_sd()
     base = {
         "SYSTEM_DIR": "system", "E_REL": "200.0", "R_SEP": "8.0", "DT": "0.05",
-        "DIST_SCHEME": "EBK", "PROJECTILE": "H2", "A_LAT": "2.9437",
-        "N_VIB": "1", "N_ROT": "2", "N_B": "0", "N_AIM": "1",
+        "DIST_SCHEME": "EBK[N_VIB=1, N_ROT=2]", "PROJECTILE": "H2",
+        "SCATTERING": "SURFACE", "CELL": "2.9437 0 0, 1.47185 2.5493 0, 0 0 20",
+        "N_B": "0", "N_AIM": "1",
     }
     assert validate.validate(base, sd) == []
     # 写 B_MAX → 拦截(2026-10-01 裁决)
@@ -49,16 +49,14 @@ def test_surface_rules():
     # 写 TARGET → 拦截
     bad = dict(base, TARGET="H2")
     assert any(i.key == "TARGET" for i in validate.validate(bad, sd))
-    # A_LAT 不公度
-    bad = dict(base, A_LAT="2.9")
-    assert any(i.key == "A_LAT" and "公度" in i.msg for i in validate.validate(bad, sd))
-    # 缺 A_LAT
+    # 缺 CELL
     bad = dict(base)
-    del bad["A_LAT"]
-    assert any(i.key == "A_LAT" for i in validate.validate(bad, sd))
-    # 分子范式写 A_LAT → 拦截
-    bad = dict(_pair_values(), A_LAT="3.0")
-    assert any(i.key == "A_LAT" for i in validate.validate(bad, _pair_sd()))
+    del bad["CELL"]
+    issues = validate.validate(bad, sd)
+    assert any(i.key == "CELL" for i in issues)
+    # 气相写 CELL → 拦截
+    bad = dict(_pair_values(), CELL="3 0 0, 0 3 0, 0 0 9")
+    assert any(i.key == "CELL" for i in validate.validate(bad, _pair_sd()))
 
 
 def test_role_rules():
@@ -103,8 +101,8 @@ def test_bath_and_spectrum_rules():
 
 
 def test_member_and_unknown_and_container_keys():
-    v = dict(_pair_values(), DIST_SCHEME="BOLTZMANN,ROTATION", T_VIB_A="0.0")
-    assert any(i.key == "T_VIB_A" for i in validate.validate(v, _pair_sd()))
+    v = dict(_pair_values(), DIST_SCHEME="BOLTZMANN,ROTATION", T_VIB="0.0")
+    assert any(i.key == "T_VIB" for i in validate.validate(v, _pair_sd()))
     v = dict(_pair_values(), MODEL="X")
     assert any(i.key == "MODEL" for i in validate.validate(v, _pair_sd()))
     v = dict(_pair_values())

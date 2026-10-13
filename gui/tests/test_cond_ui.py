@@ -41,19 +41,20 @@ def _gas(page):
 def _surf(page):
     page._sd_line.setText(str(ROOT / "cases" / "case_spectrum_source" / "h2ag_ebk" / "system"))
     page._rescan()
+    page._w["SCATTERING"].setCurrentText("SURFACE")
 
 
 def test_paradigm_hides_paradigm_keys():
     """范式决定: 表面藏 B_MAX/靶片段; 气相藏晶格常数/落点模式/定点坐标; 单片段再藏双角色。"""
     page = _page()
     _gas(page)
-    for k in ("A_LAT", "N_AIM", "AIM_X", "AIM_Y"):
+    for k in ("CELL", "N_AIM", "AIM_X", "AIM_Y"):
         assert page.row_hidden(k), f"气相应隐藏 {k}"
     for k in ("PROJECTILE", "TARGET", "B_MAX"):
         assert not page.row_hidden(k), f"气相双片段应显示 {k}"
     _surf(page)
     assert page.row_hidden("B_MAX") and page.row_hidden("TARGET"), "表面应隐藏 B_MAX 与靶片段"
-    for k in ("PROJECTILE", "A_LAT", "N_AIM"):
+    for k in ("PROJECTILE", "CELL", "N_AIM"):
         assert not page.row_hidden(k), f"表面应显示 {k}"
 
 
@@ -130,52 +131,37 @@ def test_beam_modes_governs_rows():
     assert not page.row_hidden("THTA_MAX"), "极角两种模式共用, 恒显"
 
 
-def test_member_modes_governs_rows():
-    """成员内模式: 振子默认热→温度; 1 定态→能级; 反应坐标 1 热→温度; 未选词整行藏(旧语义)。"""
+def test_member_params_inline_per_fragment():
+    """逐片段内联参数(2026-10-13 括号裁定): 选词后该词参数字段内联出现,
+    换词即重建;无参数字段不属于 _w(参数不是顶层键)。"""
     page = _page()
     _gas(page)
-    for c in page._scheme_combos:
-        c.setCurrentText("SURFACE_OSCILLATOR")
-    assert not page.row_hidden("T_OSC") and page.row_hidden("N_LEVEL"), \
-        "振子模式默认 0(热): 显示温度, 藏能级"
-    assert not page.row_hidden("K_OSC"), "力常数恒显"
-    page.set_choice("N_OSC", "1")
-    assert page.row_hidden("T_OSC") and not page.row_hidden("N_LEVEL")
-    for c in page._scheme_combos:
-        c.setCurrentText("BARRIER_EXCITATION")
-    assert page.row_hidden("T_OSC") and page.row_hidden("K_OSC"), "换词后旧词成员行隐藏"
-    page.set_choice("N_E_BAR", "1")
-    assert not page.row_hidden("T_BAR")
-    page.set_choice("N_E_BAR", "0")
-    assert page.row_hidden("T_BAR")
-    assert not page.row_hidden("E_STAB") and not page.row_hidden("E_BAR")
-
-
-def test_physical_labels_and_tooltips():
-    """行标签显示物理量不含 KEY 名; KEY 名入 tooltip。"""
-    page = _page()
-    for key, text in (
-        ("A_LAT", "晶格常数 [Å]"),
-        ("N_AIM", "落点模式"),
-        ("T_TRANS", "平动温度 [K]"),
-        ("ORDER", "积分阶"),
-        ("CHI", "固定方位角 [rad]"),
-        ("BATH", "热浴"),
-    ):
-        lab = page._labels[key]
-        assert lab.text() == text, f"{key} 标签应为物理量 {text!r}, 实为 {lab.text()!r}"
-        assert key in lab.toolTip(), f"{key} 的 KEY 名应入 tooltip"
+    c0 = page._scheme_combos[0]
+    c0.setCurrentText("SURFACE_OSCILLATOR")
+    fields0 = page._scheme_params[0]
+    assert set(fields0) == {"N_OSC", "T_OSC", "N_LEVEL", "K_OSC"}, \
+        "振子词四参数内联"
+    assert "T_OSC" not in page._w, "参数不是顶层键"
+    c0.setCurrentText("THERMALIZE")
+    assert set(page._scheme_params[0]) == {"T_EQ", "N_EQ", "DT_EQ"}, "换词即重建"
+    # 片段 2 独立选词,互不影响
+    page._scheme_combos[1].setCurrentText("EBK")
+    assert set(page._scheme_params[1]) == {"N_VIB", "N_ROT"}
+    assert set(page._scheme_params[0]) == {"T_EQ", "N_EQ", "DT_EQ"}
 
 
 def test_member_labels_physical():
-    """成员参数标签从 hint 派生物理量名(剥去尾部括注), KEY 名入 tooltip。"""
+    """内联参数标签 = 参数名, 物理量说明入 tooltip;collect 构造括号值。"""
     page = _page()
     _gas(page)
     page._scheme_combos[0].setCurrentText("THERMALIZE")
-    assert page._labels["T_EQ"].text() == "平衡温度 [K]"
-    assert "T_EQ" in page._labels["T_EQ"].toolTip()
-    page._scheme_combos[0].setCurrentText("EBK")
-    assert page._labels["N_VIB"].text() == "EBK 振动量子数"
+    page._scheme_combos[1].setCurrentText("ROTATION")   # 每片段都须选词才写出
+    page._scheme_params[0]["T_EQ"].setText("300.0")
+    page._scheme_params[0]["N_EQ"].setText("25")
+    page._scheme_params[0]["DT_EQ"].setText("0.5")
+    vals, _c = page.collect()
+    assert vals["DIST_SCHEME"].startswith("THERMALIZE[T_EQ=300.0")
+    assert "N_EQ=25" in vals["DIST_SCHEME"] and "DT_EQ=0.5" in vals["DIST_SCHEME"]
 
 
 def test_mark_stars_physical_names():
@@ -183,7 +169,7 @@ def test_mark_stars_physical_names():
     page = _page()
     assert page._labels["E_REL"].text() == "<b>碰撞能 *</b> [eV]"
     _surf(page)
-    assert page._labels["A_LAT"].text() == "<b>晶格常数 *</b> [Å]"
+    assert page._labels["CELL"].text() == "<b>晶胞矢量 *</b> [Å]"
     assert page._labels["N_AIM"].text() == "落点模式"
 
 

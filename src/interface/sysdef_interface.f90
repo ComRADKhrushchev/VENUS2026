@@ -1,14 +1,17 @@
 !=====================================================================
 ! sysdef_interface.f90 - system-definition interface: the assembly-phase entry
-!   sysdef_load(scan_dir) - discovery, parse, mass lookup, buffer, paradigm
+!   sysdef_load(scan_dir) - discovery, parse, mass lookup, buffer
 ! Design:
 !   One file per reactant in the container folder (base name = reactant
-!   name; .xyz = no cell, .poscar or POSCAR* = cell-carrying); drag in a
-!   folder and the system is fully defined. Generic code owns scan /
-!   dispatch / mass lookup / buffer / the cell-presence paradigm rule
-!   (any cell -> surface, none -> molecular); the author owns only the
-!   file contents. Products sit in module-private buffer behind
-!   fresh-copy getters; config_atoms is never used here (list_atoms_load pulls).
+!   name; .xyz or .poscar - both are geometry carriers; a POSCAR's cell is
+!   that file's own Direct-coordinate frame, never a system-level fact).
+!   Drag in a folder and the geometry is fully defined. Generic code owns
+!   scan / dispatch / mass lookup / buffer / the single-frame rule; the
+!   author owns only the file contents. The scattering class and the unit
+!   cell are INPUT decisions (SCATTERING / CELL keys, 2026-10-13 ruling) -
+!   nothing here reads or writes them. Products sit in module-private
+!   buffer behind fresh-copy getters; config_atoms is never used here
+!   (list_atoms_load pulls).
 !=====================================================================
 module sysdef_interface
    use config, only: reactants
@@ -17,8 +20,7 @@ module sysdef_interface
    private
    public :: sysdef_load
    public :: buffer_loaded, buffer_frag_count, buffer_frag_name, buffer_frag_nat, &
-             buffer_atom_symbols, buffer_atom_masses, buffer_atom_geometry, &
-             buffer_cell_present, buffer_unit_cell
+             buffer_atom_symbols, buffer_atom_masses, buffer_atom_geometry
 
    integer, parameter :: name_len  = 64    ! reactant/file-name capacity [character]
    integer, parameter :: path_len  = 512   ! path/error-message capacity [character]
@@ -34,8 +36,6 @@ module sysdef_interface
    character(len=4),        allocatable :: stg_symb(:)   ! per-atom symbols, concatenated [-]
    real(8),                 allocatable :: stg_mass(:)   ! per-atom masses [amu]
    real(8),                 allocatable :: stg_xyz(:,:)  ! per-atom geometry [A] (3 x nat)
-   logical                              :: stg_has_cell = .false.
-   real(8)                              :: stg_cell(3,3) = 0.0d0  ! unit cell [A]
 
    ! per-file parse material (private; one row per container-folder file)
    integer, parameter :: fmt_xyz = 1, fmt_poscar = 2
@@ -112,16 +112,6 @@ contains
       allocate (g(3,0))
       if (stg_loaded .and. allocated(stg_xyz)) g = stg_xyz
    end function buffer_atom_geometry
-
-   logical pure function buffer_cell_present()
-      buffer_cell_present = stg_loaded .and. stg_has_cell
-   end function buffer_cell_present
-
-   function buffer_unit_cell() result(c)
-      real(8) :: c(3,3)
-      c = 0.0d0
-      if (stg_loaded .and. stg_has_cell) c = stg_cell
-   end function buffer_unit_cell
 
    !------------------------------------------------------------------
    ! collect_system(scan_dir, ok, errmsg) - the whole assembly flow on the
@@ -220,15 +210,16 @@ contains
             return
          end if
          mat(i)%nat = size(mat(i)%symb)
-         ! 6b. single-cell rule: the atom list carries ONE unit cell - a second
-         !     cell-carrying file is a half-periodic definition no paradigm covers
+         ! 6b. single-frame rule: at most one POSCAR may carry a Direct frame - a
+         !     second cell-carrying file mixes two coordinate frames, which no
+         !     concatenation covers (the system-level cell itself is the CELL key)
          if (mat(i)%fmt == fmt_poscar) then
             if (any_cell) then
                errmsg = 'multiple cell-carrying files ('//trim(cell_file)//' and '// &
-                        trim(mat(i)%file)//'): the unit cell is a single system-level fact'
+                        trim(mat(i)%file)//'): the Direct-coordinate frame is a single '// &
+                        'system-level fact'
                return
             end if
-            stg_cell = mat(i)%cell
             cell_file = mat(i)%file
             any_cell = .true.
          end if
@@ -254,13 +245,9 @@ contains
             stg_xyz(:,iat) = mat(i)%xyz(:,j)
          end do
       end do
-      stg_has_cell = any_cell
-
-      ! 8. paradigm derivation + fragment count: any file carries a cell ->
-      !    surface class (=1; the 1-vs-2 split arrives with the surface-member
-      !    window); none -> molecular (=0)
+      ! 8. fragment count (the scattering class is an INPUT decision - the
+      !    SCATTERING key; nothing here derives it)
       reactants%n_frag = n_entry
-      reactants%surface_model = merge(1, 0, any_cell)
 
       stg_loaded = .true.
       ok = .true.
@@ -275,8 +262,6 @@ contains
    subroutine reset_buffer()
       stg_loaded = .false.
       stg_nfrag = 0
-      stg_has_cell = .false.
-      stg_cell = 0.0d0
       if (allocated(stg_name)) deallocate (stg_name)
       if (allocated(stg_nat)) deallocate (stg_nat)
       if (allocated(stg_symb)) deallocate (stg_symb)

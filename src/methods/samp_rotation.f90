@@ -25,38 +25,47 @@ module samp_rotation
 
    real(8), parameter :: lin_tol = 1.0d-8   ! linearity eigenvalue ratio tolerance [-]
 
-   ! Member-owned parameters
+   ! Member-owned parameters, one row per carrier (the 2026-10-13 bracket
+   ! ruling realized per fragment)
    type :: rotation_params_t
-      integer :: j_rot = 0        ! rotational quantum number J [-] (the GIVEN J - the
-                                  ! draw of J is dist_j's business)
+      integer, allocatable :: j_rot(:)  ! rotational quantum numbers J [-] (the GIVEN
+                                        ! J per carrier - the draw of J is dist_j's
+                                        ! business; absent bracket name keeps 0)
    end type
 
    ! Derived member state (module-private; rebuilt by every rotation_init) -
-   ! one row per carrier; |L| is shared (one J parameter serves all carriers
-   ! equally)
+   ! one row per carrier; |L| folds the carrier's own J row
    type :: carry_t
       integer :: nat = 0                     ! carrier atom count [count]
       integer, allocatable :: list(:)        ! carrier atom index list [global atom index]
       real(8), allocatable :: qz_com(:)      ! COM-shifted seed coordinates [Angstrom]
+      real(8) :: al_mom = 0.0d0              ! angular-momentum magnitude |L| [hbar_act unit]
       real(8) :: rmat_s(3,3) = 0.0d0         ! the drawn orientation matrix (post-draw record) [-]
       real(8) :: u_s(3) = 0.0d0              ! the drawn isotropic L direction (normalized) [-]
    end type carry_t
    type(carry_t), allocatable :: carry(:)    ! carrier rows (list_atoms order)
-   real(8) :: al_mom = 0.0d0                 ! angular-momentum magnitude |L| [hbar_act unit]
    logical :: inited = .false.               ! init completed [flag]
 contains
    !------------------------------------------------------------------
    ! rotation_init(p) - validate the parameter, bind the carrier, seed the
    !                   COM-shifted geometry and the angular-momentum magnitude
    subroutine rotation_init(p)
-      type(rotation_params_t), intent(in) :: p ! member parameters (the given J)
+      type(rotation_params_t), intent(in) :: p ! member parameters (the given J,
+                                               ! one row per carrier)
       real(8) :: com(3), r(3), wt, trace_i
       integer :: i, j, k, code, n_carry
 
-      ! 1. parameter validation (fail-loud, naming field + value)
-      if (p%j_rot < 0) then
-         call stop_roti('rotation_init', 'rotational quantum number j_rot must be >= 0, got', p%j_rot)
+      ! 1. parameter validation, per carrier row (fail-loud, naming the field)
+      if (.not. allocated(p%j_rot)) then
+         call stop_rotx('rotation_init', 'no parameter rows (j_rot unallocated) - the reg '// &
+            'must stage one row per rotation carrier')
       end if
+      do k = 1, size(p%j_rot)
+         if (p%j_rot(k) < 0) then
+            call stop_roti('rotation_init', 'rotational quantum number j_rot must be >= 0, got', &
+               p%j_rot(k))
+         end if
+      end do
 
       ! 2. fragment binding (assembly-order and carrier guards first)
       if (.not. allocated(list_atoms%frag)) then
@@ -80,6 +89,10 @@ contains
       if (n_carry == 0) then
          call stop_rotx('rotation_init', 'no list_atoms fragment carries the rotation scheme - '// &
             'this member would never be dispatched')
+      end if
+      if (size(p%j_rot) /= n_carry) then
+         call stop_roti2('rotation_init', 'parameter row count', size(p%j_rot), &
+            'does not match the rotation carrier count', n_carry)
       end if
       if (allocated(carry)) deallocate (carry)
       allocate (carry(n_carry))
@@ -113,9 +126,9 @@ contains
                call stop_rotz('rotation_init', 'degenerate carrier geometry: moment of inertia '// &
                   '[amu*Ang^2] (trace/2) =', trace_i/2.0d0)
             end if
+            cr%al_mom = sqrt(dble(p%j_rot(k)*(p%j_rot(k) + 1)))*hbar_act
          end associate
       end do
-      al_mom = sqrt(dble(p%j_rot*(p%j_rot + 1)))*hbar_act
       inited = .true.
    end subroutine rotation_init
 
@@ -215,12 +228,12 @@ contains
          else                ! unit - the stale tiny un must NOT renormalize it)
             u = u/un
          end if
-         l_vec = al_mom*u
+         l_vec = carry(kc)%al_mom*u
          do k = 2, 3
             om = om + (dot_product(l_vec, vecs(:,k))/ev(k))*vecs(:,k)
          end do
       else
-         l_vec = al_mom*u
+         l_vec = carry(kc)%al_mom*u
          do k = 1, 3
             om = om + (dot_product(l_vec, vecs(:,k))/ev(k))*vecs(:,k)
          end do

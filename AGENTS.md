@@ -51,8 +51,8 @@ make clean        # removes the whole build/ tree (both compiler subtrees)
   containers standalone and are unaffected; running venus.e on a tested container requires
   temporarily shelving reference too (or the still-parked selection mechanism).
 - Tier 1 pure-PES containers (2026-10-12): a systems/* folder WITHOUT reg_*.f90 is
-  auto-wired by prebuild from ten magic names (pes/keys/load/term/classify +
-  prop/match/sync/arm/method_name) - no reg file at all; a reg_*.f90 present disables
+  auto-wired by prebuild from ten reserved names (pes/keys/load/term/classify +
+  prop/match/sync/init/method_name) - no reg file at all; a reg_*.f90 present disables
   the weave (reg authoritative). Ruling: docs/plans/2026-10-12-auto-pes-container.md;
   fixture systems/inactive/auto_sample; criterion check_auto_pes.f90 + drill_auto_pes.sh.
 
@@ -84,9 +84,9 @@ make clean        # removes the whole build/ tree (both compiler subtrees)
   `interface/container_sched` via one keyword call. The slot bodies below it are private and
   grouped in four fixed wiring groups — input (`declare_keys`, `load_params`), regular
   (`bind_force`, `register_method`, `export_spectrum`), initialization (`bind_term`,
-  `arm_method`), output (`bind_classify`, `register_columns`) — a null slot is a legal skip.
+  `init_method`), output (`bind_classify`, `register_columns`) — a null slot is a legal skip.
   The schedule owns the lifecycle order (keys before the parse; force/method/export at
-  registration; load/term/classify/arm/columns at the initialization assembly) and the
+  registration; load/term/classify/init/columns at the initialization assembly) and the
   seam guard ONCE (`system_dir` empty → no seam wiring runs); every gate (key found, method
   selected) lives inside the container's own slot bodies. Slots are single — a second fill
   aborts (one container per process). Ruling record: docs/plans/2026-09-22-container-schedule.md.
@@ -105,8 +105,16 @@ make clean        # removes the whole build/ tree (both compiler subtrees)
   default; list_atoms_load's role reconcile is the single write site of `list_atoms%i_proj/i_targ`;
   single-fragment gas rejects both keys). A `DIST_SCHEME` word may select several fragments:
   the sampler dispatches each distinct member once (first list_atoms occurrence) and the member
-  serves all its carriers with ONE parameter set (equal treatment; per-side parameter
-  differentiation stays a registered future item).
+  serves all its carriers inside that one call. Per-fragment parameters ride the
+  DIST_SCHEME bracket (2026-10-13 ruling: `WORD[NAME=VALUE, ...]` per item is the
+  ONLY legal parameter channel — no top-level member key, no fallback; a bare word
+  keeps the member's field defaults, a bracketed carrier is self-contained, and
+  the members index their parameters per carrier, so two carriers of one word may
+  sit on different parameter sets — the 2026-09-21 equal-treatment statute is
+  realized per fragment; N_EQ/DT_EQ of THERMALIZE must agree across its carriers,
+  the one shared run. Channel-level member keys (the incident beam laws, the bath
+  species) stay top-level dispatch rows; input_audit_dist_par fatals a staged
+  bracket pair nobody consumed). Ruling record: docs/plans/2026-10-13-dist-scheme-bracket-params.md.
 - **Universal orientation stage (2026-09-22)**: `RANDOM_ORIENT = T` (default `F` — the archived
   five-case stream stays byte-identical) inserts, inside `samp_run` after the per-fragment members
   and before the incident channel, one `rot_euler` pass per nat≥2 fragment whose scheme word is not
@@ -126,12 +134,17 @@ make clean        # removes the whole build/ tree (both compiler subtrees)
   cost: under ifx the records' module-memory passage shifts default FP contraction - trajectories
   differ from the pre-split ifx binary at ULP level (conservation statistics identical); the
   byte-identity statute holds under gfortran, the cases' archive compiler.
-- **Incident split per paradigm (2026-09-28 ruling)**: the incident channel is three members
+- **Incident split per paradigm (2026-09-28 ruling; class selection keyed 2026-10-13)**: the
+  scattering class is the `SCATTERING` input key (`GAS` default / `SURFACE`) - NOT derived from
+  the system files; under `SURFACE` the `CELL` key (three lattice-vector rows, Angstrom) is
+  required and is the authoritative drop-site frame (A_LAT and its commensurability gate retired
+  2026-10-13 - site statistics belong to post-processing; a POSCAR's own cell is only that file's
+  Direct-coordinate frame). The incident channel is three members
   under the `inc_` prefix - `inc_surface` (word `incident_surface`; exactly one PROJECTILE
   fragment, every other fragment is a SUBSTRATE carrier the beam assembly never re-places or
-  rotates; drop site N_AIM 0/1/2 with `AIM_X`/`AIM_Y` [Angstrom, POSCAR frame] for mode 2;
-  B_MAX = 0 is the legal on-site beam under N_B = 0; A_LAT must divide both in-plane cell
-  edges; the projectile COM velocity is assigned in full - the surface is the momentum sink),
+  rotates; drop site N_AIM 0/1/2 with `AIM_X`/`AIM_Y` [Angstrom, CELL frame] for mode 2;
+  B_MAX = 0 is the legal on-site beam under N_B = 0; a written B_MAX aborts; the projectile COM
+  velocity is assigned in full - the surface is the momentum sink),
   `inc_pair` (word `incident_pair`; the gas-pair branch verbatim - two role-named fragments,
   reduced-mass split), and `inc_single` (word `incident_single`; the trivial no-op owner of
   the single-fragment gas case - the sampler dispatches the incident member UNIFORMLY).

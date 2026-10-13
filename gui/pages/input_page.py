@@ -34,7 +34,7 @@ from PyQt6.QtCore import Qt
 from .. import theme
 from ..core import inputwrite, preview, sysdir, validate
 from ..core.keyspec import (
-    KEY_TABLE, MEMBER_TABLE, SCHEME_MEMBER_KEYS, ENUMS, REFERENCE_CONTAINER_KEYS,
+    KEY_TABLE, MEMBER_TABLE, SCHEME_PARAMS, format_dist_scheme, ENUMS, REFERENCE_CONTAINER_KEYS,
 )
 from ..view3d.preview_view import PreviewView
 
@@ -46,7 +46,8 @@ PHYSICAL_LABELS = {
     "B_MAX": "碰撞参数 b [Å]",
     "PROJECTILE": "弹丸片段",
     "TARGET": "靶片段",
-    "A_LAT": "晶格常数 [Å]",
+    "SCATTERING": "散射类",
+    "CELL": "晶胞矢量 [Å]",
     "N_AIM": "落点模式",
     "AIM_X": "定点落点 x [Å]",
     "AIM_Y": "定点落点 y [Å]",
@@ -307,9 +308,10 @@ class InputPage(QWidget):
             cell("RANDOM_ORIENT", check("RANDOM_ORIENT"), "默认关"))
         row(cell("PROJECTILE", combo("PROJECTILE", [""]), "扫描后按片段名选"),
             cell("TARGET", combo("TARGET", [""]), "气相双片段必选"))
-        row(cell("A_LAT", line("A_LAT", "须与胞公度"), "表面散射必填"),
+        row(cell("SCATTERING", combo("SCATTERING", [""] + ENUMS["scattering"]), "默认 GAS"),
             cell("N_AIM", mcombo("N_AIM"), "仅表面散射"))
-        row(cell("AIM_X", line("AIM_X", "x(POSCAR 帧)"), "落点模式=2 时"),
+        row(cell("CELL", line("CELL", "三行晶矢, 如 6 0 0, 0 6 0, 0 0 20"), "表面散射必填"))
+        row(cell("AIM_X", line("AIM_X", "x(胞帧)"), "落点模式=2 时"),
             cell("AIM_Y", line("AIM_Y", "y"), "落点模式=2 时"))
 
         # ---- 采样方案(逐片段;扫描后重建;星号=每片段均须选择)----
@@ -357,33 +359,11 @@ class InputPage(QWidget):
             cell("CHI", line("CHI", "rad"), "方位角模式=0 时"))
         row(cell("N_B", mcombo("N_B")))
 
-        # ---- 成员参数(按方案词打包成行, 每行≤3 键;束流/落点键已有专属控件)----
-        group("member", "成员参数(随所选方案显示)", collapsible=True, expanded=False)
-        self._member_keys: set[str] = set()
-        member_of = {m.key: m for m in MEMBER_TABLE}
-        for word, mkeys in SCHEME_MEMBER_KEYS.items():
-            batch: list[QWidget] = []
-            for k in mkeys:
-                mk = member_of[k]
-                if mk.key in self._w:  # N_E_REL/N_AIM/AIM_X 等在前述组已有专属控件
-                    continue
-                # 标签 = hint 剥去尾部括注的物理量名;约束留在占位符
-                m = re.search(r"\(([^)]*)\)\s*$", mk.hint)
-                phys = (mk.hint[:m.start()] if m else mk.hint).strip()
-                if mk.key in MODE_OPTS:  # 二态模式键: 值·含义下拉
-                    w = mcombo(mk.key)
-                else:
-                    w = QLineEdit()
-                    w.setPlaceholderText(m.group(1) if m else mk.hint)
-                    w.textChanged.connect(self._touch)
-                    self._w[mk.key] = w
-                self._member_keys.add(mk.key)
-                batch.append(cell(mk.key, w, label=phys))
-                if len(batch) == 3:
-                    row(*batch)
-                    batch = []
-            if batch:
-                row(*batch)
+        # ---- 方案词参数说明(2026-10-13 裁定: 参数只经 DIST_SCHEME 括号,
+        #      逐片段字段随方案行内联显示,本组仅留说明)----
+        group("member", "方案词参数(逐片段,在采样方案行内填写)", collapsible=True, expanded=False)
+        row(QLabel("各片段选定方案词后,其参数字段内联出现在该片段行;"
+                   "无参数的词写裸词,缺省参数走成员默认。"))
 
         # ---- 容器键 ----
         g = group("container", "容器键", collapsible=True, expanded=False)
@@ -451,8 +431,8 @@ class InputPage(QWidget):
         for k in ("SYSTEM_DIR", "E_REL", "R_SEP", "DT"):
             self._mark(k, True)
         # 决定者变更即刷新条件显隐;INTEGRATOR 另触发积分阶选项重建
-        for k in ("N_AIM", "INTEGRATOR", "BATH", "SPECTRUM_SOURCE",
-                  "N_E_REL", "N_CHI", "N_OSC", "N_E_BAR"):
+        for k in ("SCATTERING", "N_AIM", "INTEGRATOR", "BATH", "SPECTRUM_SOURCE",
+                  "N_E_REL", "N_CHI"):
             self._w[k].currentTextChanged.connect(self._refresh_dynamic_rows)
         self._w["INTEGRATOR"].currentTextChanged.connect(self._rebuild_order_items)
         self._refresh_dynamic_rows()  # 初始态:未扫描范式键全藏, 表单最简
@@ -495,6 +475,8 @@ class InputPage(QWidget):
             if w:
                 w.deleteLater()
         self._scheme_combos = []
+        self._scheme_param_rows: list[tuple[QWidget, QHBoxLayout]] = []
+        self._scheme_params: list[dict[str, QLineEdit]] = []
         if sd is not None and sd.ok:
             words = ENUMS["dist"]
             for i, f in enumerate(sd.frags):
@@ -502,14 +484,18 @@ class InputPage(QWidget):
                 c.addItems([""] + words)
                 c.currentIndexChanged.connect(self._touch)
                 c.currentTextChanged.connect(self._touch)
-                # 方案词变更即时刷新成员参数显隐(原先只在重扫描时刷新, 变更不生效)
+                # 方案词变更即时刷新该片段的内联参数字段(2026-10-13 括号形式)
                 c.currentTextChanged.connect(self._refresh_dynamic_rows)
                 self._scheme_combos.append(c)
                 r = self._scheme_grid.rowCount()
                 self._scheme_grid.addWidget(QLabel(f"片段 {i + 1}:{f.name}({f.nat} 原子)"), r, 0)
                 self._scheme_grid.addWidget(c, r, 1)
-            surf = sd.surface_model == 1
-            n = len(sd.frags)
+                pc = QWidget()
+                pl = QHBoxLayout(pc)
+                pl.setContentsMargins(4, 0, 0, 0)
+                pl.addStretch(1)
+                self._scheme_grid.addWidget(pc, r, 2)
+                self._scheme_param_rows.append((pc, pl))
             # 角色下拉(范式合法性由条件显隐统一处理, 词表都给全)
             for key in ("PROJECTILE", "TARGET"):
                 c = self._w[key]
@@ -517,13 +503,7 @@ class InputPage(QWidget):
                 c.clear()
                 c.addItems([""] + sd.frag_names)
                 c.blockSignals(False)
-            # 条件必填星号随范式增减(表面:PROJECTILE+A_LAT;气相多片段:双角色)
-            self._mark("PROJECTILE", surf or n > 1)
-            self._mark("TARGET", (not surf) and n > 1)
-            self._mark("A_LAT", surf)
-            para = "表面散射(带胞)" if surf else f"气相散射({n} 片段)"
-            box = f"; box {sd.box_lx:.4f}×{sd.box_ly:.4f} Å, skew {sd.skew * 57.2958:.1f}°" if surf else ""
-            self._info.setText(f"✓ {para}{box} — 片段: {', '.join(sd.frag_names)}")
+            # 星标与信息行随 SCATTERING 键刷新(_apply_cond_visibility 统一持有)
         else:
             errs = sd.errors[0] if sd is not None and sd.errors else "未扫描"
             self._info.setText(f"⚠ {errs}")
@@ -535,30 +515,53 @@ class InputPage(QWidget):
         self._apply_cond_visibility()
 
     def _refresh_member_visibility(self):
-        """成员参数词基显隐:未选词的成员行隐藏(不清空、可收集——旧语义)。"""
-        selected: set[str] = set()
-        for c in self._scheme_combos:
-            t = c.currentText().strip()
-            if t:
-                selected.add(t)
-        visible = set()
-        for w in selected:
-            visible.update(SCHEME_MEMBER_KEYS.get(w, []))
-        for key in self._member_keys:
-            if key in visible:
-                self._word_hidden.discard(key)
-            else:
-                self._word_hidden.add(key)
-            self._apply_row_visibility(key)
-        # 选中带成员键的方案词后自动展开(否则新显行藏在折叠组里不可见)
-        if visible and not self._sections["member"].expanded:
+        """逐片段内联参数字段重建:选定词的括号参数(2026-10-13 裁定)。"""
+        import re as _re
+        self._scheme_params = []
+        for i, c in enumerate(self._scheme_combos):
+            word = c.currentText().strip().upper()
+            if i >= len(self._scheme_param_rows):
+                break
+            pc, pl = self._scheme_param_rows[i]
+            while pl.count():
+                it = pl.takeAt(0)
+                w = it.widget()
+                if w:
+                    w.deleteLater()
+            fields: dict[str, QLineEdit] = {}
+            if word:
+                for sp in SCHEME_PARAMS.get(word, []):
+                    m = _re.search(r"\(([^)]*)\)\s*$", sp.hint)
+                    phys = (sp.hint[:m.start()] if m else sp.hint).strip()
+                    lab = QLabel(f"{sp.name}")
+                    lab.setToolTip(phys)
+                    e = QLineEdit()
+                    e.setPlaceholderText(m.group(1) if m else sp.hint)
+                    e.setMaximumWidth(110)
+                    e.textChanged.connect(self._touch)
+                    pl.insertWidget(pl.count() - 1, lab)   # 末尾 stretch 之前
+                    pl.insertWidget(pl.count() - 1, e)
+                    fields[sp.name] = e
+            pc.setVisible(bool(word))
+            self._scheme_params.append(fields)
+        # 选了带参数的词后自动展开说明组(新字段在方案行内联,组仅是说明)
+        if any(self._scheme_params) and not self._sections["member"].expanded:
             self._sections["member"].set_expanded(True)
+
+    def _scattering_is_surface(self) -> bool:
+        """散射类取 SCATTERING 键值(2026-10-13 裁决:主控键,不由扫描推导)。"""
+        w = self._w.get("SCATTERING")
+        if isinstance(w, QComboBox):
+            d = w.currentData()
+            t = str(d if d is not None else w.currentText()).strip().upper()
+            return t == "SURFACE"
+        return False
 
     def _apply_cond_visibility(self):
         """条件显隐:被其余设置判"不需要"的行整行隐藏并清空(collect 跳过,绝不写出)。
         规则权威 = core.validate 移植的 Fortran 规则;积分器×阶域 = propagator.f90。"""
         sd = self._sysdef
-        surf = sd is not None and sd.ok and sd.surface_model == 1
+        surf = self._scattering_is_surface()
         n = len(sd.frags) if sd is not None and sd.ok else 0
 
         def cur(k: str) -> str:
@@ -573,11 +576,20 @@ class InputPage(QWidget):
         def want(k: str, on: bool):
             show[k] = show.get(k, True) and on
 
-        # 范式窗口(表面:弹丸+晶格+落点;气相对:双角色+碰撞参数;单片段:仅碰撞参数)
+        # 范式呈现(星标+信息行)随 SCATTERING 键即时刷新(扫描或换键同一出处)
+        if sd is not None and sd.ok:
+            self._mark("PROJECTILE", surf or n > 1)
+            self._mark("TARGET", (not surf) and n > 1)
+            self._mark("CELL", surf)
+            para = "表面散射" if surf else f"气相散射({n} 片段)"
+            box = "; 胞以 CELL 键为准" if surf else ""
+            self._info.setText(f"✓ {para}{box} — 片段: {', '.join(sd.frag_names)}")
+
+        # 范式窗口(表面:弹丸+晶胞+落点;气相对:双角色+碰撞参数;单片段:仅碰撞参数)
         want("PROJECTILE", surf or n > 1)
         want("TARGET", (not surf) and n > 1)
         want("B_MAX", not surf)
-        want("A_LAT", surf)
+        want("CELL", surf)
         want("N_AIM", surf)
         # 落点模式 2(定点)才需要坐标
         want("AIM_X", surf and cur("N_AIM") == "2")
@@ -679,10 +691,19 @@ class InputPage(QWidget):
         # 复选框
         for k, c in self._checks.items():
             values[k] = "T" if c.isChecked() else "F"
-        # DIST_SCHEME
+        # DIST_SCHEME(逐片段 词[名=值, ...];参数字段内联在方案行)
         words = [c.currentText().strip() for c in self._scheme_combos]
         if all(words) and words:
-            values["DIST_SCHEME"] = ",".join(words)
+            items = []
+            for i, w in enumerate(words):
+                params = {}
+                if i < len(self._scheme_params):
+                    for name, e in self._scheme_params[i].items():
+                        t = e.text().strip()
+                        if t:
+                            params[name] = t
+                items.append((w.upper(), params))
+            values["DIST_SCHEME"] = format_dist_scheme(items)
         values.setdefault("SYSTEM_DIR", self._sd_line.text().strip())
         # 容器键表
         cont: dict[str, str] = {}

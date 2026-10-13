@@ -51,8 +51,9 @@ def test_surface_fixed_site(tmp_path: Path):
         encoding="utf-8",
     )
     sd = sysdir.scan_system_dir(d)
-    assert sd.ok and sd.surface_model == 1
+    assert sd.ok and sd.has_cell
     values = {
+        "SCATTERING": "SURFACE", "CELL": "9.0 0.0 0.0, 0.0 9.0 0.0, 0.0 0.0 12.0",
         "E_REL": "100.0", "R_SEP": "6.0", "N_AIM": "2",
         "AIM_X": "1.5", "AIM_Y": "2.5", "N_B": "0",
     }

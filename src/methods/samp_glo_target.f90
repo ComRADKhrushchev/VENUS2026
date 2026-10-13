@@ -25,18 +25,23 @@ module samp_glo_target
              glo_target_last_q, glo_target_last_p, &
              glo_target_sigma_noise, glo_target_sigma_p, glo_target_sigma_q
 
-   ! Member-owned parameters
+   ! Member-owned parameters, one row per carrier (the 2026-10-13 bracket
+   ! ruling realized per fragment; 0 = the bracket name was absent and the
+   ! member's own validation rejects it)
    type :: glo_target_params_t
-      real(8) :: t_glo = 0.0d0     ! bath temperature [K]
-      real(8) :: gamma_glo = 0.0d0 ! damping coefficient [1/fs]
-      real(8) :: w_ghost = 0.0d0   ! ghost oscillator frequency [1/fs]
+      real(8), allocatable :: t_glo(:)     ! bath temperatures [K]
+      real(8), allocatable :: gamma_glo(:) ! damping coefficients [1/fs]
+      real(8), allocatable :: w_ghost(:)   ! ghost oscillator frequencies [1/fs]
    end type
 
    ! Derived member state (module-private; rebuilt by every glo_target_init) -
-   ! one row per carrier; the bath scalars are shared (equal treatment)
+   ! one row per carrier; each row folds its own parameter row
    type :: carry_t
       integer :: frag = 0             ! carrier list_atoms fragment row [-]
       integer :: nat = 0              ! carrier atom count [-]
+      real(8) :: t_c = 0.0d0          ! validated bath temperature [K]
+      real(8) :: gamma_c = 0.0d0      ! validated damping coefficient [1/fs]
+      real(8) :: w_c = 0.0d0          ! validated ghost frequency [1/fs]
       real(8), allocatable :: sig_noise(:) ! per-atom noise amplitudes [amu*Ang/fs^2]
       real(8), allocatable :: sig_p(:)     ! per-atom stationary momentum widths [amu*Ang/fs]
       real(8), allocatable :: sig_q(:)     ! per-atom stationary coordinate widths [Ang]
@@ -44,9 +49,6 @@ module samp_glo_target
       real(8), allocatable :: ghost_p(:)   ! last drawn ghost momenta [amu*Ang/fs]
    end type carry_t
    type(carry_t), allocatable :: carry(:)  ! carrier rows (list_atoms order)
-   real(8) :: t_glo_c = 0.0d0        ! bath temperature [K]
-   real(8) :: gamma_c = 0.0d0        ! damping coefficient [1/fs]
-   real(8) :: w_c = 0.0d0            ! ghost frequency [1/fs]
    real(8) :: dt_c = 0.0d0           ! the propagator step read at init [fs]
    logical :: inited = .false.       ! init completed [flag]
 contains
@@ -57,18 +59,26 @@ contains
       type(glo_target_params_t), intent(in) :: p ! member parameters (bath coupling)
       integer :: i, j, kc, code, n_carry
 
-      ! 1. parameter validation (fail-loud, naming field + value)
-      if (p%t_glo <= 0.0d0) then
-         call stop_gloz('glo_target_init', 'bath temperature t_glo [K] must be positive, got', p%t_glo)
+      ! 1. parameter validation, per carrier row (fail-loud, naming field + value)
+      if (.not. allocated(p%t_glo) .or. .not. allocated(p%gamma_glo) .or. &
+          .not. allocated(p%w_ghost)) then
+         call stop_glox('glo_target_init', 'parameter rows unallocated - the reg must stage '// &
+            'one row per glo_target carrier')
       end if
-      if (p%gamma_glo <= 0.0d0) then
-         call stop_gloz('glo_target_init', 'damping coefficient gamma_glo [1/fs] must be '// &
-            'positive, got', p%gamma_glo)
-      end if
-      if (p%w_ghost <= 0.0d0) then
-         call stop_gloz('glo_target_init', 'ghost oscillator frequency w_ghost [1/fs] must '// &
-            'be positive, got', p%w_ghost)
-      end if
+      do kc = 1, size(p%t_glo)
+         if (p%t_glo(kc) <= 0.0d0) then
+            call stop_gloz('glo_target_init', 'bath temperature t_glo [K] must be positive '// &
+               '(the carrier wrote no T_GLO bracket name); row =', p%t_glo(kc))
+         end if
+         if (p%gamma_glo(kc) <= 0.0d0) then
+            call stop_gloz('glo_target_init', 'damping coefficient gamma_glo [1/fs] must be '// &
+               'positive, got', p%gamma_glo(kc))
+         end if
+         if (p%w_ghost(kc) <= 0.0d0) then
+            call stop_gloz('glo_target_init', 'ghost oscillator frequency w_ghost [1/fs] must '// &
+               'be positive, got', p%w_ghost(kc))
+         end if
+      end do
       if (prop_cfg%dt <= 0.0d0) then
          call stop_gloz('glo_target_init', 'the propagator step dt [fs] the bath strengths are '// &
             'calibrated against must be positive, got', prop_cfg%dt)
@@ -97,6 +107,10 @@ contains
          call stop_glox('glo_target_init', 'no list_atoms fragment carries the glo_target '// &
             'scheme - this member would never be dispatched')
       end if
+      if (size(p%t_glo) /= n_carry) then
+         call stop_gloi2('glo_target_init', 'parameter row count', size(p%t_glo), &
+            'does not match the glo_target carrier count', n_carry)
+      end if
 
       ! 3. carrier loop (list_atoms order): coupling-strength loading (the
       !    conservation algebra: sigma_noise^2 = 2*gamma*m*kb*t/dt;
@@ -110,22 +124,22 @@ contains
          kc = kc + 1
          carry(kc)%frag = i
          carry(kc)%nat = list_atoms%frag(i)%nat
+         carry(kc)%t_c = p%t_glo(kc)
+         carry(kc)%gamma_c = p%gamma_glo(kc)
+         carry(kc)%w_c = p%w_ghost(kc)
          allocate (carry(kc)%sig_noise(carry(kc)%nat), carry(kc)%sig_p(carry(kc)%nat), &
                    carry(kc)%sig_q(carry(kc)%nat))
          do j = 1, carry(kc)%nat
             associate (m_i => list_atoms%mass(list_atoms%frag(carry(kc)%frag)%list(j)))
-               carry(kc)%sig_noise(j) = sqrt(2.0d0*p%gamma_glo*m_i*kb_act*p%t_glo/prop_cfg%dt)
-               carry(kc)%sig_p(j) = sqrt(m_i*kb_act*p%t_glo)
-               carry(kc)%sig_q(j) = sqrt(kb_act*p%t_glo/(m_i*p%w_ghost**2))
+               carry(kc)%sig_noise(j) = sqrt(2.0d0*p%gamma_glo(kc)*m_i*kb_act*p%t_glo(kc)/prop_cfg%dt)
+               carry(kc)%sig_p(j) = sqrt(m_i*kb_act*p%t_glo(kc))
+               carry(kc)%sig_q(j) = sqrt(kb_act*p%t_glo(kc)/(m_i*p%w_ghost(kc)**2))
             end associate
          end do
          allocate (carry(kc)%ghost_q(3*carry(kc)%nat), carry(kc)%ghost_p(3*carry(kc)%nat))
          carry(kc)%ghost_q = 0.0d0
          carry(kc)%ghost_p = 0.0d0
       end do
-      t_glo_c = p%t_glo
-      gamma_c = p%gamma_glo
-      w_c = p%w_ghost
       dt_c = prop_cfg%dt
       inited = .true.
    end subroutine glo_target_init
@@ -176,16 +190,31 @@ contains
    ! getters (copies of the derived member state; the carrier index is
    ! optional and defaults to the first carrier - the single-carrier face)
    !------------------------------------------------------------------
-   pure real(8) function glo_target_t_glo()
-      glo_target_t_glo = t_glo_c
+   pure real(8) function glo_target_t_glo(k)
+      integer, intent(in), optional :: k    ! carrier row (default 1)
+      integer :: kc
+      kc = 1
+      if (present(k)) kc = k
+      glo_target_t_glo = 0.0d0
+      if (inited .and. kc >= 1 .and. kc <= size(carry)) glo_target_t_glo = carry(kc)%t_c
    end function glo_target_t_glo
 
-   pure real(8) function glo_target_gamma()
-      glo_target_gamma = gamma_c
+   pure real(8) function glo_target_gamma(k)
+      integer, intent(in), optional :: k    ! carrier row (default 1)
+      integer :: kc
+      kc = 1
+      if (present(k)) kc = k
+      glo_target_gamma = 0.0d0
+      if (inited .and. kc >= 1 .and. kc <= size(carry)) glo_target_gamma = carry(kc)%gamma_c
    end function glo_target_gamma
 
-   pure real(8) function glo_target_w()
-      glo_target_w = w_c
+   pure real(8) function glo_target_w(k)
+      integer, intent(in), optional :: k    ! carrier row (default 1)
+      integer :: kc
+      kc = 1
+      if (present(k)) kc = k
+      glo_target_w = 0.0d0
+      if (inited .and. kc >= 1 .and. kc <= size(carry)) glo_target_w = carry(kc)%w_c
    end function glo_target_w
 
    pure real(8) function glo_target_dt_loaded()

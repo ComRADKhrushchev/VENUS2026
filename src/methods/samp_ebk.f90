@@ -2,14 +2,15 @@
 ! samp_ebk.f90 - distribution member: EBK semiclassical fixed-(n,J)
 !   diatomic initial state from Morse spectroscopic constants
 ! Design:
-!   One parameter set serves every carrier equally; the Morse curve,
-!   the quantized level, the sampled interval and the bond triad are
-!   per-carrier derived state (each carrier is its own diatomic). The
-!   Morse curve is derived so the pure-Morse WKB spectrum is exactly
-!   quantized; the level is re-located by fixed-point quantization of
-!   the full effective potential. Sample draws r with density prop. to
-!   1/|pr| and writes the carrier's internal q/p only - translation is
-!   the incident channel's business.
+!   One parameter row per carrier (the 2026-10-13 bracket ruling realized
+!   per fragment - two EBK fragments may sit on different (n,J) states);
+!   the Morse curve, the quantized level, the sampled interval and the
+!   bond triad are per-carrier derived state (each carrier is its own
+!   diatomic). The Morse curve is derived so the pure-Morse WKB spectrum
+!   is exactly quantized; the level is re-located by fixed-point
+!   quantization of the full effective potential. Sample draws r with
+!   density prop. to 1/|pr| and writes the carrier's internal q/p only -
+!   translation is the incident channel's business.
 !   Units: w_e/w_ex_e/b_rot [cm^-1]; energies [amu*Ang^2/fs^2] (dynamical
 !   family - the WKB momentum quadrature's native units); q [Angstrom];
 !   p [amu*Ang/fs]; hbar = hbar_act.
@@ -24,7 +25,7 @@ module samp_ebk
    use geometry,      only: gl_nodes
    implicit none
    private
-   public :: ebk_params_t, ebk_init, ebk_draw, ebk_realize, ebk_sample, ebk_e_level, ebk_r_turn, &
+   public :: ebk_car_t, ebk_params_t, ebk_init, ebk_draw, ebk_realize, ebk_sample, ebk_e_level, ebk_r_turn, &
              ebk_morse, ebk_last
 
    real(8), parameter :: eps_turn = 1.0d-3   ! turning-point inset [Angstrom]
@@ -33,15 +34,19 @@ module samp_ebk
    integer, parameter :: max_reject = 100000 ! rejection-sampling draw cap [-]
    real(8), parameter :: tol_quant = 1.0d-6  ! quantization tolerance [quantum]
 
-   ! Member-owned parameters (reduced mass, bond length and orientation are
-   ! list_atoms-derived; the dissociation energy is DERIVED, not stored)
-   type :: ebk_params_t
+   ! Member-owned parameters, one row per carrier (reduced mass, bond length
+   ! and orientation are list_atoms-derived; the dissociation energy is
+   ! DERIVED, not stored)
+   type :: ebk_car_t
       integer :: n_vib  = 0        ! fixed vibrational quantum number n [-]
       integer :: j_rot  = 0        ! fixed rotational quantum number J [-]
       real(8) :: w_e    = 0.0d0    ! spectroscopic constant w_e [cm^-1]
       real(8) :: w_ex_e = 0.0d0    ! anharmonic constant w_ex_e [cm^-1]
       real(8) :: b_rot  = 0.0d0    ! rotational constant B_e [cm^-1]
       real(8) :: ai_rot = 0.0d0    ! moment of inertia [amu*Ang^2] (orientation-member input)
+   end type
+   type :: ebk_params_t
+      type(ebk_car_t), allocatable :: car(:)  ! one row per carrier (list_atoms order)
    end type
 
    ! Derived member state (module-private; rebuilt by every ebk_init) - one
@@ -70,35 +75,51 @@ module samp_ebk
 contains
    !------------------------------------------------------------------
    ! ebk_init(p) - validate, derive the Morse curve, quantize the level and
-   !               bind every carrier fragment (one shared parameter set)
+   !               bind every carrier fragment (one parameter row each)
    subroutine ebk_init(p)
       type(ebk_params_t), intent(in) :: p ! member parameters (quantum numbers /
-                                          ! spectroscopic constants)
+                                          ! spectroscopic constants, one row
+                                          ! per carrier)
       type(carry_t) :: cr
       real(8) :: node(n_quad), wts(n_quad)
       real(8) :: x, e_seed, hnu, an, dum, dumv
       real(8) :: m1, m2, dv(3), big(3), small
       integer :: i, kc, code, n_carry, it, k_small
 
-      ! 1. parameter validation (fail-loud, naming the field)
-      if (p%n_vib < 0) call stop_ebki('ebk_init', 'vibrational quantum number n_vib must be >= 0, got', p%n_vib)
-      if (p%j_rot < 0) call stop_ebki('ebk_init', 'rotational quantum number j_rot must be >= 0, got', p%j_rot)
-      if (p%w_e <= 0.0d0) then
-         dumv = p%w_e
-         call stop_ebkz('ebk_init', 'spectroscopic constant w_e [cm^-1] must be positive, got', dumv)
+      ! 1. parameter validation, per carrier row (fail-loud, naming the field
+      !    and the carrier)
+      if (.not. allocated(p%car)) then
+         call stop_ebkx('ebk_init', 'no parameter rows (car unallocated) - the reg must '// &
+            'stage one row per ebk carrier')
       end if
-      if (p%w_ex_e <= 0.0d0) then
-         dumv = p%w_ex_e
-         call stop_ebkz('ebk_init', 'anharmonic constant w_ex_e [cm^-1] must be positive, got', dumv)
-      end if
-      if (p%b_rot < 0.0d0) then
-         dumv = p%b_rot
-         call stop_ebkz('ebk_init', 'rotational constant b_rot [cm^-1] must be >= 0, got', dumv)
-      end if
-      if (p%ai_rot <= 0.0d0) then
-         dumv = p%ai_rot
-         call stop_ebkz('ebk_init', 'moment of inertia ai_rot [amu*Ang^2] must be positive, got', dumv)
-      end if
+      do kc = 1, size(p%car)
+         associate (cp => p%car(kc))
+         if (cp%n_vib < 0) call stop_ebki('ebk_init', 'carrier '//trim(ek_i2s(kc))// &
+            ': vibrational quantum number n_vib must be >= 0, got', cp%n_vib)
+         if (cp%j_rot < 0) call stop_ebki('ebk_init', 'carrier '//trim(ek_i2s(kc))// &
+            ': rotational quantum number j_rot must be >= 0, got', cp%j_rot)
+         if (cp%w_e <= 0.0d0) then
+            dumv = cp%w_e
+            call stop_ebkz('ebk_init', 'carrier '//trim(ek_i2s(kc))//': spectroscopic constant '// &
+               'w_e [cm^-1] must be positive, got', dumv)
+         end if
+         if (cp%w_ex_e <= 0.0d0) then
+            dumv = cp%w_ex_e
+            call stop_ebkz('ebk_init', 'carrier '//trim(ek_i2s(kc))//': anharmonic constant '// &
+               'w_ex_e [cm^-1] must be positive, got', dumv)
+         end if
+         if (cp%b_rot < 0.0d0) then
+            dumv = cp%b_rot
+            call stop_ebkz('ebk_init', 'carrier '//trim(ek_i2s(kc))//': rotational constant '// &
+               'b_rot [cm^-1] must be >= 0, got', dumv)
+         end if
+         if (cp%ai_rot <= 0.0d0) then
+            dumv = cp%ai_rot
+            call stop_ebkz('ebk_init', 'carrier '//trim(ek_i2s(kc))//': moment of inertia '// &
+               'ai_rot [amu*Ang^2] must be positive, got', dumv)
+         end if
+         end associate
+      end do
 
       ! 2. carrier binding (assembly-order guards, then the atom list-derived
       !    diatomic data of every carrier; list_atoms order)
@@ -123,6 +144,10 @@ contains
       if (n_carry == 0) then
          call stop_ebkx('ebk_init', 'no list_atoms fragment carries the ebk scheme - '// &
             'this member would never be dispatched')
+      end if
+      if (size(p%car) /= n_carry) then
+         call stop_ebki2('ebk_init', 'parameter row count', size(p%car), &
+            'does not match the ebk carrier count', n_carry)
       end if
       if (allocated(carry)) deallocate (carry)
       allocate (carry(n_carry))
@@ -159,16 +184,18 @@ contains
          cr%e_perp1 = cr%e_perp1/norm2(cr%e_perp1)
          cr%e_perp2 = cross_p(cr%ax_bond, cr%e_perp1)
 
-         ! 3. Morse derivation from the spectroscopic constants (see the module
-         !    header for the construction and its WKB-exactness anchor)
-         cr%d_e = wvn2ev*ev_dyn*(p%w_e*p%w_e/(4.0d0*p%w_ex_e))
-         cr%a_morse = sqrt(2.0d0*cr%mu_red*(wvn2ev*ev_dyn*p%w_ex_e))/hbar_act
-         cr%al_mom = sqrt(dble(p%j_rot*(p%j_rot + 1)))*hbar_act
+         ! 3. Morse derivation from this carrier's spectroscopic constants (see
+         !    the module header for the construction and its WKB-exactness anchor)
+         associate (cp => p%car(kc))
+         cr%d_e = wvn2ev*ev_dyn*(cp%w_e*cp%w_e/(4.0d0*cp%w_ex_e))
+         cr%a_morse = sqrt(2.0d0*cr%mu_red*(wvn2ev*ev_dyn*cp%w_ex_e))/hbar_act
+         cr%al_mom = sqrt(dble(cp%j_rot*(cp%j_rot + 1)))*hbar_act
 
          ! 4. level seed and WKB quantization by fixed point over the effective
          !    potential (Morse from the well bottom + centrifugal)
-         x = dble(p%n_vib) + 0.5d0
-         e_seed = wvn2ev*ev_dyn*(p%w_e*x - p%w_ex_e*x*x + p%b_rot*dble(p%j_rot*(p%j_rot + 1)))
+         x = dble(cp%n_vib) + 0.5d0
+         e_seed = wvn2ev*ev_dyn*(cp%w_e*x - cp%w_ex_e*x*x + cp%b_rot*dble(cp%j_rot*(cp%j_rot + 1)))
+         end associate
          hnu = e_seed/x
          cr%e_lvl = e_seed
          do it = 1, max_iter
@@ -471,6 +498,13 @@ contains
       real(8) :: c(3)
       c = (/ a(2)*b(3) - a(3)*b(2), a(3)*b(1) - a(1)*b(3), a(1)*b(2) - a(2)*b(1) /)
    end function cross_p
+
+   ! ek_i2s(n) - decimal string of an integer (carrier labels in abort messages)
+   function ek_i2s(n) result(s)
+      integer, intent(in) :: n
+      character(len=16) :: s
+      write (s, '(i0)') n
+   end function ek_i2s
 
    ! named-abort helpers (name the caller; STOP 1)
    subroutine stop_ebkx(where, msg)

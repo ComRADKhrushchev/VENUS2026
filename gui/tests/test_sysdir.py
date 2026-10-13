@@ -25,10 +25,9 @@ def test_elem_mass_mirror():
 
 
 def test_scan_pair_case():
-    """case_harmonic_scatter:双 xyz 片段、名序、分子范式。"""
+    """case_harmonic_scatter:双 xyz 片段、名序。"""
     sd = sysdir.scan_system_dir(ROOT / "cases" / "case_harmonic_scatter" / "system")
     assert sd.ok, sd.errors
-    assert sd.surface_model == 0
     assert sd.frag_names == ["frag_a", "frag_b"]
     assert sd.frags[0].nat == 2 and sd.frags[1].nat == 2
     assert sd.frags[0].coords[1][0] == pytest.approx(0.7)
@@ -37,10 +36,9 @@ def test_scan_pair_case():
 
 
 def test_scan_surface_case():
-    """case_spectrum_source/h2ag_ebk:H2.poscar 带胞 → 表面范式,box 余弦定理。"""
+    """case_spectrum_source/h2ag_ebk:H2.poscar 带胞,box 余弦定理(范式自 SCATTERING 键)。"""
     sd = sysdir.scan_system_dir(ROOT / "cases" / "case_spectrum_source" / "h2ag_ebk" / "system")
     assert sd.ok, sd.errors
-    assert sd.surface_model == 1
     assert sd.frag_names == ["H2"]
     assert sd.frags[0].nat == 2
     c = sd.cell

@@ -31,7 +31,7 @@
 ! Criteria:
 !   (a) action quantization, J = 0 Morse exactness: with j_rot = 0 the
 !       converged level energy equals the analytic Dunham form
-!       e_conv*wvn2e*(w_e*x - w_ex_e*x^2), x = n+1/2, within 5e-4 relative
+!       wvn2ev*ev_dyn*(w_e*x - w_ex_e*x^2), x = n+1/2, within 5e-4 relative
 !       (the expected floor is the turning-point-inset action sliver,
 !       order 1e-4 - the fixed point shifts e to quantize the INSET
 !       interval)
@@ -74,12 +74,12 @@
 !       (r/pr from ebk_last(k), carrier 2 explicit)
 !=====================================================================
 program check_samp_ebk
-   use consts,        only: pi, hbar_code, e_conv, wvn2e
+   use consts,        only: pi, hbar_act, wvn2ev, ev_dyn
    use rng,           only: rng_init
    use config,        only: reactants
    use config_atoms, only: list_atoms, list_atoms_clear
    use state,         only: state_t, state_create, state_destroy
-   use samp_ebk,      only: ebk_params_t, ebk_init, ebk_sample, ebk_e_level, &
+   use samp_ebk,      only: ebk_car_t, ebk_params_t, ebk_init, ebk_sample, ebk_e_level, &
                             ebk_r_turn, ebk_morse, ebk_last
    implicit none
    type(state_t) :: sta
@@ -99,6 +99,7 @@ program check_samp_ebk
    real(8), parameter :: sentinel = -777.0d0
 
    ! ---------- child dispatch: one bad case per spawn, must named abort ----------
+   allocate (par%car(1))   ! single-carrier check face (component defaults stand)
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       call state_create(sta, 2)
@@ -107,13 +108,13 @@ program check_samp_ebk
          call setup_diatom()
          call set_scheme([2])
          par = hcl_params()
-         par%w_ex_e = 0.0d0
+         par%car(1)%w_ex_e = 0.0d0
          call ebk_init(par)
       case ('bad-n')                      ! (g): n_vib = -1
          call setup_diatom()
          call set_scheme([2])
          par = hcl_params()
-         par%n_vib = -1
+         par%car(1)%n_vib = -1
          call ebk_init(par)
       case ('bad-trimer')                 ! (h): 3-atom carrier
          call setup_trimer()
@@ -129,8 +130,8 @@ program check_samp_ebk
          call setup_diatom()
          call set_scheme([2])
          par = hcl_params()
-         par%n_vib = 20
-         par%j_rot = 30
+         par%car(1)%n_vib = 20
+         par%car(1)%j_rot = 30
          call ebk_init(par)
       case ('bad-noinit')                 ! (k): sample without init
          call setup_diatom()
@@ -144,7 +145,7 @@ program check_samp_ebk
       stop 0
    end if
 
-   cv = e_conv*wvn2e               ! internal energy per cm^-1
+   cv = wvn2ev*ev_dyn              ! internal energy per cm^-1 [amu*Ang^2/fs^2]
    call setup_diatom()
    call set_scheme([2])
    call state_create(sta, 2)
@@ -152,11 +153,11 @@ program check_samp_ebk
 
    ! ---------- (a) J = 0 Morse-WKB exactness ----------
    par = hcl_params()
-   par%j_rot = 0
+   par%car(1)%j_rot = 0
    call ebk_init(par)
    e_lvl = ebk_e_level()
-   x = dble(par%n_vib) + 0.5d0
-   e_dunham = cv*(par%w_e*x - par%w_ex_e*x*x)
+   x = dble(par%car(1)%n_vib) + 0.5d0
+   e_dunham = cv*(par%car(1)%w_e*x - par%car(1)%w_ex_e*x*x)
    nfail0 = nfail
    if (abs(e_lvl - e_dunham) > tol_a1*abs(e_dunham)) then
       print '(a,es12.4,a,es12.4,a,es9.2)', 'FAIL (a) J=0 exactness: level ', e_lvl, &
@@ -177,7 +178,7 @@ program check_samp_ebk
    e_lvl = ebk_e_level()
    call ebk_morse(1, a_m, d_e, mu, r_e, al_m)
    call ebk_r_turn(1, r1, r2)
-   x = dble(par%n_vib) + 0.5d0
+   x = dble(par%car(1)%n_vib) + 0.5d0
 
    ! ---------- (b) action quantization of the rotating state ----------
    ! independent 100000-panel composite Simpson rule over the member's sampled
@@ -190,7 +191,7 @@ program check_samp_ebk
       if (mod(i, 2) == 1) s_w = 4.0d0
       dum = dum + s_w*sqrt(max(0.0d0, 2.0d0*mu*(e_lvl - v_eff_at(rr2))))
    end do
-   dum = dum*(r2 - r1)/dble(200000)/3.0d0/(pi*hbar_code)
+   dum = dum*(r2 - r1)/dble(200000)/3.0d0/(pi*hbar_act)
    nfail0 = nfail
    if (abs(dum - x) > tol_a2) then
       print '(a,f10.6,a,f6.2,a)', 'FAIL (b) rotating action: ', dum, ' vs n+1/2 = ', x, &
@@ -270,6 +271,14 @@ program check_samp_ebk
    call state_create(sta, 4)
    call rng_init(8677)
    par = hcl_params()
+   block                                  ! duplicate the row onto the second
+      type(ebk_car_t) :: tmp              ! carrier (identical rows - the equal-
+      tmp = par%car(1)                    ! treatment face of the per-carrier form)
+      deallocate (par%car)
+      allocate (par%car(2))
+      par%car(1) = tmp
+      par%car(2) = tmp
+   end block
    call ebk_init(par)
    e_lvl = ebk_e_level(1)
    call ebk_morse(1, a_m, d_e, mu, r_e, al_m)
@@ -354,12 +363,13 @@ contains
    ! HCl-like synthetic parameter set
    function hcl_params() result(p)
       type(ebk_params_t) :: p
-      p%n_vib   = 3
-      p%j_rot   = 2
-      p%w_e     = 2990.9d0     ! [cm^-1]
-      p%w_ex_e  = 52.8d0       ! [cm^-1]
-      p%b_rot   = 10.59d0      ! [cm^-1]
-      p%ai_rot  = 1.5918d0     ! [amu Ang^2]
+      allocate (p%car(1))   ! single-carrier check face (component defaults stand)
+      p%car(1)%n_vib   = 3
+      p%car(1)%j_rot   = 2
+      p%car(1)%w_e     = 2990.9d0     ! [cm^-1]
+      p%car(1)%w_ex_e  = 52.8d0       ! [cm^-1]
+      p%car(1)%b_rot   = 10.59d0      ! [cm^-1]
+      p%car(1)%ai_rot  = 1.5918d0     ! [amu Ang^2]
    end function hcl_params
 
    ! two-atom list_atoms by direct field fill: H(1.008) at origin, Cl(35.45) on +x

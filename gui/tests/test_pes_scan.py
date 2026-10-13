@@ -154,7 +154,7 @@ end subroutine outside
 """
     d = _pot_folder(tmp_path, {"pot.f90": text})
     res = pes_scan.scan_container(d)
-    # outside 不在魔数名内 → 不计;term 前缀形已计入
+    # outside 不在预留名内 → 不计;term 前缀形已计入
     assert res.found("term") is not None
     assert res.found("term").kind == "f"
     assert res.ok

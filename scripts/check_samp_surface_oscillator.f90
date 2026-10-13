@@ -8,6 +8,7 @@
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 interface/sysdef_interface.f90 input.f90 &
 !            globals/config_atoms.f90 globals/state.f90 &
+!            utils/linalg.f90 utils/hessian.f90 utils/geom_init.f90 utils/spectrum.f90 interface/elec_interface.f90 interface/force_interface.f90 dynamics/propagator.f90 interface/bath.f90 &
 !            utils/rng.f90 utils/geometry.f90 interface/sampler.f90 methods/samp_surface_oscillator.f90 &
 !            ../scripts/check_samp_surface_oscillator.f90 -o build/check_samp_surface_oscillator.exe
 ! All artifacts are written under build/ - the source tree stays clean.
@@ -23,9 +24,9 @@
 ! the REAL member entry into the stop and must print a naming message on
 ! stderr and exit nonzero. The parent asserts the exit status and the
 ! stderr content.
-! Criteria (carrier: mu = 1*5000/5001 = 0.99980 amu; k_osc = 42.0
-! kcal/mol/Ang^2 -> omega = sqrt(k*e_conv/mu) = 1.3258 rad/(10 fs);
-! anchors in internal energy units):
+! Criteria (carrier: mu = 1*5000/5001 = 0.99980 amu; k_osc = 1.82129616
+! eV/Ang^2 (= 42 kcal/mol/Ang^2 / 23.0605); anchors in member units:
+! omega [rad/fs], E [eV], amp [Ang]):
 !   (a) quantum-mode energy exact: n_level = 3 -> E = 3.5*hbar*omega;
 !       per draw the back-projected energy
 !       E_bp = 0.5*k_int*delta^2 + mu*v^2/2 (delta = bond-length change,
@@ -74,7 +75,7 @@
 !       surface_oscillator_sample
 !=====================================================================
 program check_samp_surface_oscillator
-   use consts,        only: hbar_code, kb_code, e_conv, two_pi
+   use consts,        only: hbar_evfs, kb_ev, ev_dyn, two_pi
    use rng,           only: rng_init
    use config,        only: reactants
    use config_atoms, only: list_atoms, list_atoms_clear
@@ -100,42 +101,47 @@ program check_samp_surface_oscillator
    character(len=32) :: mode
    logical :: ok_all
 
+   allocate (par%n_osc(1), par%t_osc(1), par%n_level(1), par%k_osc(1))   ! single-carrier check face
+   par%n_osc(1) = 0
+   par%t_osc(1) = 300.0d0
+   par%n_level(1) = 0
+   par%k_osc(1) = 1.30092582d0
    m_atom = 1.0d0
    m_anch = 5000.0d0
    mu = m_atom*m_anch/(m_atom + m_anch)
-   k_int = 42.0d0*e_conv                       ! internal force constant
+   k_int = 1.82129616d0*ev_dyn                 ! dynamical force constant [amu/fs^2] (k_osc eV/Ang^2)
    omega = sqrt(k_int/mu)
-   e_quant = 3.5d0*hbar_code*omega              ! n_level = 3 zero-point-inclusive level
-   a_quant = sqrt(2.0d0*e_quant/k_int)          ! classical amplitude at that energy
+   e_quant = 3.5d0*hbar_evfs*omega             ! n_level = 3 zero-point-inclusive level [eV]
+   a_quant = sqrt(2.0d0*e_quant*ev_dyn/k_int)  ! classical amplitude at that energy [Ang]
 
    ! ---------- child dispatch: one bad case per spawn, must named abort ----------
    if (command_argument_count() > 0) then
       call get_command_argument(1, mode)
       call state_create(sta, 3)
-      par%n_osc = 1
-      par%n_level = 3
-      par%k_osc = 42.0d0
+      par%n_osc(1) = 1
+      par%n_level(1) = 3
+      par%k_osc(1) = 1.82129616d0   ! [eV/Ang^2] = 42 kcal/mol/Ang^2 / 23.0605
       select case (trim(mode))
       case ('bad-nosc')                    ! (f): n_osc = 2
          call setup_pair()
          call set_scheme([5])
-         par%n_osc = 2
+         par%n_osc(1) = 2
          call surface_oscillator_init(par)
       case ('bad-tosc')                    ! (g): mode 0, t_osc = 0
          call setup_pair()
          call set_scheme([5])
-         par%n_osc = 0
-         par%t_osc = 0.0d0
+         par%n_osc(1) = 0
+         par%t_osc(1) = 0.0d0
          call surface_oscillator_init(par)
       case ('bad-nlev')                    ! (h): mode 1, n_level = -1
          call setup_pair()
          call set_scheme([5])
-         par%n_level = -1
+         par%n_level(1) = -1
          call surface_oscillator_init(par)
       case ('bad-k')                       ! (i): k_osc = 0
          call setup_pair()
          call set_scheme([5])
-         par%k_osc = 0.0d0
+         par%k_osc(1) = 0.0d0
          call surface_oscillator_init(par)
       case ('bad-nat')                     ! (j): three-atom carrier
          call setup_trio()
@@ -171,9 +177,9 @@ program check_samp_surface_oscillator
    call setup_pair()
    call set_scheme([5])
    call state_create(sta, 2)
-   par%n_osc = 1
-   par%n_level = 3
-   par%k_osc = 42.0d0
+   par%n_osc(1) = 1
+   par%n_level(1) = 3
+   par%k_osc(1) = 1.82129616d0   ! [eV/Ang^2] = 42 kcal/mol/Ang^2 / 23.0605
    call rng_init(7319)
    call surface_oscillator_init(par)
    ok_all = .true.
@@ -183,14 +189,14 @@ program check_samp_surface_oscillator
       blen = norm2(bond)
       delta = blen - r_eq
       vrel = dot_product(sta%p(4:6)/m_anch - sta%p(1:3)/m_atom, u_bond)  ! d/dt bond length
-      e_bp = 0.5d0*k_int*delta*delta + 0.5d0*mu*vrel*vrel
-      if (abs(e_bp - e_quant) > 1.0d-10*e_quant) ok_all = .false.
+      e_bp = 0.5d0*k_int*delta*delta + 0.5d0*mu*vrel*vrel   ! [amu*Ang^2/fs^2]
+      if (abs(e_bp - e_quant*ev_dyn) > 1.0d-10*e_quant*ev_dyn) ok_all = .false.
       if (abs(surface_oscillator_last_e() - e_quant) > 1.0d-12*e_quant) ok_all = .false.
    end do
    nfail0 = nfail
    if (ok_all) then
       print '(a,es12.4,a)', '(a) quantum energy exact: PASS (E_bp = 3.5*hbar*omega = ', e_quant, &
-         ' internal, 5000 draws, back-projection 1e-10)'
+         ' eV, 5000 draws, back-projection 1e-10)'
    else
       print '(a)', 'FAIL (a) quantum energy exact: back-projected energy or getter off'
       nfail = nfail + 1
@@ -223,8 +229,8 @@ program check_samp_surface_oscillator
    kmean = kmean/dble(ndraw_phase)
    dvar = 0.5d0*a_quant*a_quant/dble(ndraw_phase)         ! Var(mean of A cos phi)
    if (abs(dmean) > 5.0d0*sqrt(dvar)) ok_all = .false.
-   ksig = e_quant/sqrt(8.0d0*dble(ndraw_phase))           ! Var(E sin^2 phi) = E^2/8
-   if (abs(kmean - 0.5d0*e_quant) > 5.0d0*ksig) ok_all = .false.
+   ksig = e_quant*ev_dyn/sqrt(8.0d0*dble(ndraw_phase))    ! Var(E sin^2 phi) = E^2/8
+   if (abs(kmean - 0.5d0*e_quant*ev_dyn) > 5.0d0*ksig) ok_all = .false.
    nfail0 = nfail
    if (ok_all) then
       print '(a,f9.5,a,f8.4,a)', '(c)-(e) structure/phase: PASS (mean delta = ', dmean, &
@@ -240,8 +246,8 @@ program check_samp_surface_oscillator
    call setup_pair()
    call set_scheme([5])
    call state_create(sta, 2)
-   par%n_osc = 0
-   par%t_osc = 180.0d0
+   par%n_osc(1) = 0
+   par%t_osc(1) = 180.0d0
    call surface_oscillator_init(par)
    call rng_init(7321)                       ! fresh seed: rejection-free draw, but the
    ! stream window differs from (a) - per-criterion reseeding rule
@@ -251,7 +257,7 @@ program check_samp_surface_oscillator
       call surface_oscillator_sample(sta)
       e_bp = surface_oscillator_last_e()
       amean = amean + e_bp
-      cdf = 1.0d0 - exp(-e_bp/(kb_code*180.0d0))
+      cdf = 1.0d0 - exp(-e_bp/(kb_ev*180.0d0))
       ib = min(nbin, max(1, int(cdf*dble(nbin)) + 1))
       freq(ib) = freq(ib) + 1
    end do
@@ -260,7 +266,7 @@ program check_samp_surface_oscillator
    do ib = 1, nbin
       chi2 = chi2 + (dble(freq(ib)) - ndraw_stat/dble(nbin))**2/(ndraw_stat/dble(nbin))
    end do
-   emean = kb_code*180.0d0
+   emean = kb_ev*180.0d0
    sig = emean/sqrt(dble(ndraw_stat))
    nfail0 = nfail
    if (chi2 > 16.92d0) then
@@ -279,9 +285,10 @@ program check_samp_surface_oscillator
    call setup_two()
    call set_scheme([5, 5])
    call state_create(sta, 4)
-   par%n_osc = 1
-   par%n_level = 3
-   par%k_osc = 42.0d0
+   par%n_osc = [ 1, 1 ]              ! one law, two rows
+   par%n_level = [ 3, 3 ]
+   par%k_osc = [ 1.82129616d0, 1.82129616d0 ]   ! [eV/Ang^2] = 42 kcal/mol/Ang^2 / 23.0605
+   par%t_osc = [ 300.0d0, 300.0d0 ]
    call rng_init(7333)
    call surface_oscillator_init(par)
    ok_all = .true.
@@ -294,15 +301,15 @@ program check_samp_surface_oscillator
          blen = norm2(bond)
          delta = blen - r_eq
          vrel = dot_product(sta%p(3*i2-2:3*i2)/m_anch - sta%p(3*i1-2:3*i1)/m_atom, u_bond)
-         e_bp = 0.5d0*k_int*delta*delta + 0.5d0*mu*vrel*vrel
-         if (abs(e_bp - e_quant) > 1.0d-10*e_quant) ok_all = .false.
+         e_bp = 0.5d0*k_int*delta*delta + 0.5d0*mu*vrel*vrel   ! [amu*Ang^2/fs^2]
+         if (abs(e_bp - e_quant*ev_dyn) > 1.0d-10*e_quant*ev_dyn) ok_all = .false.
          if (abs(surface_oscillator_last_e(i) - e_quant) > 1.0d-12*e_quant) ok_all = .false.
       end do
    end do
    nfail0 = nfail
    if (ok_all) then
       print '(a,es12.4,a)', '(m) dual-carrier equal treatment: PASS (both carriers realize E = ', &
-         e_quant, ' internal, back-projection 1e-10; getters per carrier)'
+         e_quant, ' eV, back-projection 1e-10; getters per carrier)'
    else
       print '(a)', 'FAIL (m) dual-carrier equal treatment: a carrier energy or getter is off'
       nfail = nfail + 1

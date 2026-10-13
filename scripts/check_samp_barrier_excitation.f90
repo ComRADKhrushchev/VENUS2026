@@ -8,6 +8,7 @@
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 interface/sysdef_interface.f90 input.f90 &
 !            globals/config_atoms.f90 globals/state.f90 &
+!            utils/linalg.f90 utils/hessian.f90 utils/geom_init.f90 utils/spectrum.f90 interface/elec_interface.f90 interface/force_interface.f90 dynamics/propagator.f90 interface/bath.f90 &
 !            utils/rng.f90 utils/geometry.f90 interface/sampler.f90 methods/samp_barrier_excitation.f90 &
 !            ../scripts/check_samp_barrier_excitation.f90 -o build/check_samp_barrier_excitation.exe
 ! All artifacts are written under build/ - the source tree stays clean.
@@ -29,7 +30,7 @@
 !   x = sqrt(m)*(q - qz_com),  y = p/sqrt(m);  stable modes Q = C^T x,
 !   P = C^T y;  the reaction-coordinate observables are d_rc = c_rc . x
 !   (displacement along the rc, zero by construction) and p_rc =
-!   c_rc . y (the barrier momentum, +/- sqrt(2*e_conv*e_bar) in mode 0,
+!   c_rc . y (the barrier momentum, +/- sqrt(2*ev_dyn*e_bar) in mode 0,
 !   sqrt(2*kb*t_bar*Exp(1)) in mode 1).
 ! Named-abort verification approach (same scheme as the sibling checks):
 ! every named-abort criterion runs as a CHILD PROCESS - the check re-spawns
@@ -37,12 +38,13 @@
 ! the REAL member entry into the stop and must print a naming message on
 ! stderr and exit nonzero. The parent asserts the exit status and the
 ! stderr content.
-! Criteria (carrier: nat = 3, s = n_mode = 5, e_stab = 8 kcal/mol,
-! e_bar = 5 kcal/mol (mode 0), t_bar = 900 K (mode 1); the stable-share
+! Criteria (carrier: nat = 3, s = n_mode = 5, e_stab = 0.34691355 eV
+! (= 8 kcal/mol / 23.0605), e_bar = 0.21682097 eV (mode 0, = 5 kcal/mol /
+! 23.0605), t_bar = 900 K (mode 1); the stable-share
 ! marginal of the sphere split is Beta(1/2, 2)):
 !   (a) exact battery, mode 0, 2000 draws: stable energy
-!       sum_k 0.5*(P_k^2 + w_k^2*Q_k^2) = e_stab*e_conv to 1e-10;
-!       |c_rc . y| = sqrt(2*e_conv*e_bar) to 1e-12; c_rc . x = 0 to
+!       sum_k 0.5*(P_k^2 + w_k^2*Q_k^2) = e_stab*ev_dyn to 1e-10;
+!       |c_rc . y| = sqrt(2*ev_dyn*e_bar) to 1e-12; c_rc . x = 0 to
 !       1e-12; |sum p| <= 1e-9*sqrt(2*M*e_tot_scale); COM at the origin
 !       to 1e-10; x and y lie in span([C, c_rc]) (residual 1e-10)
 !   (b) sign symmetry, mode 0, N = 20000: the fraction of positive
@@ -98,10 +100,10 @@
 !       barrier_excitation_sample
 !   (t) dual-carrier equal treatment (positive): two fragments, two
 !       saddle tables (the second a copy of the first), one init - each
-!       carrier's rc momentum observable c_rc . y = +/- sqrt(2*e_conv*e_bar)
+!       carrier's rc momentum observable c_rc . y = +/- sqrt(2*ev_dyn*e_bar)
 !=====================================================================
 program check_samp_barrier_excitation
-   use consts,        only: kb_code, e_conv
+   use consts,        only: kb_act, ev_dyn
    use rng,           only: rng_init
    use config,        only: reactants
    use config_atoms, only: list_atoms, list_atoms_clear
@@ -129,10 +131,15 @@ program check_samp_barrier_excitation
    character(len=32) :: mode
    logical :: ok_all
 
-   e_stab = 8.0d0
-   e_bar = 5.0d0
-   e_tot_s = e_stab*e_conv
-   pbar0 = sqrt(2.0d0*e_bar*e_conv)
+   allocate (par%e_stab(1), par%n_e_bar(1), par%e_bar(1), par%t_bar(1))   ! single-carrier check face
+   par%e_stab(1) = 0.34691355d0
+   par%n_e_bar(1) = 0
+   par%e_bar(1) = 0.21682097d0
+   par%t_bar(1) = 900.0d0
+   e_stab = 0.34691355d0   ! [eV] = 8 kcal/mol / 23.0605
+   e_bar = 0.21682097d0    ! [eV] = 5 kcal/mol / 23.0605
+   e_tot_s = e_stab*ev_dyn
+   pbar0 = sqrt(2.0d0*e_bar*ev_dyn)
    mass3 = [ 1.0d0, 2.0d0, 3.0d0 ]
    psc = sqrt(2.0d0*sum(mass3)*(e_tot_s + pbar0**2/2.0d0))
    w_tab = [ 0.9d0, 1.3d0, 1.7d0, 2.2d0, 2.8d0 ]
@@ -144,30 +151,30 @@ program check_samp_barrier_excitation
       call get_command_argument(1, mode)
       call state_create(sta, 3)
       call fill_list_atoms(3, qz, mass3)
-      par%e_stab = e_stab
-      par%e_bar = e_bar
-      par%t_bar = 900.0d0
+      par%e_stab(1) = e_stab
+      par%e_bar(1) = e_bar
+      par%t_bar(1) = 900.0d0
       select case (trim(mode))
       case ('bad-estab')                  ! (e): e_stab = -1
          call set_scheme([7])
          call saddle_to_par(par, 1, rc_tab, c_tab, w_tab)
-         par%e_stab = -1.0d0
+         par%e_stab(1) = -1.0d0
          call barrier_excitation_init(par)
       case ('bad-nbar')                   ! (f): n_e_bar = 2
          call set_scheme([7])
          call saddle_to_par(par, 1, rc_tab, c_tab, w_tab)
-         par%n_e_bar = 2
+         par%n_e_bar(1) = 2
          call barrier_excitation_init(par)
       case ('bad-ebar')                   ! (g): mode 0, e_bar = -2
          call set_scheme([7])
          call saddle_to_par(par, 1, rc_tab, c_tab, w_tab)
-         par%e_bar = -2.0d0
+         par%e_bar(1) = -2.0d0
          call barrier_excitation_init(par)
       case ('bad-tbar')                   ! (h): mode 1, t_bar = 0
          call set_scheme([7])
          call saddle_to_par(par, 1, rc_tab, c_tab, w_tab)
-         par%n_e_bar = 1
-         par%t_bar = 0.0d0
+         par%n_e_bar(1) = 1
+         par%t_bar(1) = 0.0d0
          call barrier_excitation_init(par)
       case ('bad-omega')                  ! (i): tbl(1)%w(3) = 0
          call set_scheme([7])
@@ -197,7 +204,7 @@ program check_samp_barrier_excitation
          allocate (par%tbl(1))
          allocate (par%tbl(1)%w(0), par%tbl(1)%c(9, 0), par%tbl(1)%rc(9))
          par%tbl(1)%rc = rc_tab
-         par%e_stab = 6.0d0
+         par%e_stab(1) = 6.0d0
          call barrier_excitation_init(par)
       case ('bad-mismatch')               ! (o): 5 columns vs 6 frequencies
          call set_scheme([7])
@@ -221,6 +228,10 @@ program check_samp_barrier_excitation
          call fill_two(qz, mass3)
          call set_scheme([7, 7])
          call saddle_to_par(par, 1, rc_tab, c_tab, w_tab)
+         par%e_stab = [ e_stab, e_stab ]   ! two rows: the TABLE count is the mismatch
+         par%n_e_bar = [ 0, 0 ]
+         par%e_bar = [ e_bar, e_bar ]
+         par%t_bar = [ 900.0d0, 900.0d0 ]
          call barrier_excitation_init(par)
       case ('bad-noinit')                 ! (s): sample without init
          call set_scheme([7])
@@ -238,8 +249,8 @@ program check_samp_barrier_excitation
    call set_scheme([7])
    call state_create(sta, 3)
    call saddle_to_par(par, 1, rc_tab, c_tab, w_tab)
-   par%e_stab = e_stab
-   par%e_bar = e_bar
+   par%e_stab(1) = e_stab
+   par%e_bar(1) = e_bar
    call rng_init(104729)
    call barrier_excitation_init(par)
    ok_all = .true.
@@ -264,7 +275,7 @@ program check_samp_barrier_excitation
    end do
    if (ok_all) then
       print '(a,es11.4,a)', '(a) mode-0 exact battery: PASS (E_stab = ', e_tot_s, &
-         ' internal, |p_rc| = sqrt(2*e_conv*e_bar), d_rc = 0; P, COM, span identities)'
+         ' internal, |p_rc| = sqrt(2*ev_dyn*e_bar), d_rc = 0; P, COM, span identities)'
    else
       print '(a)', 'FAIL (a) mode-0 exact battery: an energy/momentum/displacement identity broke'
       nfail = nfail + 1
@@ -300,8 +311,8 @@ program check_samp_barrier_excitation
    call set_scheme([7])
    call state_create(sta, 3)
    call saddle_to_par(par, 1, rc_tab, c_tab, w_tab)
-   par%n_e_bar = 1
-   par%t_bar = 900.0d0
+   par%n_e_bar(1) = 1
+   par%t_bar(1) = 900.0d0
    call rng_init(15485863)
    call barrier_excitation_init(par)
 
@@ -339,7 +350,7 @@ program check_samp_barrier_excitation
          n_minus = n_minus + 1
          zmean_m = zmean_m + z_val
       end if
-      cdf = 1.0d0 - exp(-z_val/(kb_code*900.0d0))
+      cdf = 1.0d0 - exp(-z_val/(kb_act*900.0d0))
       ib = min(nbin, max(1, int(cdf*dble(nbin)) + 1))
       freq(ib) = freq(ib) + 1
    end do
@@ -348,7 +359,7 @@ program check_samp_barrier_excitation
    do ib = 1, nbin
       chi2 = chi2 + (dble(freq(ib)) - ndraw_stat/dble(nbin))**2/(ndraw_stat/dble(nbin))
    end do
-   emean = kb_code*900.0d0
+   emean = kb_act*900.0d0
    sig = emean/sqrt(dble(ndraw_stat))
    zmean_p = zmean_p/dble(n_plus)
    zmean_m = zmean_m/dble(n_minus)
@@ -372,8 +383,8 @@ program check_samp_barrier_excitation
    call set_scheme([7])
    call state_create(sta, 3)
    call saddle_to_par(par, 1, rc_tab, c_tab, w_tab)
-   par%n_e_bar = 1
-   par%t_bar = 900.0d0
+   par%n_e_bar(1) = 1
+   par%t_bar(1) = 900.0d0
    call rng_init(49979687)
    call barrier_excitation_init(par)
    freq = 0
@@ -413,9 +424,10 @@ program check_samp_barrier_excitation
    call set_scheme([7, 7])
    call state_create(sta, 6)
    call saddle_to_par(par, 2, rc_tab, c_tab, w_tab)
-   par%e_stab = e_stab
-   par%n_e_bar = 0
-   par%e_bar = e_bar
+   par%e_stab = [ e_stab, e_stab ]    ! one law, two rows
+   par%n_e_bar = [ 0, 0 ]
+   par%e_bar = [ e_bar, e_bar ]
+   par%t_bar = [ 900.0d0, 900.0d0 ]
    call rng_init(611953)
    call barrier_excitation_init(par)
    ok_all = .true.
@@ -427,7 +439,7 @@ program check_samp_barrier_excitation
    end do
    if (ok_all) then
       print '(a,es12.4,a)', '(t) dual-carrier equal treatment: PASS (|c_rc . y| = ', pbar0, &
-         ' = sqrt(2*e_conv*e_bar) on both carriers)'
+         ' = sqrt(2*ev_dyn*e_bar) on both carriers)'
    else
       print '(a)', 'FAIL (t) dual-carrier: a carrier block missed the barrier momentum'
       nfail = nfail + 1

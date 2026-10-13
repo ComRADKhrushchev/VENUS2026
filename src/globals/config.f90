@@ -25,16 +25,15 @@ module config
                                ! bound; 0 = unclamped - consumed by the adaptive member only)
   end type
 
-  ! Electronic layer (two independent axes - H representation capability x
-  ! electron propagation law)
+  ! Electronic layer (the electron propagation law package name; the H
+  ! representation capability - surface count - is the electronic method
+  ! member's own business, carried by state's ontic containers)
   type :: electronic_t
      character(len=32) :: method = 'adiabatic'  ! electron propagation law package name (assembly
                                                 ! key - a name-string lookup into the methods/
                                                 ! library registry; 'adiabatic' = the all-no-op
                                                 ! degenerate seed package; the package binds by
                                                 ! this key, reusable components by use)
-     integer :: n_surf  = 1      ! H representation capability (single surface; multi-surface/coupling waits for nonadiabatic)
-     character(len=32) :: pes_main = ''  ! main-PES member name (H-field provider, interface A)
      ! Left blank: additive force member table (GLO springs / Langevin ghost / LDFA);
      ! dielectric / external-field and other capability extensions
   end type
@@ -45,12 +44,14 @@ module config
   type :: reactants_t
      integer :: n_frag = 1           ! number of fragments (= size(list_atoms%frag) after assembly)
      character(len=128) :: system_dir = '' ! container folder path scanned by sysdef_load
-     integer :: surface_model = 0    ! configuration paradigm (0 = gas phase / molecular; 1/2 = the
-                                     ! two surface paradigms) - DERIVED, not an input key:
-                                     ! sysdef_load writes it by the cell-presence rule (any
-                                     ! system-definition file carries a cell -> surface
-                                     ! paradigm; none -> 0); the 1-vs-2 selection is not
-                                     ! derivable from cell presence alone
+     integer :: surface_model = 0    ! scattering class (0 = gas phase / molecular; 1 = surface)
+                                     ! - SET BY THE SCATTERING KEY (2026-10-13 ruling: an
+                                     ! input decision, no longer derived from cell presence
+                                     ! in the system files)
+     real(8) :: cell(3,3) = 0.0d0    ! unit cell vectors by row [A] (the CELL key -
+                                     ! surface-only; the authoritative drop-site frame)
+     logical :: cell_present = .false. ! the CELL key was written (the window reconcile
+                                     ! requires it under SURFACE, rejects it under GAS)
      integer, allocatable :: dist_scheme(:) ! per-fragment sampling scheme (pointing to dist_* members;
                                             ! arrayed together with list_atoms%frag - allocated at
                                             ! input/assembly, size = n_frag)
@@ -94,15 +95,14 @@ module config
   ! judgment (container_bind_term) and classification likewise (container_bind_classify,
   ! final_state); no event grammar key remains)
 
-  ! ===== Observables (generic energy terms and recording settings) =====
+  ! ===== Observables (recording settings) =====
   type :: observables_t
      integer :: rec_level = 2          ! recording verbosity (preset column groups)
      character(len=256) :: obs_list = '' ! observable column list (recorder column registry)
-     logical :: e_kin = .true.         ! kinetic energy T (generic energy term)
-     logical :: e_pot = .true.         ! potential energy V (generic energy term)
-     logical :: e_tot = .true.         ! total energy H (generic energy term)
      ! Left blank: more observables extended via recorder column registration (angular
-     ! momenta, local quantities, etc.)
+     ! momenta, local quantities, etc.; the retired e_kin/e_pot/e_tot flag fields were
+     ! never read - energy recording is the named-column path: t_kin/v_pot/e_tot via
+     ! OBSERVABLES + the GWRITE_LEVEL preset groups)
   end type
 
   type(propagator_t) :: propagator
