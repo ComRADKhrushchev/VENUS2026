@@ -39,6 +39,8 @@ COLORS: dict[str, str] = {
     "tooltip_fg": "#F9FAFB",
     "scroll_handle": "#C6CCD8",
     "scroll_handle_hover": "#AAB2C2",
+    "gl_bg": "#D7E1EF",           # 3D 预览视口底: 浅而不近白(白系原子可辨)
+    "gl_axis": "#44546A",          # 3D 预览 xyz 轴/刻度线: 浅底可辨的深蓝灰
 }
 
 # 间距标尺(px): 所有布局间距取自此处, 页面不写裸字面量
@@ -213,6 +215,16 @@ QToolTip {{
     border: none;
     padding: 4px {SP_M}px;
     border-radius: 3px;
+}}
+
+/* ---- 3D 预览: 刻度角标(GL 视口右上, Qt 控件不依赖 GL 文本) ---- */
+QLabel#GlScaleLabel {{
+    background: {c['card']};
+    color: {c['text_secondary']};
+    border: 1px solid {c['border']};
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: {FONT_CAPTION_PT}pt;
 }}
 """
 

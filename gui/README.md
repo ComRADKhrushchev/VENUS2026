@@ -55,6 +55,12 @@ objectName(`#SectionHeader` 分组标题色带)或 dynamic property:
 | `class="card"` | 预览画布外框 | 卡片(白底圆角描边) |
 | `class="log"` | 编译日志 | 等宽字体 |
 | `state="ok"/"error"` | 校验结果框+摘要行 | 绿/红语义色(文本不变, 仅样式) |
+| `objectName=GlScaleLabel` | 3D 预览刻度角标 | 白底描边小角标(GL 视口右上) |
+
+3D 预览视口(2026-10-13 渲染增强):背景/轴色走令牌 `gl_bg`/`gl_axis`
+(浅而不近白, 白系原子可辨), 原子球色查表集中在 `preview_view.py` 的
+SCHEMES 方案表(CPK 经典浅底适配 / Okabe-Ito 色盲安全系衍生, 工具条
+"配色"下拉切换, 默认 CPK), 带尺度 xyz 轴 + "刻度 N Å"角标。
 
 图标为 `gui/assets/icons/` 手绘 SVG(应用/页签/按钮/折叠 chevron),`theme.icon(名)`
 按名取用、缺文件返回空图标不崩。语义红线: 标签文本/tooltip/显隐/收集/折叠契约
