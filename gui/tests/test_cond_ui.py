@@ -186,3 +186,15 @@ def test_retired_keys_absent():
     vals, _ = page.collect()
     for k in ("N_SURF", "PES_MAIN", "E_KIN", "E_POT", "E_TOT"):
         assert k not in vals
+
+
+def test_observables_default_prefill():
+    """记录列默认预填 动能/势能/总能(2026-10-14 裁决: t_kin/v_pot/e_tot,
+    recorder.f90 注册表实名); 清空即回到不写出(程序默认)。"""
+    page = _page()
+    assert page._w["OBSERVABLES"].text() == "t_kin,v_pot,e_tot"
+    vals, _ = page.collect()
+    assert vals.get("OBSERVABLES") == "t_kin,v_pot,e_tot"
+    page._w["OBSERVABLES"].clear()
+    vals2, _ = page.collect()
+    assert "OBSERVABLES" not in vals2, "清空后不应写出该键"

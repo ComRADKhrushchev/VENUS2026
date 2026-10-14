@@ -342,7 +342,10 @@ class InputPage(QWidget):
             cell("DT_MAX", line("DT_MAX", "上界"), "仅 RADAU"))
         row(cell("ELEC_METHOD", line("ELEC_METHOD", "ADIABATIC(≤32)"), "默认 ADIABATIC"),
             cell("GWRITE_LEVEL", combo("GWRITE_LEVEL", ["", "0", "1", "2", "5"]), "默认 2"))
+        # 记录列默认=动能/势能/总能(2026-10-14 用户裁决; 三列实名 t_kin/v_pot/e_tot
+        # 见 recorder.f90:300 注册表——清空即不写出该键, 走程序默认)
         row(cell("OBSERVABLES", line("OBSERVABLES", "记录列名逗号清单(≤256)")))
+        self._w["OBSERVABLES"].setText("t_kin,v_pot,e_tot")
 
         # ---- 浴与谱 ----
         group("bath", "浴与谱", collapsible=True, expanded=False)
@@ -518,8 +521,10 @@ class InputPage(QWidget):
         loaded: set[str] = set()
         for k, w in list(self._w.items()):
             v = values.pop(k, None)
-            if not v:
+            if v is None:
                 continue
+            if not v and k != "OBSERVABLES":
+                continue  # 空值=不设; OBSERVABLES 空值=显式清空默认预填
             loaded.add(k)
             if k in ("PROJECTILE", "TARGET"):  # 角色键按原文(选项无 itemData)
                 w.setCurrentText(v)

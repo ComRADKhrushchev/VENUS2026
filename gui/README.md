@@ -25,6 +25,8 @@
    打开回填(2026-10-14 裁决):"打开…"选择现有 input_qct.txt 一键回填全表单
    (相对 SYSTEM_DIR 按文件位置回位、容器键入容器表、装载到折叠组的键自动展开);
    "体系文件夹"字段更名"反应物构型"(写出键 SYSTEM_DIR 不变)。
+   记录列默认(2026-10-14 裁决):OBSERVABLES 预填 t_kin,v_pot,e_tot(动能/势能/总能,
+   recorder.f90 注册表实名),清空即不写出走程序默认;键表默认值(Fortran 侧)保持空。
 2. **PES 容器检查** —— 对自定义纯势容器文件夹:①十名扫描 + 八中止
    (prebuild.sh 语义的 Python 镜像);②程序补全——缺失可选槽按设定生成
    Fortran 代码(`auto_slots.f90`:term 三变体 / classify 两变体 / keys+load
