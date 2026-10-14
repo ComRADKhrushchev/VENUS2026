@@ -1,92 +1,33 @@
-# 自定义势能面接入说明（Tier 1 纯势容器）
+# 自定义势能面接入说明(2026/10/14)
 
-最短路径：`systems/` 下一个文件夹、若干 `.f90`、**零 reg 文件**——构建系统
-（scripts/prebuild.sh）按十个**预留名**（reserved names）自动接线，`make`
-一次即完成。完整裁决记录
-[docs/plans/2026-10-12-auto-pes-container.md](plans/2026-10-12-auto-pes-container.md)
-（其中原称"魔数名"）；全部扩展点（Tier 2 全容器、采样成员、积分器等）见
-[src/EXTENDING.md](../src/EXTENDING.md)。
+> 本文件与 [input_output.md](input_output.md) 并列为本程序现行仅有的两份正式使用说明。
 
-## 预留名是什么
+- 路径：`<程序根目录>/systems/` 内；
+- 基本形式：数量、名称不限的若干 `.f90`，只需要包含特定名称的子例程即可在编译时由`prebuild.sh`自动识别；详情见下。
+- 子例程的参数形式必须与示例一致，如`pes`必须为 `pes(q,mass,g,v)`
 
-Tier 1 容器不写注册文件。prebuild 扫描文件夹内 `.f90` 的 public 过程名，按
-名字接线：叫 `pes` 的接受力槽，叫 `keys` 的接键表声明，以此类推——这十个
-名字即**预留名**（词表封闭；名字即约定，签名即既有接口，编译期核对）。
-名字可居文件夹内任意模块，入口须 `public`（private 即编译错）。
 
-文件夹内放了 `reg_*.f90` 即 Tier 2 全容器，预留名全部失效（reg 权威）。
-反向升级零迁移：预留名函数可被 reg 直接复用。
 
-## 文件夹地址
+## 势能面与体系
 
-- 容器：`systems/<体系名>/`（如 `systems/mysys/`），`.f90` 放文件夹根。
-- 构型（如随容器走）：`systems/<体系名>/system/`，每片段一个 `.xyz` 或
-  `.poscar`（文件名干 = 片段名，名序即原子布局；文件只带几何，体系胞由输入 CELL 键给）。案例也可自带 case 侧
-  `system/` 由 `SYSTEM_DIR` 指向——两条通道任选。
-- 激活 = 文件夹位于 `systems/` 顶层（搬入即激活）；不用时停回
-  `systems/inactive/`。一次只激活一个容器；与 reference 并存会在装配期中止
-  （测自动容器时把 reference 暂存 `systems/inactive/`）。
-
-## 基本规范
-
-1. 力交付契约：`q`[Å] / `mass`[amu] 进，`g = dV/dq`[eV/Å] 与 `v`[eV]
-   **全赋值**出；单位换算归力接口，勿自换。
-2. 参数两条路：源内常数，或容器键（`keys` 声明 + `load` 拉取；键名不得与
-   程序键/成员键撞名，声明即中止）。
-3. 构建：`cd src && make`——prebuild 自动检测并织入（拖入即 make，首编即绿）。
-   出错为指名中止：`pes` 缺失或 ≥2、任一名 ≥2、形不符（如 `subroutine keys`）、
-   双自动文件夹、方法组不成对，均指名报错。
-4. 范本：`systems/inactive/auto_sample/`（pot.f90 / io.f90 / tdhf_stub.f90；
-   判据 `scripts/check_auto_pes.f90` + 演练 `scripts/drill_auto_pes.sh`）——
-   拷走改物理本体即可。
-
-下两节按预留名逐名组织：每名一小节，先一行说明（形 + 什么时候写），后跟
-一块示例代码。示例贯穿同一个谐振子小例（弹簧常数 `K_HARM`、终止球
-`R_TERM`，与范本 auto_sample 同构），各节代码可直接拼成一个能跑的容器；
-方法包组示例为合法最简形（无操作骨架），物理本体随需替换。
-
-## 势能面组（默认只写这组）
-
-### `pes` —— 力交付入口（唯一必写，恰一个）
+### `pes` —— 提供能量/力（唯一必须）
 
 ```fortran
 subroutine pes(q, mass, g, v)
    real(8), intent(in)  :: q(:), mass(:)   ! q/mass 一维展平, size = 3×nat
-   real(8), intent(out) :: g(:), v         ! g = dV/dq [eV/Å], v = V [eV], 全赋值
+   real(8), intent(out) :: g(:), v         ! g = dV/dq [eV/Å], v = V [eV]
+
    v = 0.5d0*k_harm*dot_product(q, q)      ! 例: 各原子向原点的弹簧井
    g = k_harm*q
+
+   !....[可以在这里接入任意其他自定义势能面]
+
 end subroutine pes
 ```
+### `term` —— 终止判据（多数情况下必须）
 
-### `keys` —— 容器键词表声明（有容器键时写）
-
-形：function 返回 `character(len=16)` 数组；解析前声明。
-
-```fortran
-function keys() result(kk)
-   character(len=16) :: kk(2)
-   kk = [character(len=16) :: 'K_HARM', 'R_TERM']
-end function keys
-```
-
-### `load` —— 参数拉取 / 初始化钩子（有容器键或需初始化时写）
-
-形：无参 subroutine，模块自持 `use input, only: pull`。读参数文件（如 NN
-权重）、分配等初始化也在此（seam 期，先于一切力调用）；缺键保留缺省，
-`found` 带出键在场。
-
-```fortran
-subroutine load()
-   use input, only: pull
-   call pull('K_HARM', k_harm)              ! 缺键: k_harm 保留模块缺省值
-   call pull('R_TERM', r_term, r_found)     ! r_found: R_TERM 是否在场
-end subroutine load
-```
-
-### `term` —— 终止判据（可选）
-
-形：function 返回 `logical`。未绑 = 跑满 `MAX_STEPS`；键缺席门控用 `found`
-旗标自实现。
+形：function 输入物理状态`sta`，返回 `logical`;
+- 轨迹会在满足规定的条件(`term == .true.`)时终止。如不提供，则每条轨迹都仅会跑到`MAX_STEPS`时终止；
 
 ```fortran
 logical function term(sta)
@@ -99,7 +40,7 @@ end function term
 
 ### `classify` —— 末态分类（可选）
 
-形：function 返回 `character(len=32)` 通道名。
+形：function 输入末态`fin`，返回 `character(len=32)` 通道名。
 
 ```fortran
 function classify(fin) result(name)
@@ -110,10 +51,83 @@ function classify(fin) result(name)
 end function classify
 ```
 
-## 非绝热方法包组（默认不写）
+### 数据结构参考
 
-只在做表面跳跃类非绝热动力学时写（同文件夹另一模块）。注册无条件、初始化
-有门：不设 `ELEC_METHOD` 时方法行惰性、`init` 不调，绝热参考面照常可用。
+两处入参都是程序内部结构体：`state_t` 定义在
+[src/globals/state.f90](../src/globals/state.f90)，`fin_t` 定义在
+[src/output/final_state.f90](../src/output/final_state.f90)。
+```fortran
+type :: state_t                       ! 纯物理态 Q/P/s/F/t
+   real(8), allocatable :: q(:)       ! 坐标 [Å]（size = ndof = 3×natoms）
+   real(8), allocatable :: p(:)       ! 动量 [amu·Å/fs]
+   real(8), allocatable :: f(:)       ! 力 [amu·Å/fs²]
+   real(8) :: t                       ! 轨迹时间 [fs]（driver 持有）
+   type(elec_t) :: s                  ! 电子本征态（定义见非绝热方法一节）
+end type state_t
+```
+
+`sta` 在动力学中持续演化，`fin`则是轨迹终止时装配的末态量：
+
+```fortran
+type :: fin_t                         ! 末态量
+   real(8) :: e_int_a(3), e_int_b(3)  ! 两片段内能 [eV]：内动能/对参考势能/总量
+   real(8) :: j_a(3), j_b(3)          ! 两片段角动量矢量 [ħ]
+   real(8) :: j_mag_a, j_mag_b        ! 两片段角动量模 [ħ]
+   real(8) :: e_rot_a, e_rot_b        ! 两片段转动能 [eV]
+   real(8) :: e_rel, e_rel_sq         ! 相对平动能 [eV]：径向投影 / 全速度
+   real(8) :: oam(3), oam_mag         ! 轨道角动量矢量 / 模 [ħ]
+   real(8) :: b_fin                   ! 末态碰撞参数 [Å]
+   real(8) :: e_cm                    ! 整体质心平动能 [eV]
+   real(8) :: ang(20)                 ! 散射角族 [deg]（1-3 末值对、4-16 初值组
+                                      !   合、17-18 表面入射、19-20 表面散射；
+                                      !   其中 4-18 依赖初值快照、暂无生产者）
+   real(8) :: t_life                  ! 轨迹寿命 [fs]（= sta%t）
+   real(8), allocatable :: q_fin(:)   ! 末态 COM 系坐标归档 [Å]（简正分析用）
+   real(8), allocatable :: p_fin(:)   ! 末态 COM 系动量归档 [amu·Å/fs]
+   real(8), allocatable :: q_raw(:)   ! 末态原始系坐标 [Å]（全原子，轨迹原样——
+                                      !   通道分类等片段间距消费方读这个）
+end type fin_t
+```
+
+## 输入输出
+
+### `keys` —— 自定义输入关键字声明
+
+形：function 返回 `character(len=16)` 数组；解析前声明。
+
+```fortran
+function keys() result(kk)
+   character(len=16) :: kk(2)
+   kk = [character(len=16) :: 'K_HARM', 'R_TERM']
+end function keys
+```
+
+### `load` ——初始化（需初始化时写）
+
+形：无参 subroutine，自持 `use input, only: pull`。
+- 在这里填入keys中的自定义关键字，它们会在程序读取input时被识别；
+- 读参数文件（如 NN
+权重）、分配等初始化也在此（会先于一切力调用）
+
+```fortran
+subroutine load()
+   use input, only: pull
+   call pull('K_HARM', k_harm)              ! 现在在input中可以规定简谐振子的力常数
+   call pull('R_TERM', r_term, r_found)     ! 
+
+   ! 在这里可以额外进行读取参数、数组分配等等功能
+
+end subroutine load
+```
+
+
+
+
+
+## 自定义非绝热方法（实验性）
+
+只在做自定义非绝热动力学时写，仍在测试中；
+
 
 ### `prop` —— 电子传播成员（与 `match` 成对）
 
@@ -122,37 +136,40 @@ subroutine prop(sta, dt)
    use state, only: state_t
    type(state_t), intent(inout) :: sta
    real(8), intent(in) :: dt
-   ! ……电子态传播……
+   ! ……电子态传播，具体算法由内置哈密顿量和方法决定……
 end subroutine prop
 ```
 
-### `match` —— 统计匹配成员（与 `prop` 成对）
+### `match` —— 准经典统计匹配（与 `prop` 成对）
 
-跳变判断，occ/n_hop 写回。
+非绝热方法中使得经典参数和量子演化匹配的操作；某种广义的PES跳变；
 
 ```fortran
 subroutine match(sta)
    use state, only: state_t
    type(state_t), intent(inout) :: sta
-   ! ……跳变判断; occ/n_hop 写回……
+   ! ……跳变判断，操作等等……
 end subroutine match
 ```
 
-### `sync` —— 表象换算尾巴（可选随对）
+### `sync` —— 容器同步（可选随对）
 
-a↔rho 表象换算。
+把方法自持的电子态发布到外部交付容器 `s`（即 `sta%s`）：方法可以把
+电子态留在包内私有模块里演化（如 cau TDHF 的密度矩阵），接口在每步
+`prop` 与 `match` 之后各调一次 `sync`，把声明交付的数据（`s%a`/`s%rho`）
+更新到位
 
 ```fortran
 subroutine sync(s)
    use state, only: elec_t
-   type(elec_t), intent(inout) :: s
-   ! ……a ↔ rho 表象换算……
+   type(elec_t), intent(inout) :: s   ! 发布: 包内电子态 -> s%a / s%rho
+   ! ……把方法自持的电子态拷入交付容器……
 end subroutine sync
 ```
 
-### `init` —— 选中后的运行期初始化（可选随对）
+### `init` —— 方法初始化
 
-分配/参数落位；是否调用门控归生成代码（未被 `ELEC_METHOD` 选中即不调）。
+非绝热方法本身的数组分配/参数读取等等；
 
 ```fortran
 subroutine init()
@@ -160,9 +177,9 @@ subroutine init()
 end subroutine init
 ```
 
-### `method_name` —— 注册名（随对必备）
+### `method_name` —— 方法注册名
 
-返回 `character(len=32)` **小写**名；`ELEC_METHOD = <名>` 选用。
+返回 `character(len=32)` **小写**名；在`ELEC_METHOD = <名>` 中选用。
 
 ```fortran
 function method_name() result(s)
@@ -170,9 +187,17 @@ function method_name() result(s)
    s = 'my_tdhf'
 end function method_name
 ```
+### 数据结构参考
 
-## 升级注记
+(程序对电子状态的规定，可能用到)
 
-哪天需要自定义记录列、一个文件夹多个方法包或更复杂的参数体——同文件夹加
-`reg_*.f90` 即升级 Tier 2（见 src/EXTENDING.md §1b），上述函数全部直接
-复用，一字不动。
+```fortran
+type :: elec_t                        ! 电子态容器（sta 的 s 分量）
+   integer :: n_surf                  ! 势能面数——单体表象下读作组态空间基数，
+                                      !   语义由电子方法成员定义（字段名不变）
+   complex(8), allocatable :: a(:,:)  ! 振幅系数矩阵（传播容器）
+   complex(8), allocatable :: rho(:,:)! 密度矩阵——rho 本征方法的本体；a 本征方
+                                      !   法的派生缓存（由 sync 成员刷新）
+end type elec_t
+```
+

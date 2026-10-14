@@ -26,9 +26,10 @@ docs/          design documents: design_spec_completeness.md (the specification,
                completeness_audit_src.{md,json} (S-phase new-tree audit),
                completeness_audit.{md,json} (old-tree audit, historical),
                plans/ (per-phase records P0..V, S incl. the E27 ruling),
-               input_keys.md (input_qct.txt key reference: required/conditional/
-               optional + member-parameter tables),
-               custom_pes.md (Tier 1 custom-PES container quick guide)
+               input_output.md and custom_pes.md (the two official user-facing
+               guides: input/output reference - input_qct.txt key tables
+               required/conditional/optional + member-parameter tables + run
+               output formats; Tier 1 custom-PES container quick guide)
 cases/         the five-case verification set (harmonic_scatter / radau_conservation /
                surface_window / b_layer / chain_frequencies)
 scripts/       check_* criteria programs + probe drivers + prebuild.sh

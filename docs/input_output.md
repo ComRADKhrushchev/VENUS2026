@@ -1,4 +1,6 @@
-# input_qct.txt 输入键说明（2026/10/14）
+# 程序输入输出说明（2026/10/14）
+
+> 本文件与 [custom_pes.md](custom_pes.md) 并列为本程序现行仅有的两份正式使用说明。
 
 基本格式：
 - `KEYWORD = VALUE`；
@@ -14,20 +16,18 @@
 
 ## 程序如何读取输入文件
 
-- 输入文件名固定为 `input_qct.txt`，程序在**运行目录**下读取（`cd` 到案例目录再运行）；
-- 读取管线：解析 → 必需键检查 → **逐键默认值注入**（从不覆盖用户写出的键）→ 枚举映射 → 双块槽位映射（运行控制 / 体系定义）→ 校验；
-- 没有回退通道：不含 `=` 的数据行直接报错；未知键、重复键、以及"声明而未消费"的括号参数与容器键都会指名中止；
-- 方案词的括号参数与自定义势能面声明的容器键先暂存，装配期由对应成员取用（缺省保持成员自己的默认值）；
-- 读取层不含体系知识，只做形式检查（类型域、槽宽、括号形状）。
+- 输入文件名暂时固定为 `input_qct.txt`，程序在**运行目录**下直接读取（`cd` 到案例目录再运行）；
+
 
 ## 反应物构型文件（SYSTEM_DIR）
 
-- `SYSTEM_DIR` 指向一个文件夹，**每个反应物片段一个文件**（`.xyz` 或 `.poscar`），**文件名去扩展名 = 片段名**——`PROJECTILE` / `TARGET` 按此名称指定片段；
-- 片段按文件名排序依次进入原子表（名序即原子列表序）；
+- `SYSTEM_DIR` 关键字指向一个文件夹，**每个反应物片段一个文件**（`.xyz` 或 `.poscar`）
+
+- **文件名去扩展名 = 片段名**——`PROJECTILE` / `TARGET` 按此名称指定片段；
+
 - `.xyz` 格式：原子数行 + 注释行 + 逐原子 `元素 x y z` 行；
-- `.poscar` 格式（VASP）：注释行 + 普适缩放因子（负值 = 目标体积规则）+ 三条晶矢 + 原子坐标（Direct 分数坐标在解析时一次转笛卡尔）；
-- **文件只携带几何**：元素符号查质量表得质量；速度与取向不由文件给出，由采样方案（`DIST_SCHEME`）与入射通道决定。`.poscar` 自带的胞仅作该文件 Direct 坐标的参考架，运行用胞由 `CELL` 键给出，散射范式由 `SCATTERING` 键决定（不由文件推导）；
-- 角色搭配：气相双片段须写 `PROJECTILE` + `TARGET`（不同名）；表面散射只写 `PROJECTILE`（靶恒为表面）；单片段气相两者皆不写。
+- `.poscar` 格式：标准的VASP POSCAR文件；
+
 
 ## 常用关键字
 - 基本计算流程控制，一般必须写；
@@ -137,3 +137,64 @@ DIST_SCHEME = EBK[N_VIB=0, N_ROT=2], EBK[N_VIB=3, N_ROT=1]
 可由自定义势能面额外声明，随
 input_qct.txt 一起写，接入
 自定义势能面见 [custom_pes.md](custom_pes.md)。
+
+## 运行输出
+
+在运行目录（即 `input_qct.txt` 所在处）产生下列文件：
+
+| 文件 | 类别 | 内容 |
+|---|---|---|
+| `trajectories.txt` | 轨迹记录 | 逐帧块 + 每轨迹一条末态行 |
+| `hist_e_rel.dat` / `hist_thta.dat` | 统计直方图 | 末态相对平动能 / 散射角分布 |
+| stdout | 运行汇总 | 装配读数 / 统计 / 通道计数 / 守恒漂移 / 计时 |
+| stderr | 报错 | 正常运行为空；出错为指名中止消息 |
+
+以下样例均取自 [cases/case_harmonic_scatter](../cases/case_harmonic_scatter)
+的实际运行产物。
+
+### trajectories.txt —— 帧块（每步一块）
+
+```text
+# frame traj=1 step=1 t=  0.0000000000000000E+00
+t_kin=8.8210396325053004E+00 v_pot=2.6086196116948859E+00 e_tot=1.1429659244200186E+01
+# sec_qp begin
+1 H     -1.6914187273464129E-01  1.0720118906927656E+00  7.8311562014828864E+00  1.7402814056400123E-02  1.4291265564038527E-02 -2.1870780307566229E-01
+2 H      … （每原子一行：序号 元素 qx qy qz px py pz）
+# sec_qp end
+```
+
+- 数值列默认 `t_kin/v_pot/e_tot` 三列； `OBSERVABLES ` 选用后
+  追加到本行。
+
+- 单位：t [fs]、能量 [eV]、坐标 [Å]、动量 [amu·Å/fs]。
+
+### trajectories.txt —— 末态行（每轨迹一行）
+
+```text
+# final: traj t t_kin v_pot e_tot
+1   5.5500000000000000E+01   6.6910000611638925E+00   4.7387101558770137E+00   1.1429710217040906E+01
+```
+
+### stdout（运行汇总，末尾数行）
+
+```text
+assembly complete: trajectories=8 atoms=4 fragments=2 paradigm=0 members=11 init=ok columns=3
+statistics: trajectories=8 valid=8
+outcome counts: scattering=8
+conservation drift: trajectories=8 max|e_fin-e0|=  6.1156E-05 eV
+histograms: rows=8 files=hist_e_rel.dat hist_thta.dat
+timing: cpu=    0.14 s
+```
+
+`outcome counts:` 行即 `classify` 返回的通道名的去向
+`outcome counts: none (no classification bound - skipped)`）。
+
+### 直方图 .dat
+
+```text
+    0.097960    0.000000
+    0.293881    0.000000
+    0.489802    0.000000
+```
+
+两列 = 箱中心、计数；等宽分箱（[lo, hi)），行数即箱数。
