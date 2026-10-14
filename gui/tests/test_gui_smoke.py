@@ -22,9 +22,11 @@ def _shot(win, path):
     assert path.is_file() and path.stat().st_size > 10_000, f"截图过小: {path}"
 
 
-def test_main_window_smoke(tmp_path):
+def test_main_window_smoke(tmp_path, monkeypatch):
     from PyQt6.QtWidgets import QApplication
 
+    # 两页全量冒烟:强制发布开关开(默认 False 为测试版单页态, 由 test_fit 专测)
+    monkeypatch.setattr("gui.main.SHOW_PES_PAGE", True)
     app = QApplication.instance() or QApplication([])
     win = MainWindow()
     win.show()

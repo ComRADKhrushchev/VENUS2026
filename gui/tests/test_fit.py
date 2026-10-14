@@ -81,3 +81,27 @@ def test_statusbar_units_text_current():
     msg = win.statusBar().currentMessage()
     assert "eV" in msg and "10 fs" not in msg, f"状态栏单位文案陈旧: {msg!r}"
     win.close()
+
+
+def test_release_mode_hides_pes_page(monkeypatch):
+    """测试版发布态(2026-10-14 用户裁决): 默认 SHOW_PES_PAGE=False——
+    仅装配页1、页签条隐藏、标题不带页2 名;恢复两页须显式改开关并随批改本测试。"""
+    _app()
+    import gui.main as gm
+
+    assert gm.SHOW_PES_PAGE is False, "发布态默认应为 False(测试版仅输入生成)"
+    win = gm.MainWindow()
+    tabs = win.centralWidget()
+    assert tabs.count() == 1, f"测试版应仅 1 页, 实得 {tabs.count()}"
+    assert tabs.widget(0).__class__.__name__ == "InputPage"
+    assert tabs.tabBar().isHidden(), "单页发布应隐藏页签条"
+    assert "容器检查" not in win.windowTitle()
+    assert "eV" in win.statusBar().currentMessage()
+    win.close()
+    # 开关翻开则两页回归(恢复路径不破)
+    monkeypatch.setattr(gm, "SHOW_PES_PAGE", True)
+    win2 = gm.MainWindow()
+    assert win2.centralWidget().count() == 2
+    assert not win2.centralWidget().tabBar().isHidden()
+    assert "容器检查" in win2.windowTitle()
+    win2.close()

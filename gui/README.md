@@ -36,6 +36,10 @@ python -m pip install -r gui/requirements.txt
 python -m gui.main          # 或 python gui/main.py
 ```
 
+测试版发布开关(2026-10-14 裁决):`gui/main.py` 的 `SHOW_PES_PAGE = False`
+为测试版形态——仅页1(输入生成/校验),页2 代码保留不装配;恢复两页改 `True`
+(发布态由 `test_fit.py::test_release_mode_hides_pes_page` 钉住,恢复须随批改测试)。
+
 编译验证需要 Git Bash + make + gfortran(ifx 可选)。bash 定位优先
 `C:\Program Files\Git\...`,PATH 命中的 WSL bash 会被排除;可用环境变量
 `VENUS_GUI_BASH` 显式指定。

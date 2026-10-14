@@ -2,8 +2,10 @@
 """main.py - GUI 入口:python -m gui.main(或 python gui/main.py)。
 
 两页:①输入文件生成(左表单/右 3D 起始散射预览)②自定义 PES 容器
-检查(扫描→槽位生成→隔离树编译)。样式走 gui.theme(令牌化浅色主题,
+检查(扫描→程序补全→隔离树编译)。样式走 gui.theme(令牌化浅色主题,
 Fusion 底座 + 全局 QSS——唯一样式入口)。
+测试版发布开关 SHOW_PES_PAGE(2026-10-14 用户裁决: 先发布仅含输入
+生成/校验的测试版):False 隐藏页2(代码保留, 单页隐藏页签条), True 恢复。
 """
 
 from __future__ import annotations
@@ -22,11 +24,15 @@ from gui import theme
 from gui.pages.input_page import InputPage
 from gui.pages.pes_page import PesPage
 
+# 测试版发布开关:False = 仅页1(输入生成/校验);恢复两页改 True
+SHOW_PES_PAGE = False
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("VENUS2026 GUI — 输入生成 / 自定义 PES 容器检查")
+        self.setWindowTitle("VENUS2026 GUI — 输入生成"
+                            + (" / 自定义 PES 容器检查" if SHOW_PES_PAGE else "(测试版)"))
         self.setWindowIcon(theme.icon("app"))
         # 初始尺寸钳制在屏幕可用几何内(任务栏除外——下沿不得被任务栏挡住)
         screen = QApplication.primaryScreen()
@@ -40,10 +46,15 @@ class MainWindow(QMainWindow):
             self.move(avail.topLeft())
         tabs = QTabWidget()
         tabs.addTab(InputPage(), theme.icon("tab-input"), "输入文件生成")
-        tabs.addTab(PesPage(), theme.icon("tab-pes"), "PES 容器检查")
+        if SHOW_PES_PAGE:
+            tabs.addTab(PesPage(), theme.icon("tab-pes"), "PES 容器检查")
+        else:
+            tabs.tabBar().setVisible(False)  # 单页发布:隐藏页签条
         self.setCentralWidget(tabs)
         self.setStatusBar(QStatusBar())
-        self.statusBar().showMessage("内部单位 eV/Å/amu/fs;预览为示意;编译验证走隔离副本")
+        self.statusBar().showMessage(
+            "内部单位 eV/Å/amu/fs;预览为示意"
+            + (";编译验证走隔离副本" if SHOW_PES_PAGE else ""))
 
 
 def main() -> int:
