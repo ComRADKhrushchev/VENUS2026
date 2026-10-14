@@ -18,10 +18,15 @@ module bath_andersen
    use rng,           only: rng_u, rng_gauss
    use state,         only: state_t
    use config_atoms, only: list_atoms
+   use config,       only: reactants
+   use bath,         only: bath_reg, bath_setup
+   use input,        only: buffer_n_rows, buffer_key, buffer_val, buffer_line
+   use seam_cast,    only: seam_real
    implicit none
    private
    public :: andersen_params_t, andersen_init, andersen_sweep, &
-             andersen_t_bath, andersen_nu, andersen_sigma, andersen_nat
+             andersen_t_bath, andersen_nu, andersen_sigma, andersen_nat, &
+             member_register, member_init
 
    ! Species-owned parameters
    type :: andersen_params_t
@@ -141,5 +146,36 @@ contains
       write (0, '(a)') trim(where)//': fatal (the bath loop is not usable)'
       stop 1
    end subroutine stop_andz
+
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (prebuild binds it into
+   !                   registry_gen_all; the retired reg_bath_andersen.f90's
+   !                   _all body's new home - 2026-10-14 weave batch)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      call bath_reg('andersen', andersen_sweep)
+   end subroutine member_register
+
+   !------------------------------------------------------------------
+   ! member_init - the fixed-name init seam (registry_gen_init calls it; the
+   !               retired reg file's _init body moved verbatim: an armed
+   !               BATH provision pulls the species keys and provisions the
+   !               loop shape; BATH = NONE skips both)
+   !------------------------------------------------------------------
+   subroutine member_init()
+      type(andersen_params_t) :: p   ! species-parameter receiver (field defaults)
+      character(len=512) :: sval       ! one buffered raw value
+      integer :: i
+      if (reactants%bath /= 2) return
+      do i = 1, buffer_n_rows()
+         sval = buffer_val(i)
+         select case (trim(buffer_key(i)))
+         case ('T_BATH');  call seam_real(buffer_key(i), sval, buffer_line(i), p%t_bath)
+         case ('NU_COLL'); call seam_real(buffer_key(i), sval, buffer_line(i), p%nu_coll)
+         end select
+      end do
+      call andersen_init(p)
+      call bath_setup()
+   end subroutine member_init
 
 end module bath_andersen

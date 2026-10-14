@@ -11,7 +11,7 @@
 !            utils/rng.f90 interface/elec_interface.f90 &
 !            utils/linalg.f90 interface/force_interface.f90 dynamics/propagator.f90 &
 !            utils/hessian.f90 utils/geom_init.f90 utils/spectrum.f90 interface/bath.f90 &
-!            methods/reg_prop.f90 utils/geometry.f90 interface/sampler.f90 &
+!            utils/geometry.f90 interface/sampler.f90 &
 !            methods/samp_thermalize.f90 methods/seam_cast.f90 &
 !            ../scripts/check_samp_thermalize.f90 -o build/check_samp_thermalize.exe
 ! All artifacts are written under build/ - the source tree stays clean.
@@ -122,7 +122,7 @@ program check_samp_thermalize
    use state,         only: state_t, state_create, state_destroy
    use elec_interface,   only: method_reg
    use force_interface,  only: container_bind_pes, container_init
-   use reg_prop,      only: reg_prop_all
+   use propagator,    only: prop_register => member_register
    use samp_thermalize, only: thermalize_params_t, thermalize_init, thermalize_sample, &
                               thermalize_t_eq, thermalize_n_eq, thermalize_dt_eq, &
                               thermalize_e_kin_expect, thermalize_frag, thermalize_nat
@@ -210,7 +210,7 @@ program check_samp_thermalize
    call method_reg('adiabatic', noop_prop, noop_match)
    call container_bind_pes(zero_pes)
    call container_init()
-   call reg_prop_all()
+   call prop_register()
    propagator%id = 1
    propagator%order = 1
 

@@ -13,7 +13,7 @@
 !            utils/specio.f90 interface/sysdef_interface.f90 input.f90 utils/rng.f90 &
 !            globals/state.f90 globals/config_atoms.f90 &
 !            interface/elec_interface.f90 methods/elec_adiabatic.f90 &
-!            methods/reg_adiabatic.f90 utils/linalg.f90 interface/force_interface.f90 &
+!            utils/linalg.f90 interface/force_interface.f90 &
 !            utils/geometry.f90 output/final_state.f90 &
 !            ../systems/reference/reference_pot.f90 &
 !            ../systems/reference/reference_box.f90 &
@@ -148,7 +148,7 @@ program check_final_state
    use config_atoms, only: list_atoms
    use elec_interface,   only: method_bind
    use force_interface,  only: force_eval, container_bind_pes
-   use reg_adiabatic, only: reg_adiabatic_all
+   use elec_adiabatic, only: adiabatic_register => member_register
    use reference_pot, only: harm_set_constant
    use reference_box, only: reference_params_t, reference_pes, reference_load, reference_classify
    use final_state,   only: fin_t, fin_eval, container_bind_classify, &
@@ -183,7 +183,7 @@ program check_final_state
 
    ! ---------- parent assembly: the real degenerate method row + the reference
    ! container bound through the public face + the check-buffered well constant ----------
-   call reg_adiabatic_all()
+   call adiabatic_register()
    call method_bind('adiabatic')
    call container_bind_pes(reference_pes)
    call harm_set_constant(kk)
@@ -510,7 +510,7 @@ contains
       type(fin_t) :: fin
       type(reference_params_t) :: pload            ! the buffered parameter set
       character(len=32) :: nm
-      call reg_adiabatic_all()
+      call adiabatic_register()
       call method_bind('adiabatic')
       call container_bind_pes(reference_pes)
       pload%e_split = 0.5d0

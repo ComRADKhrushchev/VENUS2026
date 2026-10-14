@@ -33,12 +33,12 @@ program check_bath_andersen
                               andersen_sigma, andersen_nat, andersen_t_bath, andersen_nu
    use geom_init,      only: geom_sep_probe
    use bath,            only: bath_run, bath_setup, bath_armed
-   use reg_bath_andersen, only: reg_bath_andersen_all
+   use bath_andersen, only: andersen_register => member_register
    use config,          only: reactants
    use config_atoms,    only: list_atoms
    use state,           only: state_t, state_create, state_destroy
    use rng,             only: rng_init
-   use consts,          only: kb_code
+   use consts,          only: kb_act
    implicit none
    type(state_t) :: sta
    type(andersen_params_t) :: p
@@ -68,7 +68,7 @@ program check_bath_andersen
          q2p = [ 0.0d0, 0.0d0, 0.0d0, 3.0d0, 0.0d0, 0.0d0 ]
          call geom_sep_probe(flat_force, [ 1.0d0, 1.0d0 ], [ 1 ], q2p, 8.0d0, 1.0d-6, d_out)
       case ('bad-dt')                    ! (f3): N_BATH > 0 with DT_BATH = 0
-         call reg_bath_andersen_all()
+         call andersen_register()
          call load_roster()
          p%t_bath = 300.0d0
          p%nu_coll = 0.1d0
@@ -99,7 +99,7 @@ program check_bath_andersen
       nfail = nfail + 1
    else
       do i = 1, 3
-         expo = andersen_sigma(i)**2/(list_atoms%mass(i)*kb_code*300.0d0)
+         expo = andersen_sigma(i)**2/(list_atoms%mass(i)*kb_act*300.0d0)
          if (abs(expo - 1.0d0) > 1.0d-12) then
             print '(a,i0,a)', 'FAIL (a) width table: atom ', i, ' sigma^2 != m*kb*T'
             nfail = nfail + 1
@@ -162,7 +162,7 @@ program check_bath_andersen
 
    ! ---------- (d)/(e) inert loops: bitwise no-ops ----------
    nfail0 = nfail
-   call reg_bath_andersen_all()                ! the species row the provision binds
+   call andersen_register()                ! the species row the provision binds
    call state_create(sta, 3)
    sta%q = sentinel
    sta%p = sentinel
@@ -323,12 +323,12 @@ contains
    subroutine bind_zero_force()
       use force_interface, only: container_bind_pes, container_init
       use elec_interface, only: method_reg
-      use reg_prop, only: reg_prop_all
+      use propagator, only: prop_register => member_register
       use config, only: propagator
       call method_reg('adiabatic', noop_prop, noop_match)
       call container_bind_pes(zero_pes)
       call container_init()
-      call reg_prop_all()
+      call prop_register()
       propagator%id = 1
       propagator%order = 1
    end subroutine bind_zero_force

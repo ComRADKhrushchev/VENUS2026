@@ -7,7 +7,7 @@
 !   gfortran -Jbuild globals/consts.f90 globals/control.f90 globals/config.f90 &
 !            utils/specio.f90 interface/sysdef_interface.f90 input.f90 globals/config_atoms.f90 &
 !            globals/state.f90 interface/elec_interface.f90 &
-!            utils/linalg.f90 interface/force_interface.f90 dynamics/propagator.f90 methods/reg_prop.f90 &
+!            utils/linalg.f90 interface/force_interface.f90 dynamics/propagator.f90 &
 !            ../scripts/check_propagator.f90 -o build/check_propagator.exe
 ! Posture: the force chain is assembled CHECK-SIDE - a local analytic test container is
 !   bound through container_bind_pes (a degenerate no-op method row registered through
@@ -207,7 +207,7 @@ program check_propagator
    use elec_interface,   only: method_reg
    use force_interface,  only: force_eval, container_bind_pes, container_init
    use propagator,    only: prop_step, prop_reg, verlet_step
-   use reg_prop,      only: reg_prop_all
+   use propagator,    only: prop_register => member_register
    implicit none
    integer :: nfail = 0, nfail0
    character(len=64) :: mode
@@ -275,22 +275,22 @@ program check_propagator
       call get_command_argument(1, mode)
       select case (trim(mode))
       case ('c-dup')                       ! (a1): the verlet row registered twice
-         call reg_prop_all()
+         call prop_register()
          call prop_reg(1, verlet_step)
       case ('c-full')                      ! (a2): 3 shipped rows + 5 fills = 8, then one more
-         call reg_prop_all()
+         call prop_register()
          do i = 1, 5
             call prop_reg(10 + i, verlet_step)
          end do
          call prop_reg(20, verlet_step)
       case ('c-unreg')                     ! (a3): dispatch with an unregistered id
-         call reg_prop_all()
+         call prop_register()
          call state_create(sa, 2)
          prop_cfg%id = 9
          prop_cfg%order = 1
          call prop_step(sa)
       case ('c-order')                     ! (a4): illegal verlet order
-         call reg_prop_all()
+         call prop_register()
          call state_create(sa, 2)
          prop_cfg%id = 1
          prop_cfg%order = 3
@@ -299,27 +299,27 @@ program check_propagator
          call state_create(sa, 2)
          call force_eval(sa, e)
       case ('c-sorder')                    ! (s-ls): illegal symple order (= 5)
-         call reg_prop_all()
+         call prop_register()
          call state_create(sa, 2)
          prop_cfg%id = 2
          prop_cfg%order = 5
          call prop_step(sa)
       case ('c-rorder')                    ! (r-ls): illegal radau order (= 17, domain 1..15)
-         call reg_prop_all()
+         call prop_register()
          call state_create(sa, 2)
          prop_cfg%id = 3
          prop_cfg%order = 17
          prop_cfg%dt = 0.05d0
          call prop_step(sa)
       case ('c-rdt0')                      ! (r-ls): radau with dt = 0 (no seed/direction)
-         call reg_prop_all()
+         call prop_register()
          call state_create(sa, 2)
          prop_cfg%id = 3
          prop_cfg%order = 8
          prop_cfg%dt = 0.0d0
          call prop_step(sa)
       case ('c-rmm')                       ! (r-ls): contradictory positive clamp pair
-         call reg_prop_all()               ! (dt_min > dt_max - named at boot)
+         call prop_register()               ! (dt_min > dt_max - named at boot)
          call state_create(sa, 2)
          prop_cfg%id = 3
          prop_cfg%order = 8
@@ -334,7 +334,7 @@ program check_propagator
          call method_reg('adiabatic', noop_prop, noop_match)
          call container_bind_pes(test_pes)
          call container_init()
-         call reg_prop_all()
+         call prop_register()
          pot_sel = 5
          prop_cfg%id = 3
          prop_cfg%order = 12
@@ -366,7 +366,7 @@ program check_propagator
    call method_reg('adiabatic', noop_prop, noop_match)
    call container_bind_pes(test_pes)
    call container_init()
-   call reg_prop_all()
+   call prop_register()
    prop_cfg%id = 1
 
    ! ---------- calibration: measure the composed conversion constant ----------

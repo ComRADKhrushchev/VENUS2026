@@ -20,6 +20,7 @@ module propagator
    private
    public :: prop_reg, prop_step
    public :: verlet_step, symple_step, radau_step
+   public :: member_register
 
    ! Integrator member interface: advance one fixed step (verlet/symple) or one adaptive sequence (radau)
    abstract interface
@@ -652,5 +653,18 @@ contains
       write (0, '(a)') trim(who)//': fatal (the state is not advanced)'
       stop 1
    end subroutine stop_propi
+
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (the closed family's own
+   !                   seat - membership is decided HERE, in the family
+   !                   module itself; the K2/S closed-family charter tightened
+   !                   from two files to one by the 2026-10-14 weave batch -
+   !                   the retired reg_prop.f90's _all body's new home)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      call prop_reg(1, verlet_step)
+      call prop_reg(2, symple_step)
+      call prop_reg(3, radau_step)
+   end subroutine member_register
 
 end module propagator

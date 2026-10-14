@@ -7,16 +7,18 @@
 !   composition reads the single-surface PES directly, so this package
 !   contributes nothing to any entry.
 !   Members conform to the interface's abstract interfaces, checked at
-!   the method_reg call site in reg_adiabatic.f90.
+!   the method_reg call site (member_register below - the 2026-10-14
+!   weave batch retired reg_adiabatic.f90 into this module).
 ! Units: dt in fs internal units.
 !=====================================================================
 module elec_adiabatic
    use state,       only: state_t
-   use elec_interface, only: elec_prop_i, mqc_match_i   ! contract documentation only (the
+   use elec_interface, only: elec_prop_i, mqc_match_i, method_reg   ! contract documentation (the
    ! members below conform; conformance is checked at the method_reg call site)
    implicit none
    private
    public :: ad_prop, ad_match
+   public :: member_register
 contains
    !------------------------------------------------------------------
    ! ad_prop(sta, dt) - adiabatic propagation = no-op (no amplitudes
@@ -38,4 +40,13 @@ contains
                                            ! nothing to sample; n_hop stays 0)
       ! 1. No-op: the state passes through untouched
    end subroutine ad_match
+
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (prebuild binds it into
+   !                   registry_gen_all; the retired reg_adiabatic.f90's
+   !                   _all body's new home - 2026-10-14 weave batch)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      call method_reg('adiabatic', ad_prop, ad_match)
+   end subroutine member_register
 end module elec_adiabatic

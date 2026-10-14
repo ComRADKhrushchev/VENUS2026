@@ -35,7 +35,7 @@
 !            utils/specio.f90 interface/sysdef_interface.f90 input.f90 utils/rng.f90 &
 !            globals/config_atoms.f90 globals/state.f90 &
 !            interface/elec_interface.f90 methods/elec_adiabatic.f90 &
-!            methods/reg_adiabatic.f90 utils/linalg.f90 utils/spectrum.f90 utils/hessian.f90 &
+!            utils/linalg.f90 utils/spectrum.f90 utils/hessian.f90 &
 !            interface/force_interface.f90 interface/spectrum_interface.f90 &
 !            interface/sampler.f90 interface/bath.f90 utils/geometry.f90 utils/geom_init.f90 dynamics/propagator.f90 &
 !            methods/samp_boltzmann.f90 methods/samp_ebk.f90 methods/beam_laws.f90 methods/inc_surface.f90 methods/inc_pair.f90 methods/inc_single.f90 &
@@ -43,8 +43,6 @@
 !            methods/samp_normalmode.f90 methods/samp_barrier_excitation.f90 &
 !            methods/bath_andersen.f90 methods/samp_glo_target.f90 &
 !            methods/samp_thermalize.f90 methods/samp_wigner.f90 methods/seam_cast.f90 &
-!            methods/reg_prop.f90 &
-!            methods/reg_bath_andersen.f90 &
 !            output/final_state.f90 &
 !            ../systems/reference/reference_pot.f90 &
 !            ../systems/reference/reference_box.f90 &
@@ -58,7 +56,7 @@
 ! All artifacts are written under build/ - the source tree stays clean.
 ! Posture: criterion (d) exercises the statistics-holder seeding - the
 !   REAL 'adiabatic' package registers through its reg module
-!   (reg_adiabatic_all, the same row the aggregated registry executes)
+!   (adiabatic_register, the same row the aggregated registry executes)
 !   and binds the name, which seeds the holder and makes the occ_get /
 !   n_hop_get channels live; the members are not dispatched by that
 !   batch. Criterion (e) additionally
@@ -227,7 +225,7 @@ program check_facade
    use elec_interface,   only: occ_get, n_hop_get, method_bind, &
                             elec_prop, mqc_statistic
    use force_interface,  only: force_eval, container_bind_pes, container_init
-   use reg_adiabatic, only: reg_adiabatic_all
+   use elec_adiabatic, only: adiabatic_register => member_register
    use linalg,        only: eig_sym
    use registry_gen,  only: registry_gen_all, registry_gen_init, registry_gen_keys
    use reference_pot, only: harm_vg, morse_vg, leps_vg, leps_diab
@@ -330,7 +328,7 @@ program check_facade
    ! call the aggregated registry executes) + binds the name, which seeds the
    ! statistics holder - occ_get / n_hop_get are live for criterion (d); the
    ! members are dispatched for real at batch (h)/(j)
-   call reg_adiabatic_all()
+   call adiabatic_register()
    call method_bind('adiabatic')
 
    ! ---------- (d) statistics-holder seeding ----------
@@ -882,7 +880,7 @@ contains
       ! the degenerate 'adiabatic' method row must sit in the table before
       ! assembly (container_init binds it) - the direct-bind child registers
       ! the real package exactly as the aggregated registry would
-      call reg_adiabatic_all()
+      call adiabatic_register()
       call container_init()
       allocate (list_atoms%mass(nm))
       list_atoms%mass = 1.0d0
@@ -994,7 +992,7 @@ contains
          else
             call container_bind_pes(leps_wrap)
          end if
-         call reg_adiabatic_all()
+         call adiabatic_register()
       end if
       call container_init()
    end subroutine bind_new_side

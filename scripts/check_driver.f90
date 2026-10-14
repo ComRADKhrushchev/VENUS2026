@@ -19,8 +19,6 @@
 !            methods/bath_andersen.f90 methods/samp_glo_target.f90 &
 !            methods/samp_thermalize.f90 methods/samp_wigner.f90 methods/elec_adiabatic.f90 &
 !            methods/seam_cast.f90 &
-!            methods/reg_adiabatic.f90 methods/reg_prop.f90 &
-!            methods/reg_bath_andersen.f90 &
 !            output/recorder.f90 output/final_state.f90 &
 !            output/plot_hist.f90 &
 !            ../systems/reference/reference_pot.f90 &
@@ -247,7 +245,7 @@ program check_driver
    use final_state,   only: fin_t, fin_eval, container_classify
    use hist,          only: hist_spec_t, hist_data_t, plot_hist, k_e_hist
    use elec_interface,   only: method_bind
-   use reg_adiabatic, only: reg_adiabatic_all
+   use elec_adiabatic, only: adiabatic_register => member_register
    use reference_pot, only: harm_set_constant
    use reference_box, only: reference_pes
    use input,         only: read_input, input_audit_declared
@@ -372,7 +370,7 @@ contains
       ! the analysis chain: degenerate method row + the reference PES + the
       ! check's own well constant (the buffered-potential anchor rides the buffered
       ! value, not the package default)
-      call reg_adiabatic_all()
+      call adiabatic_register()
       call method_bind('adiabatic')
       call container_bind_pes(reference_pes)
       call harm_set_constant(kk)
