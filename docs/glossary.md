@@ -43,6 +43,8 @@
 | 预留名自动接线容器：systems/ 文件夹由 prebuild 按十一个预留名自动织入（2026-10-12 立法，术语 2026-10-13 定名） | **Tier 1 容器** | Tier 1 container (reserved-name auto-wired) | 决定记录 docs/plans/2026-10-12-auto-pes-container.md（D1-D6）；判据 check_auto_pes + drill_auto_pes |
 | reg 三件套形态的全功能容器（**2026-10-14 退役，史层**——method_name/observables 两名补齐其独有能力后全库转 Tier 1，决定 docs/plans/2026-10-14-reg-retirement-observables.md） | **Tier 2 全容器** | Tier 2 full container (reg-based, retired) | 曾因 rec_reg_col 记录列词汇所迫现役 cau 五连（已全部转 Tier 1） |
 | 转换形态：box 保留全部公有旧名、另暴露预留名薄包装（2026-10-12 D6 同步批四容器进 box；2026-10-14 cau 五连用独立 wires 文件——保判据配方零依赖） | **包装法** | wrapper pattern | 九容器模板 reference/fh2_leps/h2ag111PES/h3_bkmp2 + cau 五连；判据程序与 probe 钩子零改动 |
+| methods 侧固定名注册入口：成员模块暴露的 member_register（必有）/ member_init（可选装配缝，定名遵 2026-10-13 arm→init 裁决），prebuild 按名扫描织入（2026-10-14 立法） | **固定名入口** | fixed-name entries | docs/plans/2026-10-14-methods-member-weave.md；判据 drill_methods_weave |
+| methods/ 成员文件零 reg 自动注册：prebuild 织入段扫描前缀文件+propagator 座位发射 auto_<mod> 包装器（容器 Tier 1 的 methods 侧同构；reg 扫描机械保留空转为逃生口） | **成员织入** | member weave | docs/plans/2026-10-14-methods-member-weave.md |
 | 织入槽无条件绑定（如 auto_classify 恒 container_bind_classify）；键缺席门控由模块内 found 旗标自实现 | **在场即绑** | presence binding | 2026-10-12 决定 R-C1：键缺席生产腿 outcome 行走兜底通道 |
 | 分类体在判据键缺席时终 else 支的残差通道（capture/dissociation 计数） | **兜底通道** | fallback channel | 2026-10-12 决定 R-C1：六个无 E_SPLIT 生产腿统计行翻为兜底计数（出处 §1 所引决定记录 §6） |
 | keys() 包装首调（parse 前无卫兵调用点）预置可计算缺省，复刻 reg 注册期置常数的时序 | **惰性预置** | lazy default pre-staging | 2026-10-12 决定 R-C2；范本 reference_box（staged_default 守卫防缺省覆写输入覆写的有效常数） |

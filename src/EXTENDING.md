@@ -10,7 +10,10 @@ observables.md；method_name/observables 两个槽补齐了它最后的两项独
 `systems/<sys>/` 文件夹即容器（遗留的 reg_\*.f90 只是普通源文件——文件夹身份
 完全由预留名决定）。文件夹内 .f90 暴露
 下列预留名（名字即约定，签名即既有接口，编译期核对；裁决记录
-docs/plans/2026-10-12-auto-pes-container.md + 2026-10-14-reg-retirement-observables.md）：
+docs/plans/2026-10-12-auto-pes-container.md + 2026-10-14-reg-retirement-observables.md）。
+methods/ 侧的同族机制是成员织入（samp_/inc_/bath_/elec_ 前缀文件的
+member_register/member_init 固定名入口），见 §2 与
+docs/plans/2026-10-14-methods-member-weave.md：
 
 **势能面组**
 
@@ -29,7 +32,7 @@ docs/plans/2026-10-12-auto-pes-container.md + 2026-10-14-reg-retirement-observab
 |---|---|---|---|
 | `prop(sta, dt)` | subroutine | 与 match 成对 | 电子传播成员（`elec_prop_i` 同型） |
 | `match(sta)` | subroutine | 与 prop 成对 | 统计匹配成员（跳变、occ/n_hop 写回） |
-| `sync(s)` | subroutine | 可选随对 | a↔rho 表象换算尾巴 |
+| `sync(s)` | subroutine | 可选随对 | 容器同步尾巴：把方法自持电子态发布到交付容器 sta%s（a↔rho 换算是特例；接口在 prop/match 两入口后各调一次，纯形不解释） |
 | `init()` | subroutine | 可选随对 | 选中后初始化（门控归生成代码；参数自持走 keys/load） |
 | `method_name()` | function | 随对必备 | 返回 `character(len=32)` **小写**注册名；`ELEC_METHOD = <名>` 选用 |
 
@@ -105,18 +108,22 @@ reg 骨架（reg_mysystem_slots 一次交接八槽的形态）已随 2026-10-14 
   生产者是程序内部的 Hessian 推导(SPECTRUM_SOURCE=COMPUTE,缺省)或运行输入的
   谱表文件(SPECTRUM_SOURCE=MANUAL + SPECTRUM_FILE),见 §6。
 
-## 2. 初始态分布成员(methods/samp_*.f90,B′ 族)
+## 2. 初始态分布成员(methods/samp_*.f90,固定名织入)
 
-新成员 = `methods/samp_mydist.f90`(init/draw/realize 两段式 + 报错即停条目族)+ 薄
-`methods/reg_samp_mydist.f90`(`samp_reg` 一行 + `_init` 初始化组装机构消费成员键);
-`sampler` 的 scheme 码表加一词(scheme_code_name——这是族表数据非逻辑分支)。
+新成员 = `methods/samp_mydist.f90` 一个自含文件:物理本体(init/draw/realize 两段式 +
+报错即停条目族) + 尾部固定名入口 `member_register`(必有,一行 samp_reg 注册)与
+`member_init`(可选,装配缝:选中守卫 → 括号参数拉取 → 谱表拉取 → 成员 init——
+原 reg _init 体的归属地);prebuild 扫描 methods/ 自动织入 registry_gen(2026-10-14
+methods 侧注册清单化,docs/plans/2026-10-14-methods-member-weave.md)。scheme 词另在
+`input.f90` 的 dist_tbl 加一行(文法放行;全库唯一词↔码表,samp_code 即委托它)。
+零 reg 文件、零 sampler 编辑;前缀文件无 member_register 即 prebuild 中止。
 (2026-09-28: 族前缀 dist_→samp_ 更名;入射通道不在本族——它按组装范式拆为
 inc_surface/inc_pair/inc_single 三成员 + beam_laws 共享组件,见
 docs/plans/2026-09-28-incident-split-surface-paradigm.md。)
-零体系数据:质量/几何取 list_atoms,参数走输入键。
+零体系数据:质量/几何取 list_atoms,参数走括号通道。
 成员按多载体章程实现(2026-09-21 决定):同方案词可选多个片段——init 绑定载体
-列表(仅零载体终止),sample 一次调用循环全部载体,**一份参数平等服务每个载体**;
-装配数据类字段(频谱/模式表)逐载体一表(reg 缝按载体拉取)。
+列表(仅零载体终止),sample 一次调用循环全部载体;装配数据类字段(频谱/模式表)
+逐载体一表(member_init 缝按载体拉取)。
 
 ## 3. 通用方法包与组件(methods/,库章程)
 
@@ -124,11 +131,11 @@ docs/plans/2026-09-28-incident-split-surface-paradigm.md。)
 - 组件(level 2):amp_*(振幅积分器)/ fssh_g_ij / hop_decide / momentum_rescale /
   dom_reset 计划位——容器或成员经 `use` 组合,物理单拷贝。
 
-## 4. 积分器(闭族,methods/reg_prop.f90)
+## 4. 积分器(闭族,dynamics/propagator.f90 自注册)
 
 verlet/symple/radau 固定成员制;新增积分器 = dynamics/propagator.f90 内实现 +
-reg_prop 注册行(闭族非开放注册面——成员资格是决定事项,见 E 编号决定记录
-docs/plans/K2.md、S.md)。
+其尾部 member_register 注册行(闭族非开放注册面——成员资格是决定事项,见 E 编号
+决定记录 docs/plans/K2.md、S.md;注册随 2026-10-14 织入批归一于族模块一处)。
 
 ## 5. 记录列与后处理
 

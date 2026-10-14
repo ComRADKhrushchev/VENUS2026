@@ -25,13 +25,18 @@ make clean        # removes the whole build/ tree (both compiler subtrees)
 ```
 
 - Registration is a BUILD ARTIFACT: `scripts/prebuild.sh` regenerates `build/<FC>/registry_gen.f90`
-  and `depend.mk` on every make. A new method = one file in `src/methods/` plus a thin
-  `reg_*.f90`; the wildcard picks it up — never hand-edit the Makefile or registry.
-  Naming contract (2026-09-22): a methods/ reg hosts `<mod>_all` (+ optional `<mod>_init` —
-  the member-parameter load); a systems/ (container) folder carries no reg at all — its
-  reserved-name wrappers are the wiring surface (see the Tier 1 bullet below; the container
-  reg form is retired 2026-10-14). The aggregates keep their three
-  driver-facing names (`registry_gen_keys` / `_all` / `_init`).
+  and `depend.mk` on every make — never hand-edit the Makefile or registry.
+  A methods/ member = ONE self-contained file exposing the fixed-name entries
+  (`member_register`, mandatory; `member_init`, optional init seam): prebuild's methods
+  weave binds it into registry_gen automatically (2026-10-14 ruling,
+  docs/plans/2026-10-14-methods-member-weave.md); no reg file, no registry edits; a
+  prefix file (samp_/inc_/bath_/elec_*) without member_register aborts prebuild. A scheme
+  word also takes one `dist_tbl` row in input.f90 (the single word<->code table —
+  sampler's samp_code delegates to it). A systems/ (container) folder carries no reg at
+  all — its reserved-name wrappers are the wiring surface (see the Tier 1 bullet below;
+  the container reg form is retired 2026-10-14; the methods reg form is retired by the
+  weave batch — the legacy reg scan idles as the Tier 2 escape hatch). The aggregates
+  keep their three driver-facing names (`registry_gen_keys` / `_all` / `_init`).
 - Container storage (2026-09-21 ruling): only ONE container folder sits active in
   `systems/` per build (one-container-per-process). Verified containers are stored in
   the repo-root `containers/` library (outside the build glob — nothing there compiles);
