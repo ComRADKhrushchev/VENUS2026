@@ -9,7 +9,7 @@
 !            globals/config_atoms.f90 globals/state.f90 &
 !            utils/linalg.f90 utils/hessian.f90 utils/geom_init.f90 utils/spectrum.f90 interface/elec_interface.f90 interface/force_interface.f90 dynamics/propagator.f90 interface/bath.f90 &
 !            utils/rng.f90 utils/geometry.f90 interface/sampler.f90 methods/samp_glo_target.f90 &
-!            methods/seam_cast.f90 methods/reg_samp_glo_target.f90 &
+!            methods/seam_cast.f90 &
 !            ../scripts/check_samp_glo_target.f90 -o build/check_samp_glo_target.exe
 ! All artifacts are written under build/ - the source tree stays clean.
 ! Synthetic-parameter rule: the member is driven by directly constructed
@@ -105,7 +105,7 @@ program check_samp_glo_target
                               glo_target_dt_loaded, glo_target_frag, glo_target_nat, &
                               glo_target_ghost_size, glo_target_last_q, glo_target_last_p, &
                               glo_target_sigma_noise, glo_target_sigma_p, glo_target_sigma_q
-   use reg_samp_glo_target, only: reg_samp_glo_target_all
+   use samp_glo_target, only: glo_register => member_register
    use glo_standin, only: stand_incident_d, stand_incident_r
    implicit none
    type(state_t) :: sta
@@ -232,7 +232,7 @@ program check_samp_glo_target
    ! (a) registration + dispatch chain through samp_run: sta COMPLETELY
    ! unchanged (the ghost state is member product), ghost getters populated,
    ! and a second dispatch redraws the ghost state
-   call reg_samp_glo_target_all()
+   call glo_register()
    call samp_reg_incident()
    call state_create(sta, 2)
    sta%q = sentinel

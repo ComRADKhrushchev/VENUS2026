@@ -1,3 +1,6 @@
+!   The member carries its own registration (member_register /
+!   member_init - the fixed-name entries of the 2026-10-14 weave batch;
+!   the retired reg_samp_*.f90's _all/_init bodies live here now).
 !=====================================================================
 ! samp_wigner.f90 - distribution member: Wigner normal-mode
 !   distribution - independent Gaussian q and p per mode with the
@@ -24,10 +27,13 @@ module samp_wigner
    use state,         only: state_t
    use config,        only: reactants
    use config_atoms, only: list_atoms
-   use sampler,       only: samp_code
+   use sampler,       only: samp_code, samp_reg
+   use input, only: par_real
+   use spectrum_interface, only: spectrum_frag_w
    implicit none
    private
-   public :: wigner_tbl_t, wigner_params_t, wigner_init, wigner_draw, wigner_realize, wigner_sample
+   public :: wigner_tbl_t, wigner_params_t, wigner_init, wigner_draw, wigner_realize, &
+             wigner_sample, member_register, member_init
 
    real(8), parameter :: orth_tol = 1.0d-8    ! C^T*C - I tolerance [-]
    real(8), parameter :: trans_tol = 1.0d-8   ! translation-orthogonality tolerance [-]
@@ -302,5 +308,38 @@ contains
       write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
       stop 1
    end subroutine stop_wgi2
+
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (prebuild binds it into
+   !                   registry_gen_all; the retired reg file's _all body)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      call samp_reg('wigner', wigner_draw, wigner_realize)
+   end subroutine member_register
+
+   !------------------------------------------------------------------
+   ! member_init - the fixed-name init seam (registry_gen_init calls it;
+   !               the retired reg file's _init body moved verbatim)
+   !------------------------------------------------------------------
+   subroutine member_init()
+      type(wigner_params_t) :: p     ! member-parameter receiver (field defaults)
+      integer :: i, k, code, n_carry
+      if (.not. allocated(reactants%dist_scheme)) return
+      code = samp_code('wigner')
+      n_carry = count(reactants%dist_scheme == code)
+      if (n_carry == 0) return
+      allocate (p%e_scale(n_carry))
+      p%e_scale = 1.0d0                  ! the member's field default (the ground
+                                          ! state; an absent name keeps it)
+      allocate (p%tbl(n_carry))
+      k = 0
+      do i = 1, size(reactants%dist_scheme)
+         if (reactants%dist_scheme(i) /= code) cycle
+         k = k + 1
+         call par_real('WIGNER', i, 'E_SCALE', p%e_scale(k))
+         call spectrum_frag_w(i, p%tbl(k)%w, p%tbl(k)%c)
+      end do
+      call wigner_init(p)
+   end subroutine member_init
 
 end module samp_wigner

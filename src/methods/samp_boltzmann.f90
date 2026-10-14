@@ -1,3 +1,6 @@
+!   The member carries its own registration (member_register /
+!   member_init - the fixed-name entries of the 2026-10-14 weave batch;
+!   the retired reg_samp_*.f90's _all/_init bodies live here now).
 !=====================================================================
 ! samp_boltzmann.f90 - distribution member: Boltzmann vibrational
 !   distribution - per-mode quantum numbers drawn from the thermal
@@ -28,12 +31,14 @@ module samp_boltzmann
    use state,         only: state_t
    use config,        only: reactants
    use config_atoms, only: list_atoms
-   use sampler,       only: samp_code
+   use sampler,       only: samp_code, samp_reg
    use spectrum,      only: w_to_wvn
+   use input, only: par_real
+   use spectrum_interface, only: spectrum_frag_w
    implicit none
    private
-   public :: mode_tbl_t, boltz_params_t, boltz_init, boltz_draw, boltz_realize, boltz_sample, &
-             boltz_last_n
+   public :: mode_tbl_t, boltz_params_t, boltz_init, boltz_draw, boltz_realize, &
+             boltz_sample, boltz_last_n, member_register, member_init
 
    real(8), parameter :: hc_k = 1.43878d0   ! h*c/k [cm*K] - the geometric step constant
    real(8), parameter :: orth_tol = 1.0d-8  ! C^T*C - I tolerance [-]
@@ -355,5 +360,52 @@ contains
       write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
       stop 1
    end subroutine stop_bolti2
+
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (prebuild binds it into
+   !                   registry_gen_all; the retired reg file's _all body)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      call samp_reg('boltzmann', boltz_draw, boltz_realize)
+   end subroutine member_register
+
+   !------------------------------------------------------------------
+   ! member_init - the fixed-name init seam (registry_gen_init calls it;
+   !               the retired reg file's _init body moved verbatim)
+   !------------------------------------------------------------------
+   subroutine member_init()
+      type(boltz_params_t) :: p          ! member-parameter receiver (field defaults)
+      integer :: i, k, wc, code, n_carry, n_word
+      if (.not. allocated(reactants%dist_scheme)) return
+      code = samp_code('boltzmann')
+      n_word = count(reactants%dist_scheme == code)
+      if (n_word == 0) return
+      ! build tables only for polyatomic carriers; a monoatomic carrier rides
+      ! the incident channel alone (BOLTZMANN on it = "no internal sampling")
+      n_carry = 0
+      do i = 1, size(reactants%dist_scheme)
+         if (reactants%dist_scheme(i) == code .and. list_atoms%frag(i)%nat > 1) then
+            n_carry = n_carry + 1
+         end if
+      end do
+      allocate (p%t_vib(n_word))
+      p%t_vib = 0.0d0                     ! absent bracket name keeps the default;
+                                           ! boltz_init's own validation rejects it
+      wc = 0
+      do i = 1, size(reactants%dist_scheme)
+         if (reactants%dist_scheme(i) /= code) cycle
+         wc = wc + 1
+         call par_real('BOLTZMANN', i, 'T_VIB', p%t_vib(wc))
+      end do
+      allocate (p%tbl(n_carry))
+      k = 0
+      do i = 1, size(reactants%dist_scheme)
+         if (reactants%dist_scheme(i) == code .and. list_atoms%frag(i)%nat > 1) then
+            k = k + 1
+            call spectrum_frag_w(i, p%tbl(k)%w, p%tbl(k)%c)
+         end if
+      end do
+      call boltz_init(p)
+   end subroutine member_init
 
 end module samp_boltzmann

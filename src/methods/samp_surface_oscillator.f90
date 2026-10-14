@@ -1,3 +1,6 @@
+!   The member carries its own registration (member_register /
+!   member_init - the fixed-name entries of the 2026-10-14 weave batch;
+!   the retired reg_samp_*.f90's _all/_init bodies live here now).
 !=====================================================================
 ! samp_surface_oscillator.f90 - distribution member: analytic harmonic
 !   stretch sampling of a two-atom atom-anchor carrier - one energy
@@ -16,11 +19,13 @@ module samp_surface_oscillator
    use state,         only: state_t
    use config,        only: reactants
    use config_atoms, only: list_atoms
-   use sampler,       only: samp_code
+   use sampler,       only: samp_code, samp_reg
+   use input, only: par_int, par_real
    implicit none
    private
-   public :: surf_osc_params_t, surface_oscillator_init, surface_oscillator_draw, surface_oscillator_realize, &
-             surface_oscillator_sample, surface_oscillator_last_e
+   public :: surf_osc_params_t, surface_oscillator_init, surface_oscillator_draw, &
+             surface_oscillator_realize, surface_oscillator_sample, &
+             surface_oscillator_last_e, member_register, member_init
 
    ! Member-owned parameters, one row per carrier (the 2026-10-13 bracket
    ! ruling realized per fragment; the defaults below are the member's own)
@@ -270,5 +275,41 @@ contains
       write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
       stop 1
    end subroutine stop_soi2
+
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (prebuild binds it into
+   !                   registry_gen_all; the retired reg file's _all body)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      call samp_reg('surface_oscillator', surface_oscillator_draw, surface_oscillator_realize)
+   end subroutine member_register
+
+   !------------------------------------------------------------------
+   ! member_init - the fixed-name init seam (registry_gen_init calls it;
+   !               the retired reg file's _init body moved verbatim)
+   !------------------------------------------------------------------
+   subroutine member_init()
+      type(surf_osc_params_t) :: p     ! member-parameter receiver (field defaults)
+      integer :: i, k, code, n_carry
+      if (.not. allocated(reactants%dist_scheme)) return
+      code = samp_code('surface_oscillator')
+      n_carry = count(reactants%dist_scheme == code)
+      if (n_carry == 0) return
+      allocate (p%n_osc(n_carry), p%t_osc(n_carry), p%n_level(n_carry), p%k_osc(n_carry))
+      p%n_osc   = 0                       ! the member's field defaults (a bare
+      p%t_osc   = 300.0d0                 ! word or an absent bracket name keeps
+      p%n_level = 0                       ! them)
+      p%k_osc   = 1.30092582d0
+      k = 0
+      do i = 1, size(reactants%dist_scheme)
+         if (reactants%dist_scheme(i) /= code) cycle
+         k = k + 1
+         call par_int('SURFACE_OSCILLATOR', i, 'N_OSC',   p%n_osc(k))
+         call par_real('SURFACE_OSCILLATOR', i, 'T_OSC',   p%t_osc(k))
+         call par_int('SURFACE_OSCILLATOR', i, 'N_LEVEL', p%n_level(k))
+         call par_real('SURFACE_OSCILLATOR', i, 'K_OSC',   p%k_osc(k))
+      end do
+      call surface_oscillator_init(p)
+   end subroutine member_init
 
 end module samp_surface_oscillator

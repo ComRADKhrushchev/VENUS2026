@@ -1,3 +1,6 @@
+!   The member carries its own registration (member_register /
+!   member_init - the fixed-name entries of the 2026-10-14 weave batch;
+!   the retired reg_samp_*.f90's _all/_init bodies live here now).
 !=====================================================================
 ! samp_barrier_excitation.f90 - distribution member: saddle sampling
 !   (e_stab split over given stable modes + reaction-coordinate
@@ -17,11 +20,13 @@ module samp_barrier_excitation
    use state,         only: state_t
    use config,        only: reactants
    use config_atoms, only: list_atoms
-   use sampler,       only: samp_code
+   use sampler,       only: samp_code, samp_reg
+   use input, only: par_int, par_real
    implicit none
    private
    public :: saddle_tbl_t, barrier_excitation_params_t, barrier_excitation_init, &
-             barrier_excitation_draw, barrier_excitation_realize, barrier_excitation_sample
+             barrier_excitation_draw, barrier_excitation_realize, &
+             barrier_excitation_sample, member_register, member_init
 
    real(8), parameter :: orth_tol = 1.0d-8    ! C^T*C - I / |c_rc| - 1 tolerance [-]
    real(8), parameter :: trans_tol = 1.0d-8   ! translation-orthogonality tolerance [-]
@@ -374,5 +379,43 @@ contains
       write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
       stop 1
    end subroutine stop_bei2
+
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (prebuild binds it into
+   !                   registry_gen_all; the retired reg file's _all body)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      call samp_reg('barrier_excitation', barrier_excitation_draw, barrier_excitation_realize)
+   end subroutine member_register
+
+   !------------------------------------------------------------------
+   ! member_init - the fixed-name init seam (registry_gen_init calls it;
+   !               the retired reg file's _init body moved verbatim)
+   !------------------------------------------------------------------
+   subroutine member_init()
+      type(barrier_excitation_params_t) :: p   ! member-parameter receiver (field defaults)
+      integer :: i, k, code
+      if (.not. allocated(reactants%dist_scheme)) return
+      code = samp_code('barrier_excitation')
+      if (count(reactants%dist_scheme == code) == 0) return
+      allocate (p%e_stab(count(reactants%dist_scheme == code)), &
+                p%n_e_bar(count(reactants%dist_scheme == code)), &
+                p%e_bar(count(reactants%dist_scheme == code)), &
+                p%t_bar(count(reactants%dist_scheme == code)))
+      p%e_stab = 0.34691355d0           ! the member's field defaults (the
+      p%n_e_bar = 0                     ! pre-2026-10-06 kcal-era values
+      p%e_bar = 0.21682097d0            ! re-expressed; absent names keep them)
+      p%t_bar = 900.0d0
+      k = 0
+      do i = 1, size(reactants%dist_scheme)
+         if (reactants%dist_scheme(i) /= code) cycle
+         k = k + 1
+         call par_real('BARRIER_EXCITATION', i, 'E_STAB',  p%e_stab(k))
+         call par_int('BARRIER_EXCITATION', i, 'N_E_BAR',  p%n_e_bar(k))
+         call par_real('BARRIER_EXCITATION', i, 'E_BAR',   p%e_bar(k))
+         call par_real('BARRIER_EXCITATION', i, 'T_BAR',   p%t_bar(k))
+      end do
+      call barrier_excitation_init(p)
+   end subroutine member_init
 
 end module samp_barrier_excitation

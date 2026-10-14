@@ -1,3 +1,6 @@
+!   The member carries its own registration (member_register /
+!   member_init - the fixed-name entries of the 2026-10-14 weave batch;
+!   the retired reg_samp_*.f90's _all/_init bodies live here now).
 !=====================================================================
 ! samp_thermalize.f90 - distribution member: MD equilibration mechanism
 !   - Maxwell seed of the owned components, exact drift removal, then a
@@ -22,13 +25,15 @@ module samp_thermalize
    use state,         only: state_t
    use config,        only: reactants, prop_cfg => propagator   ! alias to avoid clashing with the module name
    use config_atoms, only: list_atoms
-   use sampler,       only: samp_code
+   use sampler,       only: samp_code, samp_reg
    use propagator,    only: prop_step     ! evolution service (an internal call is legal)
+   use input, only: par_int, par_real
    implicit none
    private
-   public :: thermalize_params_t, thermalize_init, thermalize_draw, thermalize_realize, thermalize_sample, &
-             thermalize_t_eq, thermalize_n_eq, thermalize_dt_eq, thermalize_e_kin_expect, &
-             thermalize_frag, thermalize_nat
+   public :: thermalize_params_t, thermalize_init, thermalize_draw, thermalize_realize, &
+             thermalize_sample, thermalize_t_eq, thermalize_n_eq, thermalize_dt_eq, &
+             thermalize_e_kin_expect, thermalize_frag, thermalize_nat, member_register, &
+             member_init
 
    ! Member-owned parameters, one row per carrier (N_EQ/DT_EQ describe the
    ! ONE shared run - the member enforces agreement across the rows)
@@ -317,5 +322,40 @@ contains
       write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
       stop 1
    end subroutine stop_equii2
+
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (prebuild binds it into
+   !                   registry_gen_all; the retired reg file's _all body)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      call samp_reg('thermalize', thermalize_draw, thermalize_realize)
+   end subroutine member_register
+
+   !------------------------------------------------------------------
+   ! member_init - the fixed-name init seam (registry_gen_init calls it;
+   !               the retired reg file's _init body moved verbatim)
+   !------------------------------------------------------------------
+   subroutine member_init()
+      type(thermalize_params_t) :: p   ! member-parameter receiver (field defaults)
+      integer :: i, k, code
+      if (.not. allocated(reactants%dist_scheme)) return
+      code = samp_code('thermalize')
+      if (count(reactants%dist_scheme == code) == 0) return
+      allocate (p%t_eq(count(reactants%dist_scheme == code)), &
+                p%n_eq(count(reactants%dist_scheme == code)), &
+                p%dt_eq(count(reactants%dist_scheme == code)))
+      p%t_eq  = 0.0d0                    ! absent bracket names keep the defaults;
+      p%n_eq  = 0                         ! thermalize_init's own validation rejects
+      p%dt_eq = 0.0d0                     ! them (and enforces the shared-run rule)
+      k = 0
+      do i = 1, size(reactants%dist_scheme)
+         if (reactants%dist_scheme(i) /= code) cycle
+         k = k + 1
+         call par_real('THERMALIZE', i, 'T_EQ',  p%t_eq(k))
+         call par_int('THERMALIZE', i, 'N_EQ',  p%n_eq(k))
+         call par_real('THERMALIZE', i, 'DT_EQ', p%dt_eq(k))
+      end do
+      call thermalize_init(p)
+   end subroutine member_init
 
 end module samp_thermalize

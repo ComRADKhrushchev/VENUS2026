@@ -1,3 +1,6 @@
+!   The member carries its own registration (member_register /
+!   member_init - the fixed-name entries of the 2026-10-14 weave batch;
+!   the retired reg_samp_*.f90's _all/_init bodies live here now).
 !=====================================================================
 ! samp_glo_target.f90 - distribution member: ghost Langevin-oscillator
 !   target selection, bath-coupling loading (one ghost per carrier
@@ -16,14 +19,15 @@ module samp_glo_target
    use state,         only: state_t
    use config,        only: reactants, prop_cfg => propagator   ! alias to avoid clashing with the module name
    use config_atoms, only: list_atoms
-   use sampler,       only: samp_code
+   use sampler,       only: samp_code, samp_reg
+   use input, only: par_real
    implicit none
    private
-   public :: glo_target_params_t, glo_target_init, glo_target_draw, glo_target_realize, glo_target_sample, &
-             glo_target_t_glo, glo_target_gamma, glo_target_w, glo_target_dt_loaded, &
-             glo_target_frag, glo_target_nat, glo_target_ghost_size, &
-             glo_target_last_q, glo_target_last_p, &
-             glo_target_sigma_noise, glo_target_sigma_p, glo_target_sigma_q
+   public :: glo_target_params_t, glo_target_init, glo_target_draw, glo_target_realize, &
+             glo_target_sample, glo_target_t_glo, glo_target_gamma, glo_target_w, &
+             glo_target_dt_loaded, glo_target_frag, glo_target_nat, glo_target_ghost_size, &
+             glo_target_last_q, glo_target_last_p, glo_target_sigma_noise, &
+             glo_target_sigma_p, glo_target_sigma_q, member_register, member_init
 
    ! Member-owned parameters, one row per carrier (the 2026-10-13 bracket
    ! ruling realized per fragment; 0 = the bracket name was absent and the
@@ -322,5 +326,40 @@ contains
       write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
       stop 1
    end subroutine stop_gloi2
+
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (prebuild binds it into
+   !                   registry_gen_all; the retired reg file's _all body)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      call samp_reg('glo_target', glo_target_draw, glo_target_realize)
+   end subroutine member_register
+
+   !------------------------------------------------------------------
+   ! member_init - the fixed-name init seam (registry_gen_init calls it;
+   !               the retired reg file's _init body moved verbatim)
+   !------------------------------------------------------------------
+   subroutine member_init()
+      type(glo_target_params_t) :: p     ! member-parameter receiver (field defaults)
+      integer :: i, k, code
+      if (.not. allocated(reactants%dist_scheme)) return
+      code = samp_code('glo_target')
+      if (count(reactants%dist_scheme == code) == 0) return
+      allocate (p%t_glo(count(reactants%dist_scheme == code)), &
+                p%gamma_glo(count(reactants%dist_scheme == code)), &
+                p%w_ghost(count(reactants%dist_scheme == code)))
+      p%t_glo     = 0.0d0               ! absent bracket names keep the defaults;
+      p%gamma_glo = 0.0d0               ! glo_target_init's own validation rejects
+      p%w_ghost   = 0.0d0               ! them
+      k = 0
+      do i = 1, size(reactants%dist_scheme)
+         if (reactants%dist_scheme(i) /= code) cycle
+         k = k + 1
+         call par_real('GLO_TARGET', i, 'T_GLO',     p%t_glo(k))
+         call par_real('GLO_TARGET', i, 'GAMMA_GLO', p%gamma_glo(k))
+         call par_real('GLO_TARGET', i, 'W_GHOST',   p%w_ghost(k))
+      end do
+      call glo_target_init(p)
+   end subroutine member_init
 
 end module samp_glo_target

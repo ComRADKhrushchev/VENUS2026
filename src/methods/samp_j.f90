@@ -1,3 +1,6 @@
+!   The member carries its own registration (member_register /
+!   member_init - the fixed-name entries of the 2026-10-14 weave batch;
+!   the retired reg_samp_*.f90's _all/_init bodies live here now).
 !=====================================================================
 ! samp_j.f90 - distribution member: draw of the rotational quantum
 !   number J from the thermal linear-rotor ladder
@@ -18,11 +21,13 @@ module samp_j
    use state,         only: state_t
    use config,        only: reactants
    use config_atoms, only: list_atoms
-   use sampler,       only: samp_code
+   use sampler,       only: samp_code, samp_reg
    use linalg,        only: eig_sym
+   use input, only: par_real
    implicit none
    private
-   public :: j_params_t, j_init, j_draw, j_realize, j_sample, j_last_j, j_c_rot, j_j_max
+   public :: j_params_t, j_init, j_draw, j_realize, j_sample, j_last_j, j_c_rot, j_j_max, &
+             member_register, member_init
 
    integer, parameter :: max_reject = 1000000   ! rejection-sampling draw cap [-]
    integer, parameter :: max_support = 10000000 ! support-scan cap [-]
@@ -295,5 +300,35 @@ contains
       write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
       stop 1
    end subroutine stop_ji2
+
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (prebuild binds it into
+   !                   registry_gen_all; the retired reg file's _all body)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      call samp_reg('j', j_draw, j_realize)
+   end subroutine member_register
+
+   !------------------------------------------------------------------
+   ! member_init - the fixed-name init seam (registry_gen_init calls it;
+   !               the retired reg file's _init body moved verbatim)
+   !------------------------------------------------------------------
+   subroutine member_init()
+      type(j_params_t) :: p            ! member-parameter receiver (field defaults)
+      integer :: i, k, code
+      if (.not. allocated(reactants%dist_scheme)) return
+      code = samp_code('j')
+      if (count(reactants%dist_scheme == code) == 0) return
+      allocate (p%t_rot(count(reactants%dist_scheme == code)))
+      p%t_rot = 0.0d0                   ! absent bracket name keeps the default;
+                                        ! j_init's own validation rejects it
+      k = 0
+      do i = 1, size(reactants%dist_scheme)
+         if (reactants%dist_scheme(i) /= code) cycle
+         k = k + 1
+         call par_real('J', i, 'T_ROT', p%t_rot(k))
+      end do
+      call j_init(p)
+   end subroutine member_init
 
 end module samp_j

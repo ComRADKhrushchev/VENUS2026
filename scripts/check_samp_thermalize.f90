@@ -13,7 +13,6 @@
 !            utils/hessian.f90 utils/geom_init.f90 utils/spectrum.f90 interface/bath.f90 &
 !            methods/reg_prop.f90 utils/geometry.f90 interface/sampler.f90 &
 !            methods/samp_thermalize.f90 methods/seam_cast.f90 &
-!            methods/reg_samp_thermalize.f90 &
 !            ../scripts/check_samp_thermalize.f90 -o build/check_samp_thermalize.exe
 ! All artifacts are written under build/ - the source tree stays clean.
 ! Synthetic-parameter rule: the member is driven by directly constructed
@@ -127,7 +126,7 @@ program check_samp_thermalize
    use samp_thermalize, only: thermalize_params_t, thermalize_init, thermalize_sample, &
                               thermalize_t_eq, thermalize_n_eq, thermalize_dt_eq, &
                               thermalize_e_kin_expect, thermalize_frag, thermalize_nat
-   use reg_samp_thermalize, only: reg_samp_thermalize_all
+   use samp_thermalize, only: thermalize_register => member_register
    use equi_standin, only: stand_incident_d, stand_incident_r
    implicit none
    type(state_t) :: sta
@@ -310,7 +309,7 @@ program check_samp_thermalize
 
    ! (a) registration + dispatch chain through samp_run (the run below is
    ! real free flight on the zero-force container: q on the mimic, f = 0)
-   call reg_samp_thermalize_all()
+   call thermalize_register()
    call samp_reg_incident()
    call state_create(sta, 2)
    sta%q = sentinel

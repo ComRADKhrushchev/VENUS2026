@@ -1,3 +1,6 @@
+!   The member carries its own registration (member_register /
+!   member_init - the fixed-name entries of the 2026-10-14 weave batch;
+!   the retired reg_samp_*.f90's _all/_init bodies live here now).
 !=====================================================================
 ! samp_rotation.f90 - distribution member: fragment rotation realization
 !   at a GIVEN J - random orientation about the COM plus
@@ -16,12 +19,14 @@ module samp_rotation
    use state,         only: state_t
    use config,        only: reactants
    use config_atoms, only: list_atoms
-   use sampler,       only: samp_code
+   use sampler,       only: samp_code, samp_reg
    use geometry,      only: rot_rand_rmat, rot_apply
    use linalg,        only: eig_sym
+   use input, only: par_int
    implicit none
    private
-   public :: rotation_params_t, rotation_init, rotation_draw, rotation_realize, rotation_sample
+   public :: rotation_params_t, rotation_init, rotation_draw, rotation_realize, &
+             rotation_sample, member_register, member_init
 
    real(8), parameter :: lin_tol = 1.0d-8   ! linearity eigenvalue ratio tolerance [-]
 
@@ -294,5 +299,34 @@ contains
       write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
       stop 1
    end subroutine stop_roti2
+
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (prebuild binds it into
+   !                   registry_gen_all; the retired reg file's _all body)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      call samp_reg('rotation', rotation_draw, rotation_realize)
+   end subroutine member_register
+
+   !------------------------------------------------------------------
+   ! member_init - the fixed-name init seam (registry_gen_init calls it;
+   !               the retired reg file's _init body moved verbatim)
+   !------------------------------------------------------------------
+   subroutine member_init()
+      type(rotation_params_t) :: p     ! member-parameter receiver (field defaults)
+      integer :: i, k, code
+      if (.not. allocated(reactants%dist_scheme)) return
+      code = samp_code('rotation')
+      if (count(reactants%dist_scheme == code) == 0) return
+      allocate (p%j_rot(count(reactants%dist_scheme == code)))
+      p%j_rot = 0                        ! absent bracket name keeps the default
+      k = 0
+      do i = 1, size(reactants%dist_scheme)
+         if (reactants%dist_scheme(i) /= code) cycle
+         k = k + 1
+         call par_int('ROTATION', i, 'J_ROT', p%j_rot(k))
+      end do
+      call rotation_init(p)
+   end subroutine member_init
 
 end module samp_rotation

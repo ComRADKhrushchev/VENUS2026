@@ -1,3 +1,6 @@
+!   The member carries its own registration (member_register /
+!   member_init - the fixed-name entries of the 2026-10-14 weave batch;
+!   the retired reg_samp_*.f90's _all/_init bodies live here now).
 !=====================================================================
 ! samp_ebk.f90 - distribution member: EBK semiclassical fixed-(n,J)
 !   diatomic initial state from Morse spectroscopic constants
@@ -21,12 +24,14 @@ module samp_ebk
    use state,         only: state_t
    use config,        only: reactants
    use config_atoms, only: list_atoms
-   use sampler,       only: samp_code
+   use sampler,       only: samp_code, samp_reg
    use geometry,      only: gl_nodes
+   use input, only: par_int
+   use spectrum_interface, only: spectrum_frag_diatomic
    implicit none
    private
-   public :: ebk_car_t, ebk_params_t, ebk_init, ebk_draw, ebk_realize, ebk_sample, ebk_e_level, ebk_r_turn, &
-             ebk_morse, ebk_last
+   public :: ebk_car_t, ebk_params_t, ebk_init, ebk_draw, ebk_realize, ebk_sample, &
+             ebk_e_level, ebk_r_turn, ebk_morse, ebk_last, member_register, member_init
 
    real(8), parameter :: eps_turn = 1.0d-3   ! turning-point inset [Angstrom]
    integer, parameter :: n_quad = 50         ! Gauss-Legendre nodes for the action [-]
@@ -537,5 +542,48 @@ contains
       write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
       stop 1
    end subroutine stop_ebki2
+
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (prebuild binds it into
+   !                   registry_gen_all; the retired reg file's _all body)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      call samp_reg('ebk', ebk_draw, ebk_realize)
+   end subroutine member_register
+
+   !------------------------------------------------------------------
+   ! member_init - the fixed-name init seam (registry_gen_init calls it;
+   !               the retired reg file's _init body moved verbatim)
+   !------------------------------------------------------------------
+   subroutine member_init()
+      type(ebk_params_t) :: p            ! member-parameter receiver (field defaults)
+      real(8) :: m1, m2, req, dv(3)
+      integer :: i, kc, code
+      if (.not. allocated(reactants%dist_scheme)) return
+      code = samp_code('ebk')
+      if (count(reactants%dist_scheme == code) == 0) return
+      allocate (p%car(count(reactants%dist_scheme == code)))
+      kc = 0
+      do i = 1, size(reactants%dist_scheme)
+         if (reactants%dist_scheme(i) /= code) cycle
+         kc = kc + 1
+         ! 1. the quantum numbers (absent bracket names keep the (0,0) field
+         !    defaults - the ro-vibrational ground state)
+         call par_int('EBK', i, 'N_VIB', p%car(kc)%n_vib)
+         call par_int('EBK', i, 'N_ROT', p%car(kc)%j_rot)
+         ! 2. the constants: pulled at THIS carrier's composition
+         call spectrum_frag_diatomic(i, p%car(kc)%w_e, p%car(kc)%w_ex_e, p%car(kc)%b_rot)
+         ! 3. the moment of inertia from the same carrier's buffered
+         !    geometry (mu*r_eq^2)
+         associate (fr => list_atoms%frag(i))
+            m1 = list_atoms%mass(fr%list(1))
+            m2 = list_atoms%mass(fr%list(2))
+            dv = fr%qz(4:6) - fr%qz(1:3)
+            req = norm2(dv)
+         end associate
+         p%car(kc)%ai_rot = (m1*m2/(m1 + m2))*req*req
+      end do
+      call ebk_init(p)
+   end subroutine member_init
 
 end module samp_ebk
