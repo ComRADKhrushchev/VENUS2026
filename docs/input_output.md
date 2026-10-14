@@ -1,5 +1,6 @@
 # 程序输入输出说明（2026/10/14）
 
+> 本文件与 [custom_pes.md](custom_pes.md) 并列为本程序现行仅有的两份正式使用说明。
 
 基本格式：
 - `KEYWORD = VALUE`；

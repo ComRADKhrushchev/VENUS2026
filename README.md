@@ -1,8 +1,19 @@
 # VENUS2026 — QCT 化学动力学程序（最小可编译核心）
 
 绝热 QCT（准经典轨迹）化学动力学程序的完成式重写：L0–L5 分层的 `src/` 新树。
-本仓库当前发布**最小可编译核心 + 两个已验证体系的容器 + 旧版 VENUS05 标定树**；
-两份正式使用说明已入 docs/（custom_pes.md 势能面接入 · input_output.md 输入输出）；判据程序、研究文档、GUI 等其余工作材料为开发树内容，不入本发布面。
+本仓库当前发布**最小可编译核心 + GUI 输入生成工具 + 两个已验证体系的容器 + 旧版 VENUS05 标定树**；
+两份正式使用说明已入 docs/（custom_pes.md 势能面接入 · input_output.md 输入输出）；判据程序、研究文档等其余工作材料为开发树内容，不入本发布面。
+
+## GUI 输入生成工具（gui/）
+
+PyQt6 桌面工具：按本仓库键表生成/校验 `input_qct.txt`（表单按散射范式自动显隐，
+支持打开现有输入文件回填；当前为测试版形态——仅输入生成一页，`gui/main.py` 的
+`SHOW_PES_PAGE` 开关可恢复容器检查页）。
+
+```bash
+python -m pip install -r gui/requirements.txt
+python -m gui.main          # 详见 gui/README.md
+```
 
 ## 已验证体系的容器（systems/inactive/）
 

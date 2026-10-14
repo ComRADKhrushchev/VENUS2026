@@ -22,3 +22,5 @@ hist_*.dat
 __pycache__/
 .zcode/
 .vscode/
+# GUI 取证/日志目录(gitignored 于开发树, 发布面同规)
+gui/logs/
