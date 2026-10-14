@@ -1,54 +1,61 @@
-# VENUS2026 Project
+# VENUS2026 — QCT 化学动力学程序（最小可编译核心）
 
-An independent working project for streamlining and refactoring the VENUS program
-(classical adiabatic QCT; the nonadiabatic electronic axis is contract-first scaffolding —
-the first container-composed method package lands per the E27 ruling: the physical-system
-container is the composition point of system-specific code).
+绝热 QCT（准经典轨迹）化学动力学程序的完成式重写：L0–L5 分层的 `src/` 新树。
+本仓库当前发布**最小可编译核心 + 两个已验证体系的容器 + 旧版 VENUS05 标定树**；
+两份正式使用说明已入 docs/（custom_pes.md 势能面接入 · input_output.md 输入输出）；判据程序、研究文档、GUI 等其余工作材料为开发树内容，不入本发布面。
 
-## Layout
+## 已验证体系的容器（systems/inactive/）
 
-```
-src/           the NEW PROGRAM (completion rewrite, L0-L5 layering; sole execution
-               authority docs/final_completion_plan.md). Build: cd src && make [FC=ifx];
-               guidance src/CLAUDE.md, extension points src/EXTENDING.md, layer map
-               src/README.md. Verification: cases/ (five-case formal set, per-case
-               results.txt) + scripts/check_* criteria programs.
-systems/       physical-system container material (E27: the container is the composition
-               point — H definition + system-specific method packages live here, one folder
-               per system; reference/ = the pure-math harmonic-well container driving the
-               case set)
-venus2026/     the OLD minimal form — READ-ONLY reference (provenance of algorithms
-               and formulas); neither migrated nor modified (its CLAUDE.md describes
-               the reference tree itself)
-docs/          design documents: design_spec_completeness.md (the specification, §4.2
-               backfilled with the landed interfaces), final_completion_plan.md
-               (execution authority), optimal_structure.md (implemented),
-               completeness_audit_src.{md,json} (S-phase new-tree audit),
-               completeness_audit.{md,json} (old-tree audit, historical),
-               plans/ (per-phase records P0..V, S incl. the E27 ruling),
-               input_output.md and custom_pes.md (the two official user-facing
-               guides: input/output reference - input_qct.txt key tables
-               required/conditional/optional + member-parameter tables + run
-               output formats; Tier 1 custom-PES container quick guide)
-cases/         the five-case verification set (harmonic_scatter / radau_conservation /
-               surface_window / b_layer / chain_frequencies)
-scripts/       check_* criteria programs + probe drivers + prebuild.sh
+两套物理系统容器已完成对新程序与旧引擎的**逐位交叉验证**（能量与梯度多几何点
+比对，全部 BITWISE IDENTICAL），平时收纳于 `systems/inactive/`（不进构建）：
+
+- `h3_bkmp2/` — H+H2 / BKMP2 势能面容器（f90 转录 `bkmp2_pot.f90` 与
+  VENUS05 官方引擎 12 几何点逐位一致；含 `system/` 反应物构型 H + H2）
+- `h2ag111PES/` — H2/Ag(111) 神经网络势容器（6 表面几何点逐位一致；
+  运行需 `weights-h2ag.txt` / `biases-h2ag.txt` 随运行目录，已随容器携带）
+
+激活方式：把容器文件夹移到 `systems/` 顶层 → `make` 两轮（depend.mk 单轮迟滞）。
+注意 one-container-per-process 立法：目标容器与其他容器并存时装配期 double-bind
+即停；一次只激活一个。
+
+## 旧版 VENUS05 标定树（benchmark_oldvenus/）
+
+从 `VENUS_TSH_HO2` 剥离 EANN/NN、TSH、AmberFF 与表面支路后的干净 VENUS05
+血统树，即上述两体系交叉验证的旧引擎一侧（`sys/bkmp2_engine.f`、`sys/h2ag_engine.f`）：
+
+```bash
+cd benchmark_oldvenus && make    # gfortran -std=legacy -> venus.e
 ```
 
-## Status
+`work/`、`work_h2ag/` 为冒烟运行目录（输入 + 通道文件）；134MB 的扫能运行数据
+（h2ag_sweep/）不入库。详见其 `README.md`。
 
-Phases P0 → K1-K3 → C1-C8 → V complete; S (closing: re-audit + document wrap-up)
-executed 2026-09-16 with the mid-phase E27 architecture ruling (the physical-system
-container as composition point; the ws interchange is retired — historical term,
-docs/plans/S.md E27). The five-case set is green and reproducible
-(same-ISEED byte-identical); the old chain cross-check holds bitwise
-(max|dF| = max|dE| = 0, dual compiler).
-自定义 PES 接入新增 Tier 1 快通道——单文件预留名容器零 reg 接入
-（docs/plans/2026-10-12-auto-pes-container.md；接入说明 docs/custom_pes.md）。
 
-## Notes
+## 构建
 
-- Build and run conventions: src/CLAUDE.md (single-entry Makefile, wildcard drag-in
-  + prebuild registration, per-compiler build trees, cases run from their folders).
-- The original repository carries .git history for the legacy tree: it remains the
-  provenance record; the workspace root is the active repository.
+```bash
+cd src
+make              # gfortran（默认）-> build/gfortran/venus.e
+make FC=ifx       # Intel ifx      -> build/ifx/venus.e
+make clean        # 删除整个 build/ 子树
+```
+
+- 单一入口 Makefile：wildcard 源码拾取（`src/*.f90`、`src/*/*.f90`、`systems/*/*.f90`）
+  + 每次构建运行 `scripts/prebuild.sh` 生成 `build/<FC>/registry_gen.f90`（聚合注册模块——
+  注册是构建产物，driver 零手写注册行）与 `depend.mk`。
+- 无容器拖入时同样可编译可运行（退化绝热参考面仍绑定）。
+
+## 架构速览
+
+```
+src/
+  driver.f90 / input.f90      L0 控制内核：装配 → 演化 → 统计，零物理
+  globals/                    L1 变量与供给（state/control/config/config_atoms/consts）
+  interface/                  L2 接口与框架（force/elec/sysdef/sampler/container_sched/bath）
+  dynamics/                   L3 闭族积分器（verlet · symple · radau，固定成员制）
+  methods/                    L3 方法库（elec_* / samp_* / inc_* / beam_laws + reg_*）
+  output/                     L4 记录与后处理（recorder/final_state/density/plot_hist）
+  utils/                      L5 仪器（rng 单流/linalg/geometry/specio/hessian）
+```
+
+详见 `src/README.md`（分层规则）、`src/EXTENDING.md`（扩展点）、`src/CLAUDE.md`（构建/判据要点）。

@@ -1,11 +1,13 @@
-# venus2026 构建产物
-venus_test.e
+# 构建产物
+build/
 *.mod
 *.obj
+*.o
+*.exe
 *.pdb
 *.ilk
 
-# cases 运行产物
+# 运行产物
 fort.*
 stdout*
 stderr*
@@ -17,55 +19,6 @@ hist_*.dat
 # 根级运行日志目录不入库（锚定 /，避免误伤基线内的 logs/ 副本）
 /logs/
 
-# 新树 case 运行产物（V：trajectories/直方图全文件不入库，README/results.txt 载摘录；
-# 两级模式覆盖 case_b_layer 的成员子文件夹布局）
-cases/*/trajectories*.txt
-cases/*/hist_*.dat
-cases/*/*/trajectories*.txt
-cases/*/*/hist_*.dat
-
-# SDD 草稿区
-.superpowers/
-
-# K3 build isolation (src/build/)
-build/
 __pycache__/
-
-# 会话/编辑器本地产物（2026-10-04 入库批：不入公开仓库）
 .zcode/
 .vscode/
-
-# 编译二进制与脚本侧构建产物
-*.exe
-scripts/ct_build/
-
-# 一次性运行产物（入库约定：README/results.txt 载摘录）
-cases/*/traj_flushfix_check.txt
-
-# 大体量审计运行数据（45MB，本地留档）
-scripts/local_audit/
-
-# 已发表文献 PDF 与程序手册（版权物，不入公开仓库；README 索引入库）
-docs/literature/*.pdf
-docs/160310_ANT_Manual_v2016.pdf
-
-# 报告渲染图件（工作产物，可再生）
-render/
-
-# --- 2026-10-05 landing batch housekeeping ---
-# afv sweep raw drift dumps (kept on disk; the anchor logs the plan doc cites are committed)
-scripts/drift*.txt
-# literature reference PDFs (not work product; excluded from any publish face)
-docs/literature/
-# publish_min: 2026-10-06 起正式落档入 dev 树（单位制改基批全量镜像，
-# 历史保全分支 publish_min_ev_rebase；原 2026-10-05 杂散副本规则废止）
-# check-recipe object files at src root
-src/*.o
-# vendor archives
-*.rar
-
-# worktree isolation (2026-10-12 Tier 1 auto-PES implementation)
-.worktrees/
-
-# GUI 冒烟截图/测试日志(本地诊断产物,不入库)
-gui/logs/

@@ -1,8 +1,0 @@
-# case_surface_window 运行 stdout 记录(2026-10-13 单位制改基批重跑:eV/Å/amu/fs——能量键旧值÷23.0605、时间键×10;gfortran 树 src/build/gfortran/venus.e,cwd=case 目录)
-# 输入变更（用户裁决 2026-10-01，问题提出于 2026-09-28）：表面范式输入不得写
-assembly complete: trajectories=8 atoms=2 fragments=1 paradigm=1 members=11 init=ok columns=3
-statistics: trajectories=8 valid=8
-outcome counts: none (no classification bound - skipped)
-conservation drift: trajectories=8 max|e_fin-e0|=  2.9163E-05 eV
-histograms: rows=8 files=hist_e_rel.dat hist_thta.dat
-timing: cpu=    0.14 s
