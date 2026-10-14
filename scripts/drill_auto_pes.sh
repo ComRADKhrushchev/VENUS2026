@@ -55,7 +55,7 @@ while IFS= read -r pat; do
    grep -qF "$pat" "$BLD/registry_gen.f90" && ok "woven: $pat" || bad "woven: $pat"
 done <<'PATS'
 use auto_sample_pot, only: pes, keys, term
-use auto_sample_io, only: load, classify
+use auto_sample_io, only: load, classify, observables
 use auto_sample_met, only: prop, match, sync, init, method_name
 call method_reg(method_name(), prop, match, sync)
 if (trim(electronic%method) == method_name()) call init()
@@ -63,6 +63,7 @@ call auto_slots()
 use container_sched, only: container_sched_bind
 call container_sched_bind(keys = auto_keys, &
 force = auto_force, &
+columns = auto_columns
 PATS
 
 # ---- leg 3: partial-shape weave (a pes-only container binds force to the

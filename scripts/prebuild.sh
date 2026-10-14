@@ -115,7 +115,7 @@ done
 # the caller's form check fatals on it.
 auto_scan_file() { # $1 = source path
    awk '
-      BEGIN { split("pes load prop match sync init", sa); for (i in sa) sk[sa[i]] = 1
+      BEGIN { split("pes load prop match sync init observables", sa); for (i in sa) sk[sa[i]] = 1
               split("keys term classify method_name", fa); for (i in fa) fk[fa[i]] = 1 }
       {
          line = $0
@@ -139,8 +139,8 @@ declare -A auto_mod                     # reserved name -> owning module
 auto_pair=no
 if [ -n "$auto_dir" ]; then
    defs=$(for f in "$auto_dir"*.f90; do auto_scan_file "$f"; done)
-   for nm in pes keys load term classify prop match sync init method_name; do
-      case "$nm" in pes|load|prop|match|sync|init) want=s;; *) want=f;; esac
+   for nm in pes keys load term classify prop match sync init method_name observables; do
+      case "$nm" in pes|load|prop|match|sync|init|observables) want=s;; *) want=f;; esac
       got=$(printf '%s\n' "$defs" | awk -v n="$nm" '$2 == n {print}')
       cnt=$(printf '%s\n' "$got" | grep -c .) || true
       [ "$cnt" -eq 0 ] && continue
@@ -203,7 +203,7 @@ fi
       fi
       for m in $(printf '%s\n' "${auto_mod[@]}" | sort -u); do
          names=""; first=1
-         for nm in pes keys load term classify prop match sync init method_name; do
+         for nm in pes keys load term classify prop match sync init method_name observables; do
             if [ "${auto_mod[$nm]:-}" = "$m" ]; then
                if [ "$first" -eq 1 ]; then names="$nm"; first=0; else names="$names, $nm"; fi
             fi
@@ -234,6 +234,7 @@ fi
       [ -n "${auto_mod[term]:-}" ]     && args="$args term"
       [ -n "${auto_mod[init]:-}" ]     && args="$args init"
       [ -n "${auto_mod[classify]:-}" ] && args="$args classify"
+      [ -n "${auto_mod[observables]:-}" ] && args="$args columns"
       echo "   subroutine auto_slots()"
       ia=0
       for a in $args; do
@@ -270,6 +271,9 @@ fi
       [ -n "${auto_mod[classify]:-}" ] && { echo "   subroutine auto_classify()"
          echo "      call container_bind_classify(classify)"
          echo "   end subroutine auto_classify"; }
+      [ -n "${auto_mod[observables]:-}" ] && { echo "   subroutine auto_columns()"
+         echo "      call observables()"
+         echo "   end subroutine auto_columns"; }
    fi
    echo "   subroutine registry_gen_keys()"
    [ -n "$auto_dir" ] && echo "      call auto_slots()"
