@@ -1,3 +1,6 @@
+!   The member carries its own registration (member_register/ member_init - the
+!   fixed-name entries of the 2026-10-14 weave batch; the retired
+!   reg_reg_inc_surface.f90's bodies live here now, paradigm guard included).
 !=====================================================================
 ! inc_surface.f90 - the surface-paradigm incident-channel member
 !   (energy, impact parameter, beam orientation, drop point), sampled
@@ -21,12 +24,15 @@ module inc_surface
    use state,        only: state_t
    use config,       only: reactants
    use config_atoms, only: list_atoms
-   use input,        only: buffer_n_rows, buffer_key, buffer_line
+   use input,        only: buffer_key, buffer_line, buffer_n_rows, buffer_val
+   use sampler, only: samp_reg
+   use seam_cast, only: seam_int, seam_real
    use beam_laws,    only: beam_params_t, beam_t, beam_init, beam_draw, &
                            beam_com_shift, beam_set_com_vel
    implicit none
    private
-   public :: inc_surface_init, inc_surface_draw, inc_surface_realize, inc_surface_sample
+   public :: inc_surface_init, inc_surface_draw, inc_surface_realize, inc_surface_sample, &
+             member_register, member_init
 
    ! derived member state (module-private; rebuilt by every inc_surface_init)
    type(beam_t) :: beam                   ! the shared beam-law instance
@@ -142,4 +148,52 @@ contains
       write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
       stop 1
    end subroutine stop_surfi
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (prebuild binds it into
+   !                   registry_gen_all; the retired reg file's _all body,
+   !                   paradigm guard included - exactly one incident member
+   !                   is armed per process)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      if (.not. armed_here()) return
+      call samp_reg('incident_surface', inc_surface_draw, inc_surface_realize)
+   end subroutine member_register
+
+   !------------------------------------------------------------------
+   ! member_init - the fixed-name init seam (registry_gen_init calls it;
+   !               the retired reg file's _init body moved verbatim)
+   !------------------------------------------------------------------
+   subroutine member_init()
+      type(beam_params_t) :: p        ! parameter receiver (field defaults)
+      character(len=512) :: sval      ! one buffered raw value
+      integer :: i
+      if (.not. armed_here()) return
+      do i = 1, buffer_n_rows()
+         sval = buffer_val(i)
+         select case (trim(buffer_key(i)))
+         case ('N_E_REL');   call seam_int(buffer_key(i), sval, buffer_line(i), p%n_e_rel)
+         case ('T_TRANS');   call seam_real(buffer_key(i), sval, buffer_line(i), p%t_trans)
+         case ('V_WIDTH');   call seam_real(buffer_key(i), sval, buffer_line(i), p%v_width)
+         case ('N_THTA');    call seam_int(buffer_key(i), sval, buffer_line(i), p%n_thta)
+         case ('THTA_MAX');  call seam_real(buffer_key(i), sval, buffer_line(i), p%thta_max)
+         case ('N_CHI');     call seam_int(buffer_key(i), sval, buffer_line(i), p%n_chi)
+         case ('CHI');       call seam_real(buffer_key(i), sval, buffer_line(i), p%chi)
+         case ('N_B');       call seam_int(buffer_key(i), sval, buffer_line(i), p%n_b)
+         case ('N_AIM');     call seam_int(buffer_key(i), sval, buffer_line(i), p%n_aim)
+         case ('AIM_X');     call seam_real(buffer_key(i), sval, buffer_line(i), p%aim_x)
+                            p%aim_x_given = .true.
+         case ('AIM_Y');     call seam_real(buffer_key(i), sval, buffer_line(i), p%aim_y)
+                            p%aim_y_given = .true.
+         end select
+      end do
+      call inc_surface_init(p)
+   end subroutine member_init
+
+   !------------------------------------------------------------------
+   ! (moved verbatim from the retired reg file - the seam's own helper)
+   !------------------------------------------------------------------
+logical function armed_here()
+      armed_here = allocated(list_atoms%frag) .and. reactants%surface_model /= 0
+   end function armed_here
+
 end module inc_surface

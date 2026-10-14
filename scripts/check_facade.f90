@@ -44,7 +44,6 @@
 !            methods/bath_andersen.f90 methods/samp_glo_target.f90 &
 !            methods/samp_thermalize.f90 methods/samp_wigner.f90 methods/seam_cast.f90 &
 !            methods/reg_prop.f90 &
-!            methods/reg_inc_surface.f90 methods/reg_inc_pair.f90 methods/reg_inc_single.f90 &
 !            methods/reg_bath_andersen.f90 &
 !            output/final_state.f90 &
 !            ../systems/reference/reference_pot.f90 &

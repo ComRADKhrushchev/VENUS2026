@@ -1,3 +1,6 @@
+!   The member carries its own registration (member_register - the
+!   fixed-name entries of the 2026-10-14 weave batch; the retired
+!   reg_reg_inc_single.f90's bodies live here now, paradigm guard included).
 !=====================================================================
 ! inc_single.f90 - the trivial single-reactant incident-channel member
 ! Design:
@@ -12,9 +15,12 @@
 !=====================================================================
 module inc_single
    use state, only: state_t
+   use config, only: reactants
+   use config_atoms, only: list_atoms
+   use sampler, only: samp_reg
    implicit none
    private
-   public :: inc_single_draw, inc_single_realize, inc_single_sample
+   public :: inc_single_draw, inc_single_realize, inc_single_sample, member_register
 contains
    !------------------------------------------------------------------
    ! inc_single_draw() - nothing to draw (no collision prescription)
@@ -38,4 +44,23 @@ contains
       call inc_single_draw()
       call inc_single_realize(sta)
    end subroutine inc_single_sample
+   !------------------------------------------------------------------
+   ! member_register - the fixed-name weave entry (prebuild binds it into
+   !                   registry_gen_all; the retired reg file's _all body,
+   !                   paradigm guard included - exactly one incident member
+   !                   is armed per process)
+   !------------------------------------------------------------------
+   subroutine member_register()
+      if (.not. armed_here()) return
+      call samp_reg('incident_single', inc_single_draw, inc_single_realize)
+   end subroutine member_register
+
+   !------------------------------------------------------------------
+   ! (moved verbatim from the retired reg file - the seam's own helper)
+   !------------------------------------------------------------------
+logical function armed_here()
+      armed_here = allocated(list_atoms%frag) .and. reactants%surface_model == 0 &
+                   .and. size(list_atoms%frag) <= 1
+   end function armed_here
+
 end module inc_single
