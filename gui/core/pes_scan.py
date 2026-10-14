@@ -42,7 +42,7 @@ class NameDef:
 class ScanResult:
     """容器文件夹扫描结论。"""
     folder: str
-    is_tier1: bool = True          # False = 含 reg_*.f90(显式注册容器,非本检查器对象)
+    is_tier1: bool = True          # 历史字段:reg 形态 2026-10-14 退役后恒 True(保留字段兼容既有判词读取)
     has_f90: bool = False
     defs: dict[str, list[NameDef]] = field(default_factory=dict)   # 名 → 出现列表
     errors: list[str] = field(default_factory=list)                # 中止级问题(中文)
@@ -149,11 +149,7 @@ def scan_container(folder: str | Path) -> ScanResult:
     f90s = sorted(p.glob("*.f90"))
     res.has_f90 = bool(f90s)
     if not f90s:
-        res.errors.append("文件夹无 .f90 文件(纯势容器须暴露预留名,势能面组至少 pes)")
-        return res
-    if any(f.name.startswith("reg_") for f in f90s):
-        res.is_tier1 = False
-        res.notes.append("含 reg_*.f90:显式注册容器,reg 是权威,十名全忽略")
+        res.errors.append("文件夹无 .f90 文件(容器须暴露预留名,势能面组至少 pes)")
         return res
 
     defs: dict[str, list[NameDef]] = {n: [] for n in ALL_NAMES}
@@ -198,8 +194,7 @@ def scan_container(folder: str | Path) -> ScanResult:
             res.errors.append("method_name 已定义但 prop+match 未定义")
     if not defs["pes"]:
         res.errors.append(
-            "容器已安装(文件夹在场且无 reg_*.f90)却什么都没接:请暴露恰好一个 'pes' 入口,"
-            "或写 reg_*.f90 完整容器"
+            "容器已安装(文件夹在场)却什么都没接:请暴露恰好一个 'pes' 入口(预留名词表)"
         )
 
     # 展示性提取

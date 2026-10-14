@@ -239,9 +239,7 @@ class PesPage(QWidget):
                 self._table.setItem(i, 3, QTableWidgetItem(
                     "subroutine" if d.kind == "s" else "function"))
                 self._table.setItem(i, 4, QTableWidgetItem(f"{d.module} ({d.file})"))
-        if not res.is_tier1:
-            self._scan_info.setText("ℹ 显式注册容器:reg 权威,十名忽略。")
-        elif res.ok:
+        if res.ok:
             extras = []
             if res.keys_words:
                 extras.append(f"keys 词表: {', '.join(res.keys_words)}")

@@ -92,12 +92,13 @@ auto_fatal() { # $1 = message (the design's named aborts, prebuild side)
    exit 1
 }
 
-# candidate folder: one level under systems/, holding .f90, no reg_*.f90
+# candidate folder: one level under systems/, holding .f90 (the reg_*.f90
+# container form is retired 2026-10-14 - a leftover reg file is just another
+# source file to the wildcard; folder identity is the reserved names alone)
 auto_dir=""
 for d in "$SRC/../systems"/*/; do
    [ -d "$d" ] || continue
    ls "$d"*.f90 >/dev/null 2>&1 || continue
-   ls "$d"reg_*.f90 >/dev/null 2>&1 && continue
    if [ -n "$auto_dir" ]; then
       auto_fatal "two auto containers are installed ('$auto_dir' and '$d') - one container per process"
    fi
@@ -164,7 +165,7 @@ if [ -n "$auto_dir" ]; then
       [ -n "${auto_mod[init]:-}" ] && auto_fatal "init is defined but prop+match are not (a lone init member is not a package) in $auto_dir"
       [ -n "${auto_mod[method_name]:-}" ] && auto_fatal "method_name is defined but prop+match are not in $auto_dir"
    fi
-   [ -z "${auto_mod[pes]:-}" ] && auto_fatal "$auto_dir is installed (folder present, no reg_*.f90) but wires nothing: expose exactly one 'pes' entry, or write a reg_*.f90 full container"
+   [ -z "${auto_mod[pes]:-}" ] && auto_fatal "$auto_dir is installed (folder present) but wires nothing: expose exactly one 'pes' entry (the reserved names)"
 fi
 
 {
@@ -185,8 +186,8 @@ fi
    echo "! once in container_sched_init), then every methods/ _init entry"
    echo "! (unselected members skip inside their own guard)."
    if [ -n "$auto_dir" ]; then
-      echo "! An auto container's weave (auto_slots) enters here when a reg-less"
-      echo "! systems/ folder is present - Tier 1, docs/plans/2026-10-12-auto-pes-container.md."
+      echo "! An auto container's weave (auto_slots) enters here when a systems/"
+      echo "! folder is present - Tier 1, docs/plans/2026-10-12-auto-pes-container.md"
    fi
    echo "module registry_gen"
    echo "   use container_sched, only: container_sched_keys, container_sched_all, &"

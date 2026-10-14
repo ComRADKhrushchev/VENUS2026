@@ -62,11 +62,13 @@ def test_pot_only_green(tmp_path):
     assert not res.prop_match_pair
 
 
-def test_reg_folder_is_tier2(tmp_path):
-    d = _pot_folder(tmp_path, {"reg_x.f90": "module reg_x\nend module\n"})
+def test_reg_file_is_ordinary_source(tmp_path):
+    """reg 形态 2026-10-14 退役:reg_*.f90 只是普通源文件,不改变容器判读。"""
+    d = _pot_folder(tmp_path, {"pot.f90": POT_ONLY, "reg_x.f90": "module reg_x\nend module\n"})
     res = pes_scan.scan_container(d)
-    assert not res.is_tier1
-    assert not res.errors
+    assert res.is_tier1
+    assert res.ok, res.errors
+    assert res.found("pes").module == "my_pot"
 
 
 def test_duplicate_pes(tmp_path):

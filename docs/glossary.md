@@ -39,10 +39,10 @@
 | samp_ 前缀族 | the per-fragment initial-state distribution family file/module prefix (renamed from dist_ 2026-09-28; registration words unchanged) | 采样分布成员前缀 | samp_*/reg_samp_*/check_samp_* | the incident family uses inc_*/beam_laws |
 | 演化循环前的碰撞平衡机制（BATH=ANDERSEN 时启用，thermostat 摘出 dist 家族 2026-09-22） | **浴循环** | bath loop | species=bath 物种（模块 bath_andersen，Andersen 重置）；循环含环内抽签的明文豁免 |
 | BATH 激活即隐含：无主原子（基板）从 list_atoms%q0 就位；有方案的片段 q/p 逐位冻结并经 geom_sep_probe 摆到无相互作用距离（兼作 PES 健康检查） | **浴前置播种 / 冻结立法** | bath seeding / freeze statute | 探针度量=片段对环境受力的扰动（全局场在差分中消去） |
-| Tier 1 纯势容器自动接线识别的十个 public 过程名（pes/keys/load/term/classify + prop/match/sync/init/method_name；术语定名与方法包初始化名 arm→init 均 2026-10-13 用户决定——名称须自释初始化义） | **预留名** | reserved names | 魔数名（史层不改：裁决记录 docs/plans/2026-10-12-auto-pes-container.md 原词保留）；arm/武装（史层：arm→init 更名前的槽位与预留名，docs/plans 与既有裁决记录原词不改） |
-| 零 reg 自动接线容器：无 reg_\*.f90 的 systems/ 文件夹由 prebuild 按十个预留名自动织入（2026-10-12 立法，术语 2026-10-13 定名） | **Tier 1 纯势容器** | Tier 1 pure-PES container (reserved-name auto-wired) | 决定记录 docs/plans/2026-10-12-auto-pes-container.md（D1-D6）；判据 check_auto_pes + drill_auto_pes |
-| reg 三件套形态的全功能容器（自定义记录列/一文件夹多方法包/复杂参数体所需） | **Tier 2 全容器** | Tier 2 full container (reg-based) | 现役 cau 五连（rec_reg_col 记录列词汇所迫）；范本 reg 骨架 systems/inactive/cau_rst |
-| 转换形态：box 保留全部公有旧名、另暴露预留名薄包装、删 reg（2026-10-12 D6 同步批） | **包装法** | wrapper pattern | 四容器模板 reference/fh2_leps/h2ag111PES/h3_bkmp2；判据程序与 probe 钩子零改动 |
+| Tier 1 容器自动接线识别的十一个 public 过程名（pes/keys/load/term/classify/observables + prop/match/sync/init/method_name；术语定名与方法包初始化名 arm→init 均 2026-10-13 用户决定——名称须自释初始化义；第 11 名 observables 为 2026-10-14 用户决定，对齐 OBSERVABLES 键） | **预留名** | reserved names | 魔数名（史层不改：裁决记录 docs/plans/2026-10-12-auto-pes-container.md 原词保留）；arm/武装（史层：arm→init 更名前的槽位与预留名，docs/plans 与既有裁决记录原词不改） |
+| 预留名自动接线容器：systems/ 文件夹由 prebuild 按十一个预留名自动织入（2026-10-12 立法，术语 2026-10-13 定名） | **Tier 1 容器** | Tier 1 container (reserved-name auto-wired) | 决定记录 docs/plans/2026-10-12-auto-pes-container.md（D1-D6）；判据 check_auto_pes + drill_auto_pes |
+| reg 三件套形态的全功能容器（**2026-10-14 退役，史层**——method_name/observables 两名补齐其独有能力后全库转 Tier 1，决定 docs/plans/2026-10-14-reg-retirement-observables.md） | **Tier 2 全容器** | Tier 2 full container (reg-based, retired) | 曾因 rec_reg_col 记录列词汇所迫现役 cau 五连（已全部转 Tier 1） |
+| 转换形态：box 保留全部公有旧名、另暴露预留名薄包装（2026-10-12 D6 同步批四容器进 box；2026-10-14 cau 五连用独立 wires 文件——保判据配方零依赖） | **包装法** | wrapper pattern | 九容器模板 reference/fh2_leps/h2ag111PES/h3_bkmp2 + cau 五连；判据程序与 probe 钩子零改动 |
 | 织入槽无条件绑定（如 auto_classify 恒 container_bind_classify）；键缺席门控由模块内 found 旗标自实现 | **在场即绑** | presence binding | 2026-10-12 决定 R-C1：键缺席生产腿 outcome 行走兜底通道 |
 | 分类体在判据键缺席时终 else 支的残差通道（capture/dissociation 计数） | **兜底通道** | fallback channel | 2026-10-12 决定 R-C1：六个无 E_SPLIT 生产腿统计行翻为兜底计数（出处 §1 所引决定记录 §6） |
 | keys() 包装首调（parse 前无卫兵调用点）预置可计算缺省，复刻 reg 注册期置常数的时序 | **惰性预置** | lazy default pre-staging | 2026-10-12 决定 R-C2；范本 reference_box（staged_default 守卫防缺省覆写输入覆写的有效常数） |

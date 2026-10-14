@@ -1,15 +1,16 @@
 # EXTENDING.md — 新程序扩展点(E27 后契约)
 
-接一个自定义势能面（含可选非绝热方法包）的**最短路径是 Tier 1**：一个文件夹、
-若干 .f90、零 reg 文件。需要更复杂的接线（多方法包、自定义记录列、复杂参数体）
-时升级 Tier 2（§1b 的 reg 三件套——reg 在场则自动接线静默退出，pot 侧预留名
-函数全部可被 reg 直接复用，升级零迁移）。
+接一个自定义势能面（含可选非绝热方法包、自定义记录列）的**路径只有 Tier 1**：
+一个文件夹、若干 .f90、零 reg 文件、十一预留名（2026-10-14 reg 退役——原
+Tier 2 reg 三件套形态废止，裁决记录 docs/plans/2026-10-14-reg-retirement-
+observables.md；method_name/observables 两个槽补齐了它最后的两项独有能力）。
 
-## 1a. Tier 1 纯势容器——十预留名词表（封闭集合）
+## 1a. Tier 1 容器——十一预留名词表（封闭集合）
 
-`systems/<sys>/` 文件夹**不含 reg_\*.f90** 即 Tier 1 容器。文件夹内 .f90 暴露
+`systems/<sys>/` 文件夹即容器（遗留的 reg_\*.f90 只是普通源文件——文件夹身份
+完全由预留名决定）。文件夹内 .f90 暴露
 下列预留名（名字即约定，签名即既有接口，编译期核对；裁决记录
-docs/plans/2026-10-12-auto-pes-container.md）：
+docs/plans/2026-10-12-auto-pes-container.md + 2026-10-14-reg-retirement-observables.md）：
 
 **势能面组**
 
@@ -20,6 +21,7 @@ docs/plans/2026-10-12-auto-pes-container.md）：
 | `load()` | subroutine | 可选 | 无参自持 `pull`；**亦即 seam 期初始化钩子**——读参数文件（NN 权重模式）/分配在此，先于一切力消费者与 init |
 | `term(sta)` | function | 可选 | 终止判断（键缺席门控用 found 旗标自实现；未绑 = 跑满 MAX_STEPS） |
 | `classify(fin)` | function | 可选 | 通道分类（返回通道名） |
+| `observables()` | subroutine | 可选 | 记录列注册（体内连调 `rec_reg_col('列名', 函数)`；第 11 名，2026-10-14；选择门控自持） |
 
 **方法包组**（自定义非绝热方法）
 
@@ -31,8 +33,9 @@ docs/plans/2026-10-12-auto-pes-container.md）：
 | `init()` | subroutine | 可选随对 | 选中后初始化（门控归生成代码；参数自持走 keys/load） |
 | `method_name()` | function | 随对必备 | 返回 `character(len=32)` **小写**注册名；`ELEC_METHOD = <名>` 选用 |
 
-规则一句话：势能面组在场即绑；方法组注册无条件、初始化有门；reg 在场则十名全忽略
-（reg 权威）；名字须 public；prebuild 对 pes 0/≥2、任一名 ≥2、形不符、prop 与
+规则一句话：势能面组在场即绑；方法组注册无条件、初始化有门；reg_*.f90 已退役
+（2026-10-14——在场也只是普通源文件，不被识别）；名字须 public；prebuild 对
+pes 0/≥2、任一名 ≥2、形不符、prop 与
 match 不成对、method_name 缺对、sync/init 孤立、双自动文件夹各有一条指名中止。
 
 注（R-C2 裁决，范本 reference_box）：`keys()` 包装可在首调（parse 前的无卫兵
@@ -42,14 +45,14 @@ match 不成对、method_name 缺对、sync/init 孤立、双自动文件夹各�
 
 现成范本：`systems/inactive/auto_sample/`（pot.f90 / io.f90 / tdhf_stub.f90；
 判据 `scripts/check_auto_pes.f90` + 演练 `scripts/drill_auto_pes.sh`）。生产
-容器同步批范本：fh2_leps / h2ag111PES / h3_bkmp2 / reference 四容器已全部为
-Tier 1 魔数名形态（包装法——box 保留全部公有旧名，另暴露五个魔数名薄包装
-pes/keys/load/term/classify，零 reg；判据程序与 probe 钩子零改动）。
-激活 = 文件夹搬回 systems/ 顶层（一次一容器；reference 本身已是 Tier 1 自动
-容器，两个自动文件夹并存 prebuild 即中止——测试时把 reference 暂存
-systems/inactive/）。
+容器范本（包装法——box 保留全部公有旧名，另暴露预留名薄包装；含方法包与
+observables 记录列的完整形态）：cau_tab（`cau_tab_wires.f90`——十名全花色）；
+纯势四名形态：fh2_leps / h2ag111PES / h3_bkmp2 / reference；cau 五连已全部
+转 Tier 1（2026-10-14），判据程序与 probe 钩子零改动。
+激活 = 文件夹搬回 systems/ 顶层（一次一容器；两个自动文件夹并存 prebuild 即
+中止——测试时把 reference 暂存 systems/inactive/）。
 
-## 1b. Tier 2 全容器——reg 三件套（体系专属代码的组合点）
+## 1b. 容器材料与构型（原 Tier 2 reg 节——2026-10-14 退役）
 
 一个文件夹 = 一个体系,自足材料:
 
@@ -57,39 +60,17 @@ systems/inactive/）。
 systems/mysystem/
   my_pes.f90        体系物理: H 定义/势能/力律/随机律, eV 交付
   my_box.f90        (可选) 参数接收器(键表 + params_t) + 终止/分类判断
-  reg_mysystem.f90  拖入件(接线区块模板, 2026-09-22): 唯一公共入口
-                    reg_mysystem_slots() 一次交接填满 interface/container_sched
-                    的八个槽(2026-10-05: 注册期谱导出槽废除); 区体全部私有, 按
-                    declare_keys/load_params(输入), bind_force/register_method
-                    (常规), bind_term/init_method(初始化),
-                    bind_classify/register_columns(输出)分组——空槽合法跳过,
-                    时序与守卫归 container_sched
+  my_wires.f90      (可选) 预留名薄包装——复杂接线(方法包/记录列)时集中
+                    承载, 范本 cau_tab_wires.f90; 不进 box 保判据配方零依赖
   system/           反应物构型(2026-09-22 裁决): 一反应物一文件(.xyz 无晶胞 /
                     .poscar 带晶胞), 只放构型——扫描对未知扩展名即停(文件夹根的
                     .f90/引擎参数文件不进扫描); SYSTEM_DIR 指向此子文件夹
 ```
 
-容器 reg 骨架(照抄即得, 现成范本 systems/inactive/cau_rst/reg_cau_rst.f90——
-2026-10-12 同步批后 reg 族仅存的范本):
-
-```fortran
-subroutine reg_mysystem_slots()          ! 唯一公共入口: 一次交接
-   call container_sched_bind(keys    =declare_keys, &     ! 声明键词表(解析前)
-                             load    =load_params, &     ! pull 暂存键 -> load
-                             force   =bind_force, &    ! container_bind_pes(my_pes)
-                             method  =register_method, &   ! method_reg(体系专属方法包, 可无)
-                             term    =bind_term, &     ! 键门控 container_bind_term
-                             init    =init_method, &     ! 方法包初始化(ELEC_METHOD 门控)
-                             classify=bind_classify, & ! 键门控 container_bind_classify
-                             columns =register_columns)    ! rec_reg_col(选择门控)
-end subroutine
-! ---- 以下为私有功能名区体: 每体只做自己的接线 + 自己的门控 ----
-```
-
-- **现役 Tier 2 容器**: cau 五连(cau_emt2 / cau_emtnn / cau_rst / cau_peri /
-  cau_tab, 均在 systems/inactive/)——自定义记录列(`rec_reg_col` 多参数注册词汇,
-  §1a 词表封闭章程)所迫; fh2_leps / h2ag111PES / h3_bkmp2 与 reference 四容器
-  已于 2026-10-12 同步批全部转为 Tier 1 魔数名形态(§1a)。
+reg 骨架（reg_mysystem_slots 一次交接八槽的形态）已随 2026-10-14 reg 退役
+废止——其接线语义由 prebuild 织入的 `auto_slots` 承载（关键词 actual 由预留名
+包装生成），范本见 systems/inactive/cau_tab/cau_tab_wires.f90 的十名全花色。
+史层：reg 范本最后形态曾为 systems/inactive/cau_rst/reg_cau_rst.f90（已删）。
 
 - **构型文件随容器**(2026-09-22 裁决): 体系专属容器的反应物构型放容器文件夹的
   `system/` 子文件夹——扫描纯净性所迫(逐文件判据的即停不容代码/参数文件混入),

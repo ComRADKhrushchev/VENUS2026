@@ -25,11 +25,12 @@ make clean        # removes the whole build/ tree (both compiler subtrees)
 ```
 
 - Registration is a BUILD ARTIFACT: `scripts/prebuild.sh` regenerates `build/<FC>/registry_gen.f90`
-  and `depend.mk` on every make. A new method = one file in `src/methods/` (or `systems/<name>/`)
-  plus a thin `reg_*.f90`; the wildcard picks it up — never hand-edit the Makefile or registry.
+  and `depend.mk` on every make. A new method = one file in `src/methods/` plus a thin
+  `reg_*.f90`; the wildcard picks it up — never hand-edit the Makefile or registry.
   Naming contract (2026-09-22): a methods/ reg hosts `<mod>_all` (+ optional `<mod>_init` —
-  the member-parameter load); a systems/ (container) reg hosts `<mod>_slots` only (the
-  container-schedule handover — see the E-block below); the aggregates keep their three
+  the member-parameter load); a systems/ (container) folder carries no reg at all — its
+  reserved-name wrappers are the wiring surface (see the Tier 1 bullet below; the container
+  reg form is retired 2026-10-14). The aggregates keep their three
   driver-facing names (`registry_gen_keys` / `_all` / `_init`).
 - Container storage (2026-09-21 ruling): only ONE container folder sits active in
   `systems/` per build (one-container-per-process). Verified containers are stored in
@@ -47,14 +48,17 @@ make clean        # removes the whole build/ tree (both compiler subtrees)
   `systems/inactive/` (two levels deep — outside the build glob). `systems/` top level keeps
   only `reference/` (the production container of the five cases); to test a container, move
   its folder to `systems/` top level, `make` twice, test, then move it back. Concurrent
-  containers: two AUTO (Tier 1) folders abort at prebuild (2026-10-12 D6 ruling); an auto +
-  a reg container double-bind at assembly (STOP 1) — the check_* criterion programs compile
+  containers abort at prebuild ("two auto containers", 2026-10-12 D6 ruling; with the reg
+  form retired 2026-10-14 every folder is an auto candidate) — the check_* criterion
+  programs compile
   containers standalone and are unaffected; running venus.e on a tested container requires
   temporarily shelving reference too (or the still-parked selection mechanism).
-- Tier 1 pure-PES containers (2026-10-12): a systems/* folder WITHOUT reg_*.f90 is
-  auto-wired by prebuild from ten reserved names (pes/keys/load/term/classify +
-  prop/match/sync/init/method_name) - no reg file at all; a reg_*.f90 present disables
-  the weave (reg authoritative). Ruling: docs/plans/2026-10-12-auto-pes-container.md;
+- Tier 1 reserved-name containers (2026-10-12; eleventh name + reg retirement 2026-10-14):
+  every systems/* folder is auto-wired by prebuild from eleven reserved names (pes/keys/
+  load/term/classify + prop/match/sync/init/method_name + observables) — no reg file at all.
+  A leftover reg_*.f90 is just another source file to the wildcard (folder identity is the
+  reserved names alone — a folder exposing none aborts "wires nothing"). Ruling:
+  docs/plans/2026-10-12-auto-pes-container.md + docs/plans/2026-10-14-reg-retirement-observables.md;
   fixture systems/inactive/auto_sample; criterion check_auto_pes.f90 + drill_auto_pes.sh.
 
 ## Architecture rules that matter for edits
@@ -71,26 +75,28 @@ make clean        # removes the whole build/ tree (both compiler subtrees)
 - **E28 (2026-09-22) — container parameters ride the program input**: the run-directory
   `*_pars.txt` channel is RETIRED. A container's parameter vocabulary = DECLARED container keys
   of input_qct.txt: the box owns `*_keys()` + `*_params_t` (field defaults are the container
-  defaults); the reg file's `declare_keys` body (under its `reg_<sys>_slots` handover — pure
-  vocabulary data) declares them (`input_declare_keys`), and its `load_params` body pulls one
-  line per key
+  defaults); the container's keys()/load() reserved-name wrappers (formerly the reg file's
+  declare_keys/load_params bodies — reg retired 2026-10-14) declare them (`input_declare_keys`)
+  and pull one line per key
   (`pull(key, target [, found])` — absent key keeps the default, `found` carries optional-slot
   presence) into the receiver, then `*_load(p)` takes it into module state and validates.
   `input_audit_declared` (driver, after `registry_gen_init`) fatals a buffered-but-unconsumed
   declared key. A declared key must not collide with a program/member key. Ruling record:
   docs/plans/T.md.
-- **Container schedule (2026-09-22) — the reg file carries content, the schedule carries
-  time**: a systems/ (container) reg file hosts exactly ONE public entry,
-  `reg_<sys>_slots()` — the single handover that fills the nine wiring slots of
-  `interface/container_sched` via one keyword call. The slot bodies below it are private and
-  grouped in four fixed wiring groups — input (`declare_keys`, `load_params`), regular
-  (`bind_force`, `register_method`, `export_spectrum`), initialization (`bind_term`,
-  `init_method`), output (`bind_classify`, `register_columns`) — a null slot is a legal skip.
+- **Container schedule (2026-09-22; the handover's carrier simplified 2026-10-14) — the
+  reserved-name wrappers carry content, the schedule carries time**: prebuild's weave
+  (`auto_slots`, generated into registry_gen) fills the nine wiring slots of
+  `interface/container_sched` via one keyword call from the folder's reserved names. The slot
+  wrappers are grouped in four fixed wiring groups — input (`keys`, `load`), regular
+  (`pes`, `prop/match/sync/method_name`), initialization (`term`, `init`),
+  output (`classify`, `observables`) — a null slot is a legal skip (its reserved name simply
+  absent).
   The schedule owns the lifecycle order (keys before the parse; force/method/export at
   registration; load/term/classify/init/columns at the initialization assembly) and the
   seam guard ONCE (`system_dir` empty → no seam wiring runs); every gate (key found, method
-  selected) lives inside the container's own slot bodies. Slots are single — a second fill
-  aborts (one container per process). Ruling record: docs/plans/2026-09-22-container-schedule.md.
+  selected) lives inside the container's own wrapper bodies. Slots are single — a second fill
+  aborts (one container per process). Ruling records: docs/plans/2026-09-22-container-schedule.md,
+  docs/plans/2026-10-14-reg-retirement-observables.md.
 - **Reactant definitions live in the container folder (2026-09-22)**: each system-specific
   container carries its reactant configuration files in a `system/` subfolder (one file per
   reactant, .xyz / .poscar; the subfolder is scan-pure — the loud-stop scan must not see the
