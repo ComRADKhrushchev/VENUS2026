@@ -103,3 +103,25 @@
   在案）。
 - observables 织入的调用时点 = 输出装配组（与 reg 的 register_columns
   同位）；无 observables 的容器合法缺省（槽空跳过）。
+
+## 执行注记（2026-10-14，实施计划 docs/plans/2026-10-14-reg-retirement-plan.md 五任务全数完成）
+
+- **T1**（b0fba9e + 勘误 df2bd0b）：prebuild 四处名集+形态 case+auto_slots
+  columns 绑定+auto_columns 发射；样例 io.f90 observables 正例。勘误起因：
+  钻头退出陷阱第二次抹掉未提交样例编辑（同 2fb9be5 先例）——**教训固化：
+  样例编辑必须先提交再跑钻头**。
+- **T2**（84994b1）：cau_tab_wires.f90 十名包装（wires 文件形态，判据配方零
+  触碰）；判据 150/0 与基线逐字一致；冒烟逐位复现归档；columns=11。
+- **T3**（b714d02）：四兄弟 wires（pull 行自 reg 逐字抽取；peri 续行符一字
+  之漏经编译级验证当场捕获）；四判据 103/99/94/94 与基线逐字一致；四家
+  wires 语法编译全过（模块链 -J 临时 .mod + 主构建 .mod）。
+- **T4**（becd12b）：prebuild 删 reg 让位分支；wires-nothing 文案去 reg 提法
+  （prebuild+GUI 镜像两处）；EXTENDING/AGENTS/glossary/GUI 同步；静默忽略
+  语义实证（旧 reg 容器拖入→新文案中止，logs/regret_silent_ignore.log）；
+  GUI 套件 137/0。
+- **T5**（终局门）：八案例回归 8×rc=0（logs/regret_cases.log，首跑五例 127
+  为执行路径笔误——嵌套案例需 ../../../，非程序问题）；双编译器 gfortran/
+  ifx 双 rc=0 零错误（logs/regret_make_gf/ifx.log）；钻头 30 实腿全绿
+  （logs/regret_drill_final.log）——zero-touch 唯一红腿归因**外来并行编辑**
+  （docs/custom_pes.md + docs/input_keys.md，非本批文件，归属并行文档会话，
+  未代处置）；干净树 31/0 留待该会话落盘后随批复验。
