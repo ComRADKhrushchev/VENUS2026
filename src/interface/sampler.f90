@@ -33,6 +33,9 @@ module sampler
    use config_atoms, only: list_atoms
    use geometry, only: rot_rand_rmat, rot_apply
    use bath, only: bath_run
+   use input, only: input_dist_code, input_dist_word   ! the grammar owns the
+      ! scheme vocabulary - single word<->code source (2026-10-14 weave batch);
+      ! the sampler's former hand-synced scheme_code_name duplicate is retired
    implicit none
    private
    public :: samp_reg, samp_run, samp_code, samp_n_dist, samp_incident_word
@@ -61,19 +64,13 @@ module sampler
    type(dist_entry_t) :: dist_tbl(max_dist) ! distribution member table (module-private)
    integer :: n_dist = 0                   ! registered row count [row]
 
-   ! Scheme-code table: the integer codes of reactants%dist_scheme denote
-   ! member names (the same words the input grammar accepts for DIST_SCHEME);
-   ! a new member adds its grammar word together with its row here, next to
-   ! its registration line. The incident channel is NOT a per-fragment
-   ! scheme word: it splits per paradigm into incident_surface /
-   ! incident_pair / incident_single (samp_incident_word resolves which),
-   ! so those rows carry no scheme code here (their registration rows in
-   ! the member table above stay - the scheme-argument lookup path uses them)
-   integer, parameter :: n_scheme_code = 10
-   character(len=32), parameter :: scheme_code_name(n_scheme_code) = &
-      [ character(len=32) :: 'boltzmann', 'ebk', 'rotation', 'j', &
-                              'surface_oscillator', 'normalmode', 'barrier_excitation', &
-                              'glo_target', 'thermalize', 'wigner' ]
+   ! Scheme-code table: the integer codes of reactants%dist_scheme are the
+   ! input grammar's dist_tbl codes (input_dist_word resolves them) - the
+   ! word<->code table lives ONCE, in input (the 2026-10-14 weave batch
+   ! retired the duplicated hand-synced scheme_code_name array here). The
+   ! incident channel is NOT a per-fragment scheme word: it splits per
+   ! paradigm into incident_surface / incident_pair / incident_single
+   ! (samp_incident_word resolves which)
 
    integer, parameter :: max_frag = 64    ! fragment-count working ceiling [fragment]
                                           ! (the orientation-stage draw/apply arrays are
@@ -85,14 +82,7 @@ contains
    !                   dist_scheme rows select it (fragment binding)
    pure integer function samp_code(name)
       character(len=*), intent(in) :: name  ! member word (e.g. 'boltzmann')
-      integer :: i
-      samp_code = 0
-      do i = 1, n_scheme_code
-         if (trim(scheme_code_name(i)) == trim(name)) then
-            samp_code = i
-            exit
-         end if
-      end do
+      samp_code = input_dist_code(name)     ! the grammar's table is the single source
    end function samp_code
 
    !------------------------------------------------------------------
@@ -161,6 +151,7 @@ contains
                                              ! the dispatched members, each in the
                                              ! components it owns)
       integer :: n_frag, nat, irow, frow, i, n_called
+      character(len=32) :: w32                     ! the resolved scheme word (one per row)
       integer :: called(max_dist)               ! member rows already dispatched this
                                                 ! call (dedup: one call per distinct member)
       logical :: orient_on, eligible(max_frag)  ! orientation-stage mask (per fragment)
@@ -233,15 +224,16 @@ contains
          ! channel alone; the scheme word on it is the input's way of saying
          ! "this fragment carries no internal sampling")
          if (list_atoms%frag(i)%nat < 2) cycle
-         if (reactants%dist_scheme(i) < 1 .or. reactants%dist_scheme(i) > n_scheme_code) then
+         w32 = input_dist_word(reactants%dist_scheme(i))
+         if (w32 == '') then
             call stop_samp('samp_run', 'fragment '//trim(i8_str(i))//' carries scheme code '// &
-               trim(i8_str(reactants%dist_scheme(i)))//' outside the scheme-code table (1..'// &
-               trim(i8_str(n_scheme_code))//')')
+               trim(i8_str(reactants%dist_scheme(i)))//' outside the scheme-code table '// &
+               '(the input dist_tbl)')
          end if
-         frow = find_row(scheme_code_name(reactants%dist_scheme(i)))
+         frow = find_row(w32)
          if (frow == 0) then
             call stop_samp('samp_run', 'fragment '//trim(i8_str(i))//' scheme member "'// &
-               trim(scheme_code_name(reactants%dist_scheme(i)))// &
+               trim(w32)// &
                '" is not registered (incomplete member library assembly)')
          end if
          if (any(called(1:n_called) == frow)) cycle
@@ -263,7 +255,7 @@ contains
       called = 0
       do i = 1, n_frag
          if (list_atoms%frag(i)%nat < 2) cycle   ! monoatomic: no internal DOFs
-         frow = find_row(scheme_code_name(reactants%dist_scheme(i)))
+         frow = find_row(input_dist_word(reactants%dist_scheme(i)))
          if (any(called(1:n_called) == frow)) cycle
          n_called = n_called + 1
          called(n_called) = frow

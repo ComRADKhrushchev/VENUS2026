@@ -6,7 +6,10 @@
 !   gfortran -Jbuild globals/control.f90 globals/config.f90 globals/consts.f90 &
 !            utils/specio.f90 interface/sysdef_interface.f90 input.f90 &
 !            globals/config_atoms.f90 globals/state.f90 utils/rng.f90 &
-!            utils/geometry.f90 interface/sampler.f90 &
+!            utils/geometry.f90 utils/linalg.f90 utils/hessian.f90 &
+!            utils/geom_init.f90 utils/spectrum.f90 interface/elec_interface.f90 &
+!            interface/force_interface.f90 dynamics/propagator.f90 interface/bath.f90 &
+!            interface/sampler.f90 &
 !            ../scripts/check_sampler.f90 -o build/check_sampler.exe
 ! All artifacts are written under build/ - the source tree stays clean.
 ! Named-abort verification approach (same scheme as the other criteria

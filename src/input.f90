@@ -31,6 +31,7 @@ module input
    public :: buffer_n_rows, buffer_key, buffer_block, buffer_line, buffer_val
    public :: input_declare_keys, input_audit_declared, pull
    public :: par_int, par_real, input_audit_dist_par
+   public :: input_dist_code, input_dist_word
 
    integer, parameter :: key_len  = 32     ! keyword capacity [character]
    integer, parameter :: val_len  = 512    ! value capacity [character]
@@ -1522,6 +1523,42 @@ contains
       character(len=16) :: s
       write (s, '(i0)') n
    end function i2s
+
+   !------------------------------------------------------------------
+   ! input_dist_code(word) - the dist-family word's scheme code (0 = absent);
+   !                          the single word<->code table entry point - the
+   !                          sampling framework and every member seam consult
+   !                          this (case-insensitive; the grammar owns the words)
+   !------------------------------------------------------------------
+   pure integer function input_dist_code(word)
+      character(len=*), intent(in) :: word  ! scheme word, any case
+      integer :: i
+      input_dist_code = 0
+      do i = 1, size(dist_tbl)
+         if (trim(dist_tbl(i)%word) == to_upper(trim(word))) then
+            input_dist_code = dist_tbl(i)%code
+            exit
+         end if
+      end do
+   end function input_dist_code
+
+   !------------------------------------------------------------------
+   ! input_dist_word(code) - the scheme code's word in the LOWERCASE dispatch
+   !                          form ('' = outside the table) - the form the
+   !                          sampler's member names carry
+   !------------------------------------------------------------------
+   pure function input_dist_word(code) result(word)
+      integer, intent(in) :: code         ! scheme code
+      character(len=32) :: word           ! lowercase dispatch form
+      integer :: i
+      word = ''
+      do i = 1, size(dist_tbl)
+         if (dist_tbl(i)%code == code) then
+            word = to_lower(trim(dist_tbl(i)%word))
+            exit
+         end if
+      end do
+   end function input_dist_word
 
    ! to_upper(s) - ASCII uppercase of a trimmed string
    pure function to_upper(s) result(t)
