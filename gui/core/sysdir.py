@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""sysdir.py - system/ 体系文件夹解析(src/utils/specio.f90 + interface/sysdef_interface.f90 的移植)
+"""sysdir.py - system/ 反应物构型文件夹解析(src/utils/specio.f90 + interface/sysdef_interface.f90 的移植)
 
 设计:
   .xyz / POSCAR 解析、元素质量表、名序折叠排序、单胞规则(散射类自 SCATTERING 键取,2026-10-13 裁决)
@@ -286,7 +286,7 @@ def scan_system_dir(folder: str | Path) -> SysDef:
     p = Path(folder)
     out = SysDef(folder=str(p))
     if not p.is_dir():
-        out.errors.append(f"体系文件夹不存在: {p}")
+        out.errors.append(f"反应物构型文件夹不存在: {p}")
         return out
     entries = sorted(q.name for q in p.iterdir() if q.is_file())
     mats: list[tuple[str, str, str]] = []  # (entry, fmt, name)
@@ -298,7 +298,7 @@ def scan_system_dir(folder: str | Path) -> SysDef:
             continue
         mats.append((e, fmt, name))
     if not mats and not out.errors:
-        out.errors.append(f"体系文件夹无体系文件: {p}")
+        out.errors.append(f"反应物构型文件夹无构型文件: {p}")
         if out.errors and not mats:
             return out
     if not mats:

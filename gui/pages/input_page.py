@@ -34,13 +34,14 @@ from PyQt6.QtCore import Qt
 from .. import theme
 from ..core import inputwrite, preview, sysdir, validate
 from ..core.keyspec import (
-    KEY_TABLE, MEMBER_TABLE, SCHEME_PARAMS, format_dist_scheme, ENUMS, REFERENCE_CONTAINER_KEYS,
+    KEY_TABLE, MEMBER_TABLE, SCHEME_PARAMS, format_dist_scheme, parse_dist_scheme,
+    ENUMS, REFERENCE_CONTAINER_KEYS,
 )
 from ..view3d.preview_view import PreviewView
 
 # 行标签显示物理量(2026-10-13 用户裁决:不在输入框左侧显示 KEY 名);KEY 名入 tooltip
 PHYSICAL_LABELS = {
-    "SYSTEM_DIR": "体系文件夹",
+    "SYSTEM_DIR": "反应物构型",
     "E_REL": "碰撞能 [eV]",
     "R_SEP": "初始间距 [Å]",
     "B_MAX": "碰撞参数 b [Å]",
@@ -157,7 +158,7 @@ class InputPage(QWidget):
         self._scheme_combos: list[QComboBox] = []
         self._sysdef: sysdir.SysDef | None = None
         self._container_table: QTableWidget | None = None
-        self._info: QLabel = QLabel("未扫描体系文件夹")
+        self._info: QLabel = QLabel("未扫描反应物构型")
         self._info.setWordWrap(True)  # 扫描结果长行不撑最小宽
         self._info.setProperty("class", "caption")
         self._notes = QLabel("")
@@ -289,7 +290,11 @@ class InputPage(QWidget):
         self._sections["sysdef"]._btn.setToolTip("写出键: SYSTEM_DIR")
         sd_row = QHBoxLayout()
         self._sd_line = QLineEdit()
-        self._sd_line.setPlaceholderText("体系文件夹路径")
+        self._sd_line.setPlaceholderText("反应物构型路径")
+        b0 = QPushButton("打开…")
+        b0.setIcon(theme.icon("tab-input"))
+        b0.setToolTip("打开现有 input_qct.txt,回填整个表单(构型/方案词/成员键/容器键)")
+        b0.clicked.connect(self._open_input_file)
         b1 = QPushButton("浏览…")
         b1.setIcon(theme.icon("folder"))
         b1.clicked.connect(self._browse_sysdir)
@@ -297,11 +302,12 @@ class InputPage(QWidget):
         b2.setIcon(theme.icon("search"))
         b2.clicked.connect(self._rescan)
         sd_row.addWidget(self._sd_line)
+        sd_row.addWidget(b0)
         sd_row.addWidget(b1)
         sd_row.addWidget(b2)
         wrap = QWidget()
         wrap.setLayout(sd_row)
-        row(cell("SYSTEM_DIR", wrap, "体系文件夹,含 .xyz / POSCAR 反应物文件"))
+        row(cell("SYSTEM_DIR", wrap, "反应物构型文件夹,含 .xyz / POSCAR 文件"))
         self._cur_lay.addWidget(self._info)
         row(cell("E_REL", line("E_REL", "如 8.7"), "必填"),
             cell("R_SEP", line("R_SEP", "如 8.0"), "必填"))
@@ -460,10 +466,93 @@ class InputPage(QWidget):
         self._debounce.start()
 
     def _browse_sysdir(self):
-        d = QFileDialog.getExistingDirectory(self, "选择 system/ 体系文件夹")
+        d = QFileDialog.getExistingDirectory(self, "选择反应物构型文件夹")
         if d:
             self._sd_line.setText(d)
             self._rescan()
+
+    def _open_input_file(self):
+        """打开现有 input_qct.txt 回填全表单:构型/方案词/成员键/容器键全量回收。
+
+        SYSTEM_DIR 的相对形(如 GUI 写出的 "system")相对输入文件本身回位;
+        装载到折叠组的键自动展开(与校验错误同款可见性语义)。
+        """
+        path, _ = QFileDialog.getOpenFileName(
+            self, "打开输入文件", "", "输入文件 (input_qct.txt *.txt);;所有文件 (*)")
+        if not path:
+            return
+        try:
+            values = inputwrite.parse_input_file(path)
+        except ValueError as exc:
+            QMessageBox.critical(self, "打开失败", f"输入文件解析失败:\n{exc}")
+            return
+        if not values:
+            QMessageBox.warning(self, "空文件", "输入文件中没有键值。")
+            return
+        sd = values.pop("SYSTEM_DIR", "").strip()
+        if sd and not Path(sd).is_absolute():
+            cand = Path(path).resolve().parent / sd
+            if cand.exists():
+                sd = str(cand)
+        if sd:
+            self._sd_line.setText(sd)
+        self._rescan()  # 先重建片段/方案下拉与范式窗, 再回填
+        raw_ds = values.pop("DIST_SCHEME", "").strip()
+        if raw_ds:
+            try:
+                ds_items = parse_dist_scheme(raw_ds)
+            except ValueError as exc:  # 括号形式错: 提示后跳过方案词, 其余照常回填
+                QMessageBox.warning(self, "方案词跳过", f"DIST_SCHEME 未回填:\n{exc}")
+                ds_items = []
+            for i, (word, params) in enumerate(ds_items):
+                if i >= len(self._scheme_combos):
+                    break
+                if word:
+                    self._scheme_combos[i].setCurrentText(word)
+            # 参数字段填充放在全部词设定之后——词变更会整体重建内联字段
+            for i, (word, params) in enumerate(ds_items):
+                if i < len(self._scheme_params):
+                    for name, e in self._scheme_params[i].items():
+                        if name in params:
+                            e.setText(params[name])
+        loaded: set[str] = set()
+        for k, w in list(self._w.items()):
+            v = values.pop(k, None)
+            if not v:
+                continue
+            loaded.add(k)
+            if k in ("PROJECTILE", "TARGET"):  # 角色键按原文(选项无 itemData)
+                w.setCurrentText(v)
+            elif isinstance(w, QLineEdit):
+                w.setText(v)
+            else:
+                self.set_choice(k, v)  # 模式类下拉按数据值选中("值 · 含义"显示)
+        for k, c in self._checks.items():
+            v = values.pop(k, None)
+            if v is not None:
+                c.setChecked(v.strip().upper().startswith("T"))
+        # 余量=容器键:回填容器表(已有行改值, 新键增行)
+        t = self._container_table
+        rows: dict[str, int] = {}
+        for r in range(t.rowCount()):
+            it = t.item(r, 0)
+            if it and it.text().strip():
+                rows[it.text().strip().upper()] = r
+        for k, v in values.items():
+            ku = k.strip().upper()
+            if not ku:
+                continue
+            r = rows.get(ku)
+            if r is None:
+                t.insertRow(t.rowCount())
+                r = t.rowCount() - 1
+                t.setItem(r, 0, QTableWidgetItem(ku))
+                rows[ku] = r
+            t.setItem(r, 1, QTableWidgetItem(v))
+        for k in loaded:  # 装载到折叠组的键自动展开
+            sec = self._section_of_key.get(k)
+            if sec is not None and sec.collapsible and not sec.expanded:
+                sec.set_expanded(True)
 
     def _rescan(self):
         path = self._sd_line.text().strip()
