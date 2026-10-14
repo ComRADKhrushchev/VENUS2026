@@ -207,6 +207,13 @@ for f in $mfiles; do
    mod=$(awk 'tolower($1)=="module" && tolower($2)!="procedure" {print $2; exit}' "$SRC/$f" | tr -d '\r')
    nmod=$(awk 'tolower($1)=="module" && tolower($2)!="procedure"' "$SRC/$f" | grep -c . || true)
    [ "$nmod" -eq 1 ] || mweave_fatal "$f carries $nmod module statements (exactly one expected)"
+   case "$f" in
+      methods/samp_* | methods/inc_* | methods/bath_* | methods/elec_*)
+         if [ "$(probe_fixed member_register "$SRC/$f")" != yes ]; then
+            mweave_fatal "$f carries no member_register - the fixed-name entry is the registration contract (docs/plans/2026-10-14-methods-member-weave.md)"
+         fi
+         ;;
+   esac
    if [ "$(probe_fixed member_register "$SRC/$f")" = yes ]; then mregs="$mregs $mod"; fi
    if [ "$(probe_fixed member_init "$SRC/$f")" = yes ]; then minits="$minits $mod"; fi
 done
