@@ -10,13 +10,14 @@
 !   matches the input framework's own value parsers.
 !=====================================================================
 module seam_cast
+   use diag, only: diag_fatal, diag_cat_system
    implicit none
    private
    public :: seam_real, seam_int
 contains
    !------------------------------------------------------------------
    ! seam_real(key, sval, ln, rval) - cast one buffered value to real(8);
-   !              an unreadable string aborts with a named error (STOP 1)
+   !              an unreadable string aborts with a named error (diag_fatal)
    subroutine seam_real(key, sval, ln, rval)
       character(len=*), intent(in) :: key, sval
       integer, intent(in) :: ln
@@ -26,13 +27,13 @@ contains
       if (ios == 0) return
       write (0, '(a)') 'seam_cast: key '//trim(key)//trim(seam_tag(ln))// &
                        ': bad real value "'//trim(sval)//'"'
-      write (0, '(a)') 'seam_cast: fatal (the member parameter is not loaded)'
-      stop 1
+      call diag_fatal(diag_cat_system, 'seam_cast.f90', 'seam_cast', &
+         'the member parameter is not loaded')
    end subroutine seam_real
 
    !------------------------------------------------------------------
    ! seam_int(key, sval, ln, ival) - cast one buffered value to integer;
-   !              an unreadable string aborts with a named error (STOP 1)
+   !              an unreadable string aborts with a named error (diag_fatal)
    subroutine seam_int(key, sval, ln, ival)
       character(len=*), intent(in) :: key, sval
       integer, intent(in) :: ln
@@ -42,8 +43,8 @@ contains
       if (ios == 0) return
       write (0, '(a)') 'seam_cast: key '//trim(key)//trim(seam_tag(ln))// &
                        ': bad integer value "'//trim(sval)//'"'
-      write (0, '(a)') 'seam_cast: fatal (the member parameter is not loaded)'
-      stop 1
+      call diag_fatal(diag_cat_system, 'seam_cast.f90', 'seam_cast', &
+         'the member parameter is not loaded')
    end subroutine seam_int
 
    ! seam_tag(ln) - the source-line suffix of a message (a buffered key arrives

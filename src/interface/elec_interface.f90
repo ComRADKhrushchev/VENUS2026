@@ -20,6 +20,7 @@
 module elec_interface
    use state,   only: state_t, elec_t
    use config,  only: electronic
+   use diag,    only: diag_fatal, diag_cat_dynamics
    implicit none
    private
    public :: elec_prop, mqc_statistic            ! evolution-phase entries
@@ -309,12 +310,12 @@ contains
 
    !------------------------------------------------------------------
    ! private helper: the named-abort channel of this interface (name the caller, print the
-   ! named message, STOP 1)
+   ! named message, abort via diag_fatal)
    !------------------------------------------------------------------
    subroutine stop_ele(who, msg)
       character(len=*), intent(in) :: who, msg
       write (0, '(a)') trim(who)//': electronic-interface error: '//trim(msg)
-      write (0, '(a)') trim(who)//': fatal (the method table is not usable)'
-      stop 1
+      call diag_fatal(diag_cat_dynamics, 'elec_interface.f90', trim(who), &
+         'the method table is not usable')
    end subroutine stop_ele
 end module elec_interface

@@ -20,8 +20,10 @@ module bath_andersen
    use config_atoms, only: list_atoms
    use config,       only: reactants
    use bath,         only: bath_reg, bath_setup
-   use input,        only: buffer_n_rows, buffer_key, buffer_val, buffer_line
+   use input,        only: buffer_n_rows, buffer_key, buffer_val, buffer_line, &
+                           input_bath_code
    use seam_cast,    only: seam_real
+   use diag,        only: diag_fatal, diag_cat_sampler
    implicit none
    private
    public :: andersen_params_t, andersen_init, andersen_sweep, &
@@ -131,20 +133,20 @@ contains
    end function andersen_sigma
 
    !------------------------------------------------------------------
-   ! private named-abort helpers (name the caller; value variants; STOP 1)
+   ! private named-abort helpers (name the caller; value variants; abort via diag_fatal)
    subroutine stop_andx(where, msg)
       character(len=*), intent(in) :: where, msg
       write (0, '(a)') trim(where)//': '//trim(msg)
-      write (0, '(a)') trim(where)//': fatal (the bath loop is not usable)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'bath_andersen.f90', trim(where), &
+         'the bath loop is not usable')
    end subroutine stop_andx
 
    subroutine stop_andz(where, msg, val)
       character(len=*), intent(in) :: where, msg
       real(8), intent(in) :: val
       write (0, '(a,a,es12.4)') trim(where)//': ', trim(msg), val
-      write (0, '(a)') trim(where)//': fatal (the bath loop is not usable)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'bath_andersen.f90', trim(where), &
+         'the bath loop is not usable')
    end subroutine stop_andz
 
    !------------------------------------------------------------------
@@ -166,7 +168,7 @@ contains
       type(andersen_params_t) :: p   ! species-parameter receiver (field defaults)
       character(len=512) :: sval       ! one buffered raw value
       integer :: i
-      if (reactants%bath /= 2) return
+      if (reactants%bath /= input_bath_code('ANDERSEN')) return
       do i = 1, buffer_n_rows()
          sval = buffer_val(i)
          select case (trim(buffer_key(i)))

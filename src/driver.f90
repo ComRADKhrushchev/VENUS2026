@@ -2,12 +2,16 @@
 ! driver.f90 - program venus: three-phase orchestration (assembly -> evolution -> statistics)
 ! Design:
 !   Assembly order is binding: registry_gen_keys -> read_input -> rng_init ->
-!   sysdef_load -> list_atoms_load -> state_create -> registry_gen_all ->
+!   sysdef_load -> list_atoms_load -> sysdef_load_products (the gated
+!   list_products_load + nma_arm_from_input ride here) -> state_create ->
+!   registry_gen_all ->
 !   registry_gen_init (the container seam FIRST - a load-dependent PES must
 !   be computable before any member seam that probes its force, e.g. the
 !   spectrum derivation; then buffered member keys -> member inits, dt
 !   already final) -> input_audit_declared (every buffered container key was
-!   pulled) -> container_init -> rec_select -> hand-off allocation.
+!   pulled) -> input_audit_dist_par -> nma_derive (the armed analyzer's
+!   assembly-time derivation - a bad declaration aborts before the
+!   trajectory loop) -> container_init -> rec_select -> hand-off allocation.
 !   The key-declaration aggregate runs BEFORE the parse so the dragged-in
 !   container's parameter vocabulary precedes the parse admission (a
 !   <module>_keys entry is pure vocabulary data - reads no config, no
@@ -15,32 +19,37 @@
 !   Evolution: per trajectory samp_run -> force_eval -> first frame, then
 !   the step loop prop_step -> elec_prop -> mqc_statistic -> rec_frame ->
 !   container_term, bounded by MAX_STEPS (termination and outcome naming
-!   are the container's judgments). Statistics: one fin_eval pass -> outcome
-!   counts + histograms + drift summary; output: trajectories.txt, hist_e_rel.dat, hist_thta.dat (cwd-relative).
+!   are the container's judgments). Statistics: one fin_eval pass -> the armed
+!   final-state analyzer's rows/labels (nma_*, PRODUCT_NMA) + outcome counts +
+!   histograms + drift summary; output: trajectories.txt, hist_e_rel.dat, hist_thta.dat (cwd-relative).
 !=====================================================================
 program venus
    use control,        only: n_traj, i_seed, max_steps
    use config,         only: observables, reactants, electronic, &
                              prop_cfg => propagator  ! alias: the config instance 'propagator'
                              ! clashes with the module name
-   use config_atoms,  only: list_atoms, list_atoms_load
+   use config_atoms,  only: list_atoms, list_atoms_load, list_products_load
    use state,          only: state_t, state_create, state_destroy
    use rng,            only: rng_init
    use propagator,     only: prop_step
    use force_interface,   only: container_init, force_eval, container_term
    use elec_interface,    only: elec_prop, mqc_statistic
-   use sysdef_interface,  only: sysdef_load
+   use sysdef_interface,  only: sysdef_load, sysdef_load_products
+   use nma,            only: nma_arm_from_input, nma_derive, nma_setup, nma_traj, nma_summary, nma_armed
    use registry_gen,   only: registry_gen_all, registry_gen_init, registry_gen_keys   ! the build-generated
                                    ! aggregate (scripts/prebuild.sh emits it from every
                                    ! reg_*.f90 under methods/ and systems/ - zero
                                    ! hand-written registration lines in the driver)
    use sampler,        only: samp_run, samp_n_dist, samp_incident_word
-   use recorder,       only: rec_select, rec_frame, rec_final, rec_n_sel, rec_fin_val
+   use recorder,       only: rec_select, rec_file_header, rec_frame, rec_final, rec_n_sel, &
+                             rec_fin_val
    use final_state,    only: fin_t, fin_eval, container_classify, container_classify_bound
    use density,        only: dens_states, eig_out
    use hist,           only: hist_spec_t, hist_data_t, plot_hist, &
                              k_e_hist, k_t_hist
    use input,          only: read_input, input_audit_declared, input_audit_dist_par
+   use diag,           only: diag_fatal, diag_cat_internal, diag_cat_output, &
+                             diag_banner, diag_heavy, diag_rule, diag_kv, diag_kv_cont, diag_eol
    implicit none
 
    ! -- orchestration counters and flags (locals) --
@@ -66,6 +75,9 @@ program venus
    integer :: k             ! scratch index [-]
    integer :: row_outc      ! outcome-table row scratch [-]
    integer :: ios           ! open-status scratch [-] (the recording-unit go-live check below)
+   logical :: prod_found    ! the system/products/ second scan's folder-presence return [-]
+                            ! (absent = the legal zero-footprint run: the product table stays
+                            ! unallocated and the analyzer runs on fragments alone)
    real(8), allocatable :: e0_traj(:)     ! per-trajectory reference energy [eV] (the
                                           ! head force_eval output - the drift reference)
    real(8), allocatable :: e_fin_traj(:)  ! per-trajectory final e_tot [eV] (the
@@ -103,6 +115,21 @@ program venus
                                                    !    aborts with a named error inside sysdef_load)
    call list_atoms_load()                              ! 5. list_atoms (fragments / masses / equilibrium
                                                    !    placement, from the sysdef products)
+   call sysdef_load_products(trim(reactants%system_dir)//'/products', prod_found)
+                                                   ! 5b. declared final-state products (the
+                                                   !    system/products/ second scan; an absent
+                                                   !    folder is the legal zero footprint - the
+                                                   !    five cases' default form)
+   if (prod_found) call list_products_load()           ! 5c. product table (GATED on the found
+                                                   !    return: a run with no products channel
+                                                   !    never touches the pull - its loader
+                                                   !    treats an empty buffer as an
+                                                   !    assembly-order error, not a channel)
+   call nma_arm_from_input(reactants%nma_on, reactants%nma_fit_tol)
+                                                   ! 5d. the final-state analyzer's arming (the
+                                                   !    surface guard and the fit_tol sign live
+                                                   !    inside the arm; armed names the
+                                                   !    statistics stdout below)
    call state_create(sta, size(list_atoms%mass))
                                                    ! 6. physical state (natoms from the atom list;
                                                    !    the electronic ontic layer stays at the
@@ -114,8 +141,8 @@ program venus
       write (0, '(a,i0,a,i0,a)') 'driver: size guard - the state holds ', size(sta%q), &
          ' coordinates but the atom list mass table holds ', 3*size(list_atoms%mass), &
          ' (assembly-choreography error, formal)'
-      write (0, '(a)') 'driver: fatal (the state and the atom list disagree)'
-      stop 1
+      call diag_fatal(diag_cat_internal, 'driver.f90', 'driver', &
+         'the state and the atom list disagree')
    end if
    call registry_gen_all()                         ! 7. registration aggregate (method packages,
                                                    !    distribution members, container bindings,
@@ -140,6 +167,13 @@ program venus
                                                    !    staged DIST_SCHEME pair pulled exactly once
                                                    !    by its carrier's member - the 2026-10-13
                                                    !    bracket ruling's no-silent-swallow gate)
+   call nma_derive()                              ! 9c. the armed analyzer's assembly-time
+                                                   !    derivation (the unit table, its validation,
+                                                   !    the mode-table pulls, the thresholds; the
+                                                   !    member fragment tables landed at step 8 and
+                                                   !    the product derivation joins them in the
+                                                   !    same phase - a bad declaration aborts here,
+                                                   !    before any trajectory burns)
    call container_init()                          ! 10. container assembly + formal validation
                                                    !    (legal with no container dragged in - the
                                                    !    degenerate method row still binds;
@@ -165,13 +199,20 @@ program venus
    if (ios /= 0) then
       write (0, '(a,i0,a)') 'driver: the registered output file trajectories.txt cannot be'// &
          ' opened for writing in the run directory (iostat ', ios, ')'
-      write (0, '(a)') 'driver: fatal (the recording unit cannot go live - no run)'
-      stop 1
+      call diag_fatal(diag_cat_output, 'driver.f90', 'driver', &
+         'the recording unit cannot go live - no run')
    end if
-   write (*, '(a,i0,a,i0,a,i0,a,i0,a,i0,a,i0)') &
-      'assembly complete: trajectories=', n_traj, ' atoms=', size(list_atoms%mass), &
-      ' fragments=', size(list_atoms%frag), ' paradigm=', reactants%surface_model, &
-      ' members=', samp_n_dist(), ' init=ok columns=', rec_n_sel()
+   call rec_file_header(u_out)                   ! the three-line file legend (the unit set +
+                                                  ! row shapes; selection already made at 11a -
+                                                  ! every frame below follows it)
+   call diag_banner('VENUS2026  adiabatic QCT')
+   call diag_kv('assembly')
+   write (*, '(a,i0,a,i0,a,i0,a,i0)', advance='no') 'trajectories=', n_traj, &
+      ' atoms=', size(list_atoms%mass), ' fragments=', size(list_atoms%frag), &
+      ' paradigm=', reactants%surface_model
+   call diag_eol()
+   call diag_kv_cont()
+   write (*, '(a,i0,a,a,i0)') 'members=', samp_n_dist(), ' init=ok', ' columns=', rec_n_sel()
 
    ! ===== Phase 2: evolution (trajectory loop x integration loop) =====
    ! Inside the integration loop the direct entries are exactly the four-phase
@@ -223,6 +264,11 @@ program venus
 
    ! ===== Phase 3: statistics (post-processing class) =====
    call cpu_time(t_cpu(2))
+   call nma_setup()                                 ! the analyzer's file opening - one
+                                                    ! nma_<unit>.dat per unit + the label file
+                                                    ! (the derivation ran at assembly step 9c;
+                                                    ! unarmed = a no-op; the zero-unit degenerate
+                                                    ! path is the analyzer's own stdout note)
    allocate (cnt_outc(max_outc))
    cnt_outc = 0
    n_outc = 0
@@ -236,6 +282,10 @@ program venus
    data_hist%n_traj = n_traj
    do traj_i = 1, n_traj
       call fin_eval(sta_fin(traj_i), fin)
+      call nma_traj(traj_i, sta_fin(traj_i), e_fin_traj(traj_i) - e0_traj(traj_i))
+                                                    ! the analyzer's row + channel label (unarmed
+                                                    ! = a no-op; the drift column feeds the
+                                                    ! user-side filter face)
       data_hist%e_rel(traj_i) = fin%e_rel     ! the classification's own energy datum,
                                              ! reused as the histogram column
       data_hist%thta(traj_i) = fin%ang(19)   ! the scattering-angle class of the angle
@@ -253,8 +303,8 @@ program venus
             if (n_outc >= max_outc) then
                write (0, '(a,i0,a)') 'driver: outcome-name table full (', max_outc, &
                   ' distinct names - the statistics capacity is exhausted)'
-               write (0, '(a)') 'driver: fatal (the statistics cannot proceed)'
-               stop 1
+               call diag_fatal(diag_cat_output, 'driver.f90', 'driver', &
+                  'the statistics cannot proceed')
             end if
             n_outc = n_outc + 1
             outc_names(n_outc) = outc_name
@@ -267,18 +317,31 @@ program venus
    do traj_i = 1, n_traj                      ! (e_fin_traj) against the head reference
       drift_max = max(drift_max, abs(e_fin_traj(traj_i) - e0_traj(traj_i)))
    end do
-   write (*, '(a,i0,a,i0)') 'statistics: trajectories=', n_traj, ' valid=', n_valid
+   call diag_banner('VENUS2026  run summary')
+   call diag_kv('statistics')
+   write (*, '(a,i0,a,i0)') 'trajectories=', n_traj, ' valid=', n_valid
+   ! the armed run carries two counting faces - the container's classify
+   ! counts here, the analyzer's channel counts in its summary below
    if (n_outc == 0) then
-      write (*, '(a)') 'outcome counts: none (no classification bound - skipped)'
+      if (nma_armed()) then
+         call diag_kv('outcomes (container)')
+      else
+         call diag_kv('outcomes')
+      end if
+      write (*, '(a)') 'none (no classification bound - skipped)'
    else
-      write (*, '(a)', advance='no') 'outcome counts:'
+      if (nma_armed()) then
+         call diag_kv('outcomes (container)')
+      else
+         call diag_kv('outcomes')
+      end if
       do k = 1, n_outc
          write (*, '(a,i0)', advance='no') ' '//trim(outc_names(k))//'=', cnt_outc(k)
       end do
-      write (*, '(a)') ''
+      call diag_eol()
    end if
-   write (*, '(a,i0,a,es12.4,a)') 'conservation drift: trajectories=', n_traj, &
-      ' max|e_fin-e0|=', drift_max, ' eV'
+   call diag_kv('drift')
+   write (*, '(a,es12.4,a)') 'max|e_fin-e0|=', drift_max, ' eV'
    if (n_valid >= 1) then
       ! the two plain histogram kinds over the aggregated columns; range rule
       ! [0, column max + 1) keeps every aggregated row in range by construction
@@ -289,10 +352,16 @@ program venus
       spec_hist = hist_spec_t(k_t_hist, 'hist_thta.dat', 0.0d0, &
                               maxval(data_hist%thta) + 1.0d0, 40, 0, .true.)
       call plot_hist(spec_hist, data_hist)
-      write (*, '(a,i0,a)') 'histograms: rows=', n_valid, &
-         ' files=hist_e_rel.dat hist_thta.dat'
+      call diag_kv('histograms')
+      write (*, '(a,i0,a)') 'rows=', n_valid, ' files=hist_e_rel.dat hist_thta.dat'
    end if
-   write (*, '(a,f8.2,a)') 'timing: cpu=', t_cpu(2) - t_cpu(1), ' s'
+   call nma_summary()                              ! the analyzer's per-unit stdout lines + the
+                                                    ! channel counts line + its file closes
+                                                    ! (unarmed = a no-op)
+   call diag_rule()
+   call diag_kv('timing')
+   write (*, '(a,f8.2,a)') 'cpu=', t_cpu(2) - t_cpu(1), ' s'
+   call diag_heavy()
    ! Not wired: dens_states / eig_out consume a mode-frequency set and an eigen-pair
    ! table - products of a Hessian / normal-mode service that does not exist in this
    ! tree, so the two calls stay out until one does; the use line above keeps the

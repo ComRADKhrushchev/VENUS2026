@@ -20,6 +20,7 @@
 !=====================================================================
 module container_sched
    use config, only: reactants
+   use diag, only: diag_fatal, diag_cat_assembly
    implicit none
    private
    public :: container_sched_bind, container_sched_keys, container_sched_all, &
@@ -120,11 +121,11 @@ contains
    end subroutine bind_one
 
    ! stop_cs(who, msg) - the named-abort channel (name the caller, print the named
-   ! message, STOP 1)
+   ! message, abort via diag_fatal)
    subroutine stop_cs(who, msg)
       character(len=*), intent(in) :: who, msg
       write (0, '(a)') trim(who)//': schedule error: '//trim(msg)
-      write (0, '(a)') trim(who)//': fatal (the schedule is not usable)'
-      stop 1
+      call diag_fatal(diag_cat_assembly, 'container_sched.f90', trim(who), &
+         'the schedule is not usable')
    end subroutine stop_cs
 end module container_sched

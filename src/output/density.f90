@@ -7,6 +7,7 @@
 !   transposed to rows, restored after writing). Energies in unit bins (del = 1).
 !=====================================================================
 module density
+   use diag, only: diag_fatal, diag_cat_output
    implicit none
    private
    public :: dens_states, eig_out
@@ -86,8 +87,8 @@ contains
       if (size(a, 1) < n .or. size(a, 2) < n) then
          write (0, '(a,i0,a,i0,a,i0)') 'eig_out: the eigenvector matrix is ', size(a, 1), 'x', &
             size(a, 2), ' but the eigenvalue table carries ', n, ' values'
-         write (0, '(a)') 'eig_out: fatal (the table and the values disagree)'
-         stop 1
+         call diag_fatal(diag_cat_output, 'density.f90', 'eig_out', &
+            'the table and the values disagree')
       end if
       call swap_triangles(a, n)         ! column vectors temporarily row-stored
       ! 2. one 6-column block per pass: eigenvalues, then one row per component

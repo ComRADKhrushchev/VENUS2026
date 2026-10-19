@@ -10,6 +10,7 @@
 !   index semantics are defined by the electronic method member.
 !=====================================================================
 module state
+  use diag, only: diag_fatal, diag_cat_internal
   implicit none
   private
   public :: state_t, elec_t, state_create, state_destroy
@@ -49,18 +50,19 @@ contains
                                               ! multi-surface method member reallocates a/rho
                                               ! to its own declared shape at member init)
      integer :: n_s, stat
+     character(len=96) :: msg
      ! 1. validate n_surf
      n_s = 1
      if (present(n_surf)) n_s = n_surf
      if (n_s < 1) then
-        write(0,'(a,i0)') 'state_create: illegal n_surf (<1): ', n_s
-        stop 1
+        write(msg,'(a,i0)') 'state_create: illegal n_surf (<1): ', n_s
+        call diag_fatal(diag_cat_internal, 'state.f90', 'state_create', trim(msg))
      end if
      ! 2. allocate and zero q/p/f
      allocate(st%q(3*natoms), st%p(3*natoms), st%f(3*natoms), stat=stat)
      if (stat /= 0) then
-        write(0,'(a,i0)') 'state_create: allocation of q/p/f failed, stat = ', stat
-        stop 1
+        write(msg,'(a,i0)') 'state_create: allocation of q/p/f failed, stat = ', stat
+        call diag_fatal(diag_cat_internal, 'state.f90', 'state_create', trim(msg))
      end if
      st%q = 0.0d0
      st%p = 0.0d0
@@ -71,8 +73,8 @@ contains
                                ! reallocates to the method's declared shape)
         allocate(st%s%a(1,1), st%s%rho(1,1), stat=stat)
         if (stat /= 0) then
-           write(0,'(a,i0)') 'state_create: allocation of a/rho failed, stat = ', stat
-           stop 1
+           write(msg,'(a,i0)') 'state_create: allocation of a/rho failed, stat = ', stat
+           call diag_fatal(diag_cat_internal, 'state.f90', 'state_create', trim(msg))
         end if
         st%s%a = (0.0d0, 0.0d0)
         st%s%a(1,1) = (1.0d0, 0.0d0)   ! degenerate-point population 1 (well-defined at the
@@ -89,25 +91,26 @@ contains
   subroutine state_destroy(st)
      type(state_t), intent(inout) :: st
      integer :: stat
+     character(len=96) :: msg
      ! 1. deallocate q/p/f
      deallocate(st%q, st%p, st%f, stat=stat)
      if (stat /= 0) then
-        write(0,'(a,i0)') 'state_destroy: deallocation of q/p/f failed, stat = ', stat
-        stop 1
+        write(msg,'(a,i0)') 'state_destroy: deallocation of q/p/f failed, stat = ', stat
+        call diag_fatal(diag_cat_internal, 'state.f90', 'state_destroy', trim(msg))
      end if
      ! 2. deallocate a and rho independently (member init may have reallocated either)
      if (allocated(st%s%a)) then
         deallocate(st%s%a, stat=stat)
         if (stat /= 0) then
-           write(0,'(a,i0)') 'state_destroy: deallocation of a failed, stat = ', stat
-           stop 1
+           write(msg,'(a,i0)') 'state_destroy: deallocation of a failed, stat = ', stat
+           call diag_fatal(diag_cat_internal, 'state.f90', 'state_destroy', trim(msg))
         end if
      end if
      if (allocated(st%s%rho)) then
         deallocate(st%s%rho, stat=stat)
         if (stat /= 0) then
-           write(0,'(a,i0)') 'state_destroy: deallocation of rho failed, stat = ', stat
-           stop 1
+           write(msg,'(a,i0)') 'state_destroy: deallocation of rho failed, stat = ', stat
+           call diag_fatal(diag_cat_internal, 'state.f90', 'state_destroy', trim(msg))
         end if
      end if
      ! 3. reset the label

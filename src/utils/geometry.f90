@@ -13,6 +13,7 @@ module geometry
    use consts, only: pi, two_pi, dyn_ev
    use state,  only: state_t
    use rng,    only: rng_u
+   use diag, only: diag_fatal, diag_cat_output
    implicit none
    private
    public :: rot_euler, rot_rand_rmat, rot_apply, rot_jkm, rot_axis, cenmas, angvel, amom, align_step, gl_nodes
@@ -411,6 +412,7 @@ contains
       integer, intent(in) :: list(:)      ! alignment atom index list
       real(8) :: cp, sp, x, y, z, px, py, pz
       integer :: i, j
+      character(len=64) :: msg
       if (i_axis == 3) then
          cp = cos(ang)
          sp = sin(ang)
@@ -436,8 +438,8 @@ contains
             st%p(j) = px*sp + pz*cp
          end do
       else
-         write (0, '(a,i0)') 'align_step: unknown axis code ', i_axis
-         stop 1
+         write (msg, '(a,i0)') 'align_step: unknown axis code ', i_axis
+         call diag_fatal(diag_cat_output, 'geometry.f90', 'align_step', trim(msg))
       end if
    end subroutine align_step
 

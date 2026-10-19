@@ -41,7 +41,7 @@ def test_open_input_file_populates(tmp_path, monkeypatch):
     方案词按序/全部写出键落于对应控件/容器键入表/装载折叠组自动展开。"""
     from gui.core import inputwrite
 
-    case = ROOT / "cases" / "case_harmonic_scatter"
+    case = ROOT / "cases" / "case_b_layer" / "glo"
     dst = tmp_path / "input_qct.txt"
     lines = []
     for ln in (case / "input_qct.txt").read_text(encoding="utf-8").splitlines():

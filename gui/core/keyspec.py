@@ -4,7 +4,7 @@
 设计:
   与 Fortran 键表逐行对应(名称/块/类型/枚举族/必填/默认/槽宽/条件键),由
   tests/test_keyspec.py 的镜像同步测试对 src/input.f90 源文本比对防漂移。
-  通道级成员键(dispatch_tbl 13 行: 入射束流定律与浴物种)附类型与约束摘要;
+  通道级成员键(dispatch_tbl 14 行: 入射束流定律与浴物种)附类型与约束摘要;
   方案词自身的参数只经 DIST_SCHEME 括号(2026-10-13 裁定: 词[名=值, ...],
   无顶层成员键、无回退)—— SCHEME_PARAMS 为逐词括号词表,约束语义移植自
   各 samp_*.f90 的 init 校验(写出前静态可判部分)。
@@ -33,10 +33,12 @@ LEVEL_SET = {0, 1, 2, 5}
 ENUM_TASK = ["TRAJECTORY"]
 ENUM_INTEG = ["VERLET", "SYMPLECTIC", "RADAU"]
 ENUM_DIST = [
-    "BOLTZMANN", "EBK", "ROTATION", "J", "SURFACE_OSCILLATOR",
-    "NORMALMODE", "BARRIER_EXCITATION", "GLO_TARGET", "THERMALIZE", "WIGNER",
-]
-ENUM_BATH = ["NONE", "ANDERSEN"]
+    "BOLTZMANN", "EBK", "ROTATION", "J",
+    "NORMALMODE", "BARRIER_EXCITATION", "GLO_TARGET", "WIGNER",
+    "EROT",
+    "NONE",
+]  # THERMALIZE migrated to the bath registry 2026-10-16
+ENUM_BATH = ["NONE", "ANDERSEN", "NOSE_HOOVER", "THERMALIZE"]
 ENUM_SPECTRUM = ["COMPUTE", "MANUAL"]
 ENUM_SCATTERING = ["GAS", "SURFACE"]
 ENUMS = {
@@ -83,6 +85,8 @@ KEY_TABLE: list[KeySpec] = [
     KeySpec("R_SEP", BLK_SYSTEM, KIND_REAL, "", True, ""),
     KeySpec("DIST_SCHEME", BLK_SYSTEM, KIND_ELIST, "dist", True, ""),
     KeySpec("RANDOM_ORIENT", BLK_SYSTEM, KIND_LOG, "", False, "F"),
+    KeySpec("PRODUCT_NMA", BLK_SYSTEM, KIND_LOG, "", False, "F"),
+    KeySpec("NMA_FIT_TOL", BLK_SYSTEM, KIND_REAL, "", False, "0.0"),
     KeySpec("BATH", BLK_SYSTEM, KIND_ENUM, "bath", False, "NONE"),
     KeySpec("N_BATH", BLK_SYSTEM, KIND_INT, "", False, "0"),
     KeySpec("DT_BATH", BLK_SYSTEM, KIND_REAL, "", False, "0.0"),
@@ -106,7 +110,7 @@ class MemberKey:
     hint: str = ""       # 中文说明
 
 
-# 通道级成员参数键(input.f90 dispatch_tbl 13 行顺序;类型与约束摘自各成员 init)
+# 通道级成员参数键(input.f90 dispatch_tbl 14 行顺序;类型与约束摘自各成员 init)
 MEMBER_TABLE: list[MemberKey] = [
     MemberKey("N_E_REL", "incident_surface/pair", KIND_INT, "碰撞能模式 0=热分布/1=定值/2=密度加权"),
     MemberKey("T_TRANS", "incident_surface/pair", KIND_REAL, "平动温度 [K](N_E_REL=0 时须 >0)"),
@@ -119,8 +123,9 @@ MEMBER_TABLE: list[MemberKey] = [
     MemberKey("N_AIM", "incident_surface/pair", KIND_INT, "落点模式 0=原点/1=胞内均匀/2=定点(仅表面)"),
     MemberKey("AIM_X", "incident_surface", KIND_REAL, "定点落点 x [Å, CELL 帧](N_AIM=2,仅表面)"),
     MemberKey("AIM_Y", "incident_surface", KIND_REAL, "定点落点 y [Å, CELL 帧](N_AIM=2,仅表面)"),
-    MemberKey("T_BATH", "bath_andersen", KIND_REAL, "Andersen 浴温度 [K](BATH=ANDERSEN 时须 >0)"),
-    MemberKey("NU_COLL", "bath_andersen", KIND_REAL, "Andersen 碰撞频率(同上,须 >0)"),
+    MemberKey("T_BATH", "bath_andersen/bath_thermalize", KIND_REAL, "浴温度 [K](BATH=ANDERSEN/NOSE_HOOVER/THERMALIZE 时须 >0)"),
+    MemberKey("NU_COLL", "bath_andersen", KIND_REAL, "Andersen 碰撞频率(BATH=ANDERSEN 时须 >0)"),
+    MemberKey("TAU_NOSE", "bath_nose_hoover", KIND_REAL, "Nosé–Hoover 链周期 [fs](BATH=NOSE_HOOVER 时须 >0;取近体系振动周期)"),
 ]
 
 MEMBER_KEY_NAMES = {m.key for m in MEMBER_TABLE}
@@ -136,15 +141,14 @@ class SchemeParam:
 # 方案词 → 括号参数词表(空表 = 该词无参数,写成裸词);required=False 的参数
 # 缺省时走成员字段默认(与 Fortran 成员默认一致)
 SCHEME_PARAMS: dict[str, list[SchemeParam]] = {
+    # NONE: 不采内态的载体(单原子/冻结多原子基底)——无成员无参数, 派发跳过
+    "NONE": [],
     "BOLTZMANN": [SchemeParam("T_VIB", KIND_REAL, "振动温度 [K](须 >0)")],
     "EBK": [SchemeParam("N_VIB", KIND_INT, "振动量子数(≥0,缺省 0)"),
             SchemeParam("N_ROT", KIND_INT, "转动量子数(≥0,缺省 0)")],
     "ROTATION": [SchemeParam("J_ROT", KIND_INT, "固定转动角动量量子数 J(≥0,缺省 0)")],
     "J": [SchemeParam("T_ROT", KIND_REAL, "转动温度 [K](须 >0)")],
-    "SURFACE_OSCILLATOR": [SchemeParam("N_OSC", KIND_INT, "能量律 0=热/1=定态(缺省 0)"),
-                           SchemeParam("T_OSC", KIND_REAL, "振子温度 [K](缺省 300)"),
-                           SchemeParam("N_LEVEL", KIND_INT, "定态能级(≥0,缺省 0)"),
-                           SchemeParam("K_OSC", KIND_REAL, "力常数 [eV/Å²](缺省 1.30092582)")],
+    "EROT": [SchemeParam("T_ROT", KIND_REAL, "非线性片段热转动温度 [K](须 >0)")],
     "NORMALMODE": [SchemeParam("E_VIB", KIND_REAL, "振动能 [eV](须 >0,缺省 0.43364194)")],
     "BARRIER_EXCITATION": [SchemeParam("E_STAB", KIND_REAL, "鞍点稳定模分能 [eV](≥0)"),
                            SchemeParam("N_E_BAR", KIND_INT, "反应坐标能量律 0=定值/1=热"),
@@ -153,9 +157,6 @@ SCHEME_PARAMS: dict[str, list[SchemeParam]] = {
     "GLO_TARGET": [SchemeParam("T_GLO", KIND_REAL, "GLO 靶温 [K](须 >0)"),
                    SchemeParam("GAMMA_GLO", KIND_REAL, "GLO 摩擦系数(须 >0)"),
                    SchemeParam("W_GHOST", KIND_REAL, "ghost 频率 [1/fs](须 >0)")],
-    "THERMALIZE": [SchemeParam("T_EQ", KIND_REAL, "平衡温度 [K](须 >0)"),
-                   SchemeParam("N_EQ", KIND_INT, "平衡步数(≥1;各片段须一致)"),
-                   SchemeParam("DT_EQ", KIND_REAL, "平衡步长 [fs](须 >0;各片段须一致)")],
     "WIGNER": [SchemeParam("E_SCALE", KIND_REAL, "能量标度(零点能份额,须 >0,缺省 1)")],
 }
 

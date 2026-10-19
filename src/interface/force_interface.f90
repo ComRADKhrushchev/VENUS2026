@@ -27,6 +27,7 @@ module force_interface
    use config,        only: electronic
    use config_atoms, only: list_atoms
    use elec_interface,   only: method_bind
+   use diag,          only: diag_fatal, diag_cat_system
    implicit none
    private
    public :: force_eval, container_bind_pes, container_init
@@ -222,11 +223,11 @@ contains
    !------------------------------------------------------------------
 
    ! stop_ff(who, msg) - the named-abort channel (name the caller, print the named
-   ! message, STOP 1)
+   ! message, abort via diag_fatal)
    subroutine stop_ff(who, msg)
       character(len=*), intent(in) :: who, msg
       write (0, '(a)') trim(who)//': container error: '//trim(msg)
-      write (0, '(a)') trim(who)//': fatal (the container is not usable)'
-      stop 1
+      call diag_fatal(diag_cat_system, 'force_interface.f90', trim(who), &
+         'the container is not usable')
    end subroutine stop_ff
 end module force_interface

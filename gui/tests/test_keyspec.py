@@ -13,7 +13,7 @@ def _src() -> str:
 
 
 def test_key_table_mirror():
-    """keyspec.KEY_TABLE 与 input.f90 key_tab(27 行)逐字段一致。"""
+    """keyspec.KEY_TABLE 与 input.f90 key_tab(30 行)逐字段一致。"""
     text = _src()
     row = re.compile(
         r"key_spec_t\('(\w+)',\s*blk_(\w+),\s*kind_(\w+),\s*enum_(\w+),\s*"
@@ -21,8 +21,8 @@ def test_key_table_mirror():
         r"(?:,\s*slotw=(\d+))?(?:,\s*cond=\.(true|false)\.)?"
     )
     rows = row.findall(text)
-    assert len(rows) == 28, f"key_tab 应 28 行,解析得 {len(rows)}"
-    assert len(keyspec.KEY_TABLE) == 28
+    assert len(rows) == 30, f"key_tab 应 30 行,解析得 {len(rows)}"
+    assert len(keyspec.KEY_TABLE) == 30
     for fort, mine in zip(rows, keyspec.KEY_TABLE):
         name, blk, kind, enum, req, default, slotw, cond = fort
         assert mine.name == name
@@ -63,14 +63,14 @@ def test_enums_mirror():
 
 
 def test_dispatch_mirror():
-    """MEMBER_TABLE 键与归属成员与 dispatch_tbl(13 行通道级键)一致(类型为 GUI 侧补注)。
+    """MEMBER_TABLE 键与归属成员与 dispatch_tbl(14 行通道级键)一致(类型为 GUI 侧补注)。
 
     方案词自身的参数不设顶层键(2026-10-13 括号裁定)——只经 DIST_SCHEME 括号。
     """
     text = _src()
     rows = re.findall(r"dispatch_row_t\('(\w+)',\s*'([^']+)'", text)
-    assert len(rows) == 13
-    assert len(keyspec.MEMBER_TABLE) == 13
+    assert len(rows) == 14
+    assert len(keyspec.MEMBER_TABLE) == 14
     for (key, member), mine in zip(rows, keyspec.MEMBER_TABLE):
         assert mine.key == key
         assert mine.member == member
@@ -108,3 +108,28 @@ def test_parse_scalar_domains():
         raise AssertionError
     except ValueError:
         pass
+
+
+def test_none_word_roundtrip():
+    # NONE(11 词, surface_oscillator 退役/erot 入册 2026-10-15): 不采内态载体——裸词合法, 括号在 Fortran 侧由审计中止(GUI 解析层放行后由 validate 预检)
+    items = keyspec.parse_dist_scheme("NONE, EBK[N_VIB=1]")
+    assert items[0] == ("NONE", {})
+    assert items[1] == ("EBK", {"N_VIB": "1"})
+    assert keyspec.format_dist_scheme(items) == "NONE, EBK[N_VIB=1]"
+    assert keyspec.ENUM_DIST[-1] == "NONE" and len(keyspec.ENUM_DIST) == 10
+
+
+def test_product_nma_roundtrip():
+    """PRODUCT_NMA=T 写入再读回 + 缺省注入 F / NMA_FIT_TOL 0.0(T5 镜像腿)。"""
+    from gui.core import inputwrite
+    text = inputwrite.write_input({"PRODUCT_NMA": "T"}, include_defaults=True)
+    assert "PRODUCT_NMA = T" in text
+    back = inputwrite.apply_defaults(inputwrite.parse_input_text(text))
+    assert back["PRODUCT_NMA"] == "T"
+    assert back["NMA_FIT_TOL"] == "0.0"
+    assert keyspec.parse_scalar(keyspec.KIND_LOG, "", back["PRODUCT_NMA"]) is True
+    assert keyspec.parse_scalar(keyspec.KIND_REAL, "", back["NMA_FIT_TOL"]) == 0.0
+    # 缺省侧: 不写出两键 -> 注入 'F' / '0.0'(缺省 F = 逐位中立, 归档流不动)
+    d = inputwrite.apply_defaults({})
+    assert d["PRODUCT_NMA"] == "F"
+    assert d["NMA_FIT_TOL"] == "0.0"

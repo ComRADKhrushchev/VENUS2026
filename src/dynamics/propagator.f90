@@ -16,6 +16,7 @@ module propagator
                                                       ! clashes with the module name
    use config_atoms, only: list_atoms
    use force_interface,  only: force_eval               ! the pure force entry (sta, e_tot)
+   use diag,            only: diag_fatal, diag_cat_dynamics
    implicit none
    private
    public :: prop_reg, prop_step
@@ -73,6 +74,16 @@ module propagator
    real(8) :: rad_tp = 0.0d0                  ! upcoming sequence length [fs]
    logical :: rad_seq_ok = .false.            ! a sequence has been accepted (restart test off)
    integer :: rad_ns = 0                      ! accepted-sequence counter (bd rule: 1st keeps 0)
+
+   ! DOF-mask caches (2026-10-16 ruling): free_c = per-component free flag expanded
+   ! over the state layout; mass_c = per-component mass. The update statements guard
+   ! through where(free_c)/if(free_c(k)) - forces are still evaluated on every
+   ! component (VASP-like), only the integration skips the constrained ones. An
+   ! all-true mask reproduces the historical array expressions bit-for-bit (same
+   ! elementwise operations). Rebuilt lazily when the atom count changes.
+   logical, allocatable :: free_c(:)          ! free-component flags (3*natoms)
+   real(8),  allocatable :: mass_c(:)         ! per-component masses [amu] (3*natoms)
+   integer :: free_synced = 0                 ! atom count the caches were built for
 contains
    !------------------------------------------------------------------
    ! prop_reg(id, proc) - register an integrator member into the closed-family registry
@@ -112,6 +123,28 @@ contains
    end subroutine prop_step
 
    !------------------------------------------------------------------
+   ! free_sync() - (re)build the DOF-mask caches when the atom count changed; called
+   !               at every member step entry (cheap guard: one integer compare)
+   subroutine free_sync()
+      integer :: k, c, nat
+      nat = size(list_atoms%mass)
+      if (free_synced == nat .and. allocated(free_c)) return
+      if (allocated(free_c)) deallocate (free_c)
+      if (allocated(mass_c)) deallocate (mass_c)
+      allocate (free_c(3*nat), mass_c(3*nat))
+      free_c = .true.
+      do k = 1, nat
+         do c = 1, 3
+            mass_c(3*k-3+c) = list_atoms%mass(k)
+            if (allocated(list_atoms%dof)) then
+               if (k <= size(list_atoms%dof, 2)) free_c(3*k-3+c) = list_atoms%dof(c, k)
+            end if
+         end do
+      end do
+      free_synced = nat
+   end subroutine free_sync
+
+   !------------------------------------------------------------------
    ! verlet_step(sta) - velocity Verlet (order=1) / third-order Beeman (order=2) single step
    ! Both branches end with the endpoint force at the returned sta%q; sta%t advances by dt.
    subroutine verlet_step(sta)
@@ -123,6 +156,7 @@ contains
       dt = prop_cfg%dt
 
       call rad_forget()                     ! hygiene: this member builds no radau carry
+      call free_sync()
 
       select case (prop_cfg%order)
       case (1)                              ! 1. velocity Verlet
@@ -146,19 +180,19 @@ contains
             f_tm1 = f_prev                  ! F(t-dt): the buffered history, saved before the swap
             call force_eval(sta, e)         ! F(t): left end, evaluated afresh (header contract)
             f_prev = sta%f                  ! stage F(t) as the next step's history
-            do k = 1, size(list_atoms%mass)
-               ! position predictor (third-order): q += (p/m)dt + dt^2(4F(t)-F(t-dt))/(6m)
-               sta%q(3*k-2:3*k) = sta%q(3*k-2:3*k) + sta%p(3*k-2:3*k)*(dt/list_atoms%mass(k)) &
-                  + (4.0d0*sta%f(3*k-2:3*k) - f_tm1(3*k-2:3*k))*((dt*dt)/(6.0d0*list_atoms%mass(k)))
-            end do
+            ! position predictor (third-order): q += (p/m)dt + dt^2(4F(t)-F(t-dt))/(6m)
+            where (free_c)
+               sta%q = sta%q + sta%p*(dt/mass_c) &
+                  + (4.0d0*sta%f - f_tm1)*((dt*dt)/(6.0d0*mass_c))
+            end where
             call force_eval(sta, e)         ! F(t+dt) at the predicted (final) q - the endpoint
-            do k = 1, size(list_atoms%mass)
-               ! momentum corrector (two-step Adams-Moulton): p += dt(5F(t+dt)+8F(t)-F(t-dt))/12
-               ! (q untouched - positions stay on the predictor)
-               sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) &
-                  + (5.0d0*sta%f(3*k-2:3*k) + 8.0d0*f_prev(3*k-2:3*k) - f_tm1(3*k-2:3*k)) &
+            ! momentum corrector (two-step Adams-Moulton): p += dt(5F(t+dt)+8F(t)-F(t-dt))/12
+            ! (q untouched - positions stay on the predictor)
+            where (free_c)
+               sta%p = sta%p &
+                  + (5.0d0*sta%f + 8.0d0*f_prev - f_tm1) &
                   *(dt/12.0d0)
-            end do
+            end where
             sta%t = sta%t + dt
          end if
 
@@ -184,21 +218,22 @@ contains
 
       call beeman_forget()                  ! hygiene: this member builds no force history
       call rad_forget()                     ! and no radau carry
+      call free_sync()
       if (sym_order_cached /= prop_cfg%order) call symple_load(prop_cfg%order)
 
       do i = 0, sym_n - 1                   ! 1. alternating loop: kick a(2i), drift a(2i+1)
          call force_eval(sta, e)            ! F at the current q, before the kick
-         do k = 1, size(list_atoms%mass)
-            sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) + sta%f(3*k-2:3*k)*(dt*sym_a(2*i))
-         end do
-         do k = 1, size(list_atoms%mass)
-            sta%q(3*k-2:3*k) = sta%q(3*k-2:3*k) + sta%p(3*k-2:3*k)*(dt*sym_a(2*i + 1)/list_atoms%mass(k))
-         end do
+         where (free_c)
+            sta%p = sta%p + sta%f*(dt*sym_a(2*i))
+         end where
+         where (free_c)
+            sta%q = sta%q + sta%p*(dt*sym_a(2*i + 1)/mass_c)
+         end where
       end do
       call force_eval(sta, e)               ! 2. the final beat's force site = the endpoint q
-      do k = 1, size(list_atoms%mass)
-         sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) + sta%f(3*k-2:3*k)*(dt*sym_a(2*sym_n))
-      end do
+      where (free_c)
+         sta%p = sta%p + sta%f*(dt*sym_a(2*sym_n))
+      end where
       sta%t = sta%t + dt
    end subroutine symple_step
 
@@ -237,10 +272,12 @@ contains
       !    external write between sequences survives the close-out write-back
       call beeman_forget()                  ! hygiene: this member builds no Beeman history
       if (.not. rad_const_ok) call radau_load()
+      call free_sync()
       if (radau_boot_needed(sta)) call radau_boot(sta)
       nq = size(sta%q)
       do k = 1, nq                          ! re-fold the working velocity from sta%p
          rad_v(k) = sta%p(k)/list_atoms%mass((k + 2)/3)
+         if (.not. free_c(k)) rad_v(k) = 0.0d0   ! constrained components never fold a velocity
       end do
       ni = 6                                ! first sequence iterates six times,
       if (rad_seq_ok) ni = 2                ! later sequences twice (the B-carry)
@@ -283,6 +320,7 @@ contains
                do k = 1, nq
                   sta%q(k) = qs(k)
                   fj(k) = sta%f(k)/list_atoms%mass((k + 2)/3)
+                  if (.not. free_c(k)) fj(k) = 0.0d0  ! same constrained-fold statute
                end do
                do k = 1, nq
                   ! corrector: difference the folded substep force against the head value,
@@ -346,6 +384,7 @@ contains
          call force_eval(sta, e)            ! head force afresh at the same origin
          do k = 1, nq                       ! (the retry's f1; the state never advanced)
             rad_f1(k) = sta%f(k)/list_atoms%mass((k + 2)/3)
+            if (.not. free_c(k)) rad_f1(k) = 0.0d0
          end do
       end do
 
@@ -353,6 +392,8 @@ contains
       ! guard the closed-out state, evaluate the endpoint force and stage the next
       ! sequence's head values ----
       do k = 1, nq
+         if (.not. free_c(k)) cycle         ! constrained components: q stays at its placed
+                                             ! value, the folded velocity stays zero
          sta%q(k) = sta%q(k) + rad_v(k)*tt + t2*(rad_f1(k)*0.5d0 + rad_bb(1, k)*rad_w(1) &
                     + rad_bb(2, k)*rad_w(2) + rad_bb(3, k)*rad_w(3) + rad_bb(4, k)*rad_w(4) &
                     + rad_bb(5, k)*rad_w(5) + rad_bb(6, k)*rad_w(6) + rad_bb(7, k)*rad_w(7))
@@ -383,7 +424,8 @@ contains
       call force_eval(sta, e)               ! the endpoint force (endpoint contract)
       do k = 1, nq
          rad_f1(k) = sta%f(k)/list_atoms%mass((k + 2)/3)   ! next sequence's head acceleration
-         sta%p(k) = rad_v(k)*list_atoms%mass((k + 2)/3)    ! p written back from the working velocity
+         if (free_c(k)) sta%p(k) = rad_v(k)*list_atoms%mass((k + 2)/3)  ! p written back from
+                                                  ! the working velocity; constrained stay zero
       end do
 
       ! ---- 5. adaptive length of the next sequence: (ss/hv)^(1/9), growth-limited
@@ -434,17 +476,18 @@ contains
       integer :: k
       real(8) :: e
       e = 0.0d0
+      call free_sync()
       call force_eval(sta, e)               ! F(t): left end, evaluated afresh
-      do k = 1, size(list_atoms%mass)
-         sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) + sta%f(3*k-2:3*k)*(0.5d0*dt)
-      end do
-      do k = 1, size(list_atoms%mass)
-         sta%q(3*k-2:3*k) = sta%q(3*k-2:3*k) + sta%p(3*k-2:3*k)*(dt/list_atoms%mass(k))
-      end do
+      where (free_c)
+         sta%p = sta%p + sta%f*(0.5d0*dt)
+      end where
+      where (free_c)
+         sta%q = sta%q + sta%p*(dt/mass_c)
+      end where
       call force_eval(sta, e)               ! F(t+dt): the endpoint (header contract)
-      do k = 1, size(list_atoms%mass)
-         sta%p(3*k-2:3*k) = sta%p(3*k-2:3*k) + sta%f(3*k-2:3*k)*(0.5d0*dt)
-      end do
+      where (free_c)
+         sta%p = sta%p + sta%f*(0.5d0*dt)
+      end where
    end subroutine vv_advance
 
    ! beeman_forget() - clear the buffered Beeman history (boot hygiene / VV mode switch)
@@ -605,6 +648,9 @@ contains
       call force_eval(sta, e)               ! head force at the boot geometry
       do k = 1, size(sta%q)
          rad_f1(k) = sta%f(k)/list_atoms%mass((k + 2)/3)
+         if (.not. free_c(k)) rad_f1(k) = 0.0d0  ! constrained dof: the force is still
+                                                  ! evaluated (PES sees the full geometry) but
+                                                  ! never folded into the dynamics
       end do
    end subroutine radau_boot
 
@@ -638,20 +684,20 @@ contains
       if (prop_cfg%dt_min > 0.0d0 .and. abs(tp) < prop_cfg%dt_min) tp = dir*prop_cfg%dt_min
    end subroutine rad_clamp
 
-   ! named-abort channel (name the caller; value variant; STOP 1)
+   ! named-abort channel (name the caller; value variant; abort via diag_fatal)
    subroutine stop_prop(who, msg)
       character(len=*), intent(in) :: who, msg
       write (0, '(a)') trim(who)//': propagator error: '//trim(msg)
-      write (0, '(a)') trim(who)//': fatal (the state is not advanced)'
-      stop 1
+      call diag_fatal(diag_cat_dynamics, 'propagator.f90', trim(who), &
+         'the state is not advanced')
    end subroutine stop_prop
 
    subroutine stop_propi(who, msg, ival, tail)
       character(len=*), intent(in) :: who, msg, tail
       integer, intent(in) :: ival
       write (0, '(a,a,1x,i0,a,a)') trim(who)//': ', trim(msg), ival, ' ', trim(tail)
-      write (0, '(a)') trim(who)//': fatal (the state is not advanced)'
-      stop 1
+      call diag_fatal(diag_cat_dynamics, 'propagator.f90', trim(who), &
+         'the state is not advanced')
    end subroutine stop_propi
 
    !------------------------------------------------------------------

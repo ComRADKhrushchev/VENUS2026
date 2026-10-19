@@ -17,6 +17,7 @@ module final_state
    use config_atoms, only: list_atoms
    use geometry,      only: cenmas, amom, angvel
    use force_interface,  only: force_eval
+   use diag,          only: diag_fatal, diag_cat_output
    implicit none
    private
    public :: fin_t, fin_eval
@@ -101,26 +102,26 @@ contains
       if (.not. allocated(list_atoms%mass) .or. .not. allocated(list_atoms%frag)) then
          write (0, '(a)') 'fin_eval: the atom list was never assembled (no fragment table - '// &
                           'the final-state quantities need the fragment masses and lists)'
-         write (0, '(a)') 'fin_eval: fatal (the final-state quantities are not computable)'
-         stop 1
+         call diag_fatal(diag_cat_output, 'final_state.f90', 'fin_eval', &
+            'the final-state quantities are not computable')
       end if
       if (size(sta%q) /= 3*size(list_atoms%mass)) then
          write (0, '(a,i0,a,i0)') 'fin_eval: state/list_atoms size mismatch: size(q) = ', size(sta%q), &
             ', 3*list_atoms atoms = ', 3*size(list_atoms%mass)
-         write (0, '(a)') 'fin_eval: fatal (the state and the fragment table disagree)'
-         stop 1
+         call diag_fatal(diag_cat_output, 'final_state.f90', 'fin_eval', &
+            'the state and the fragment table disagree')
       end if
       nf = size(list_atoms%frag)
       if (nf < 1 .or. nf > 2) then
          write (0, '(a,i0)') 'fin_eval: illegal fragment count in the atom list: ', nf
-         write (0, '(a)') 'fin_eval: fatal (the receiver carries two fragment channels)'
-         stop 1
+         call diag_fatal(diag_cat_output, 'final_state.f90', 'fin_eval', &
+            'the receiver carries two fragment channels')
       end if
       if (reactants%surface_model /= 0 .and. (list_atoms%i_proj < 1 .or. list_atoms%i_proj > nf)) then
          write (0, '(a)') 'fin_eval: surface quantities need the resolved projectile role '// &
                           '(list_atoms%i_proj unset - the list_atoms_load role reconcile must run first)'
-         write (0, '(a)') 'fin_eval: fatal (the final-state quantities are not computable)'
-         stop 1
+         call diag_fatal(diag_cat_output, 'final_state.f90', 'fin_eval', &
+            'the final-state quantities are not computable')
       end if
       ! 2. per-fragment properties + the COM-frame archive
       !    Each fragment in turn: build its COM frame, take the angular momentum /
@@ -291,8 +292,8 @@ contains
          write (0, '(a)') 'container_bind_classify: the classification slot is already '// &
                         'bound (container_bind_classify ran twice - an assembly-'// &
                         'choreography error, formal)'
-         write (0, '(a)') 'container_bind_classify: fatal (the container is unusable)'
-         stop 1
+         call diag_fatal(diag_cat_output, 'final_state.f90', &
+            'container_bind_classify', 'the container is unusable')
       end if
       container_classify_proc => proc      ! executed once in the assembly phase
    end subroutine container_bind_classify
@@ -309,8 +310,8 @@ contains
          write (0, '(a)') 'container_classify: the classification slot is not bound '// &
                         '(container_bind_classify never ran - the legal no-classification '// &
                         'run guards with container_classify_bound and never calls here)'
-         write (0, '(a)') 'container_classify: fatal (the container is unusable)'
-         stop 1
+         call diag_fatal(diag_cat_output, 'final_state.f90', &
+            'container_classify', 'the container is unusable')
       end if
       name = container_classify_proc(fin)
    end function container_classify

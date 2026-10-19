@@ -33,6 +33,7 @@ module sampler
    use config_atoms, only: list_atoms
    use geometry, only: rot_rand_rmat, rot_apply
    use bath, only: bath_run
+   use diag, only: diag_fatal, diag_cat_sampler
    use input, only: input_dist_code, input_dist_word   ! the grammar owns the
       ! scheme vocabulary - single word<->code source (2026-10-14 weave batch);
       ! the sampler's former hand-synced scheme_code_name duplicate is retired
@@ -150,7 +151,7 @@ contains
       type(state_t), intent(inout) :: sta    ! initial state (q0/p0/s0 - overwritten by
                                              ! the dispatched members, each in the
                                              ! components it owns)
-      integer :: n_frag, nat, irow, frow, i, n_called
+      integer :: n_frag, nat, irow, frow, i, j, n_called
       character(len=32) :: w32                     ! the resolved scheme word (one per row)
       integer :: called(max_dist)               ! member rows already dispatched this
                                                 ! call (dedup: one call per distinct member)
@@ -205,8 +206,15 @@ contains
       !    frame, which the surface paradigm must not rotate
       orient_on = reactants%random_orient
       do i = 1, n_frag
+         ! eligible: nat>=2, not the self-orienting words (rotation realizes
+         ! at fixed J, erot orients for its thermal principal-axis draw - a
+         ! second draw would be distributionally neutral but wasteful), not
+         ! the NONE word (NONE = untouched by the sampler, orientation
+         ! included)
          eligible(i) = orient_on .and. list_atoms%frag(i)%nat >= 2 .and. &
                        reactants%dist_scheme(i) /= samp_code('rotation') .and. &
+                       reactants%dist_scheme(i) /= samp_code('erot') .and. &
+                       reactants%dist_scheme(i) /= samp_code('none') .and. &
                        (reactants%surface_model == 0 .or. i == list_atoms%i_proj)
       end do
 
@@ -221,9 +229,11 @@ contains
       do i = 1, n_frag
          ! a monoatomic fragment has no internal degrees of freedom - no
          ! distribution member is dispatched for it (its q/p ride the incident
-         ! channel alone; the scheme word on it is the input's way of saying
-         ! "this fragment carries no internal sampling")
+         ! channel alone); the NONE word extends the same skip to ANY carrier:
+         ! the honest word for a not-internally-sampled fragment (monoatomic
+         ! or a frozen polyatomic substrate)
          if (list_atoms%frag(i)%nat < 2) cycle
+         if (reactants%dist_scheme(i) == samp_code('none')) cycle
          w32 = input_dist_word(reactants%dist_scheme(i))
          if (w32 == '') then
             call stop_samp('samp_run', 'fragment '//trim(i8_str(i))//' carries scheme code '// &
@@ -255,6 +265,7 @@ contains
       called = 0
       do i = 1, n_frag
          if (list_atoms%frag(i)%nat < 2) cycle   ! monoatomic: no internal DOFs
+         if (reactants%dist_scheme(i) == samp_code('none')) cycle   ! NONE: untouched
          frow = find_row(input_dist_word(reactants%dist_scheme(i)))
          if (any(called(1:n_called) == frow)) cycle
          n_called = n_called + 1
@@ -279,6 +290,20 @@ contains
          end if
       end do
       call dist_tbl(irow)%realize(sta)
+      ! 7. constrained-component closeout (the 2026-10-16 DOF-mask ruling): the
+      !    samplers write full 3-vector momenta (they know nothing of the mask), so
+      !    the constrained components land here with sampled values that nothing
+      !    will ever integrate - zero them once, at the sampling seam's exit. The
+      !    integrators keep such components zero forever after (free_c guards)
+      if (allocated(list_atoms%dof)) then
+         do i = 1, nat
+            do j = 1, 3
+               if (.not. list_atoms%dof(j, i)) then
+                  sta%p(3*i - 3 + j) = 0.0d0
+               end if
+            end do
+         end do
+      end if
    end subroutine samp_run
 
    !------------------------------------------------------------------
@@ -307,12 +332,12 @@ contains
    end function i8_str
 
    ! stop_samp(where, msg) - the named-abort channel (same semantics as the
-   ! sibling interfaces: name the caller, print the named message, STOP 1)
+   ! sibling interfaces: name the caller, print the named message, abort via diag_fatal)
    subroutine stop_samp(where, msg)
       character(len=*), intent(in) :: where, msg
       write (0, '(a)') trim(where)//': '//trim(msg)
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'sampler.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_samp
 
 end module sampler

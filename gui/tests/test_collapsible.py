@@ -34,7 +34,7 @@ def test_section_defaults():
         assert secs[sid].expanded, f"{sid} 应恒展开"
         assert not secs[sid].collapsible, f"{sid} 应不可折叠"
     assert secs["run"].collapsible and secs["run"].expanded, "运行控制可折叠且默认展开"
-    for sid in ("bath", "beam", "member", "container"):
+    for sid in ("bath", "beam", "container"):
         assert secs[sid].collapsible, f"{sid} 应可折叠"
         assert not secs[sid].expanded, f"{sid} 应默认折叠"
 
@@ -61,14 +61,17 @@ def test_collapsed_values_still_collected():
     assert vals.get("THTA_MAX") == "1.2"
 
 
-def test_member_scheme_selection_expands_section():
-    """选中带成员键的方案词后,成员参数组自动展开(否则新显行不可见)。"""
+def test_scheme_word_shows_inline_params():
+    """选中带参数的方案词 → 该片段行内联参数字段在场(2026-10-14: 说明组已删,
+    取代旧"成员组自动展开"语义)。"""
     page = _page()
     page._sd_line.setText(str(ROOT / "cases" / "case_harmonic_scatter" / "system"))
     page._rescan()
-    assert not page._sections["member"].expanded
-    page._scheme_combos[0].setCurrentText("THERMALIZE")
-    assert page._sections["member"].expanded
+    pc, _pl = page._scheme_param_rows[0]
+    assert pc.isHidden()
+    page._scheme_combos[0].setCurrentText("WIGNER")
+    assert not pc.isHidden()
+    assert page._scheme_params[0], "WIGNER 应带内联参数字段"
 
 
 def test_validation_error_expands_section():
@@ -85,7 +88,7 @@ def test_validation_error_expands_section():
     page._w["N_B"].setCurrentText("1")
     page.set_choice("N_E_REL", "0")  # 热分布须 T_TRANS>0,此处留空 → 报错
     for c in page._scheme_combos:
-        c.setCurrentText("THERMALIZE")
+        c.setCurrentText("WIGNER")
     assert not page._sections["beam"].expanded
     page.run_validation()
     assert "T_TRANS" in page._verdict.toPlainText()

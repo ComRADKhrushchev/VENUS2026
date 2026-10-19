@@ -20,6 +20,7 @@
 !   ~ eV/Angstrom); tol [internal].
 !=====================================================================
 module geom_init
+   use diag, only: diag_fatal, diag_cat_sampler
    implicit none
    private
    public :: geom_sep_probe
@@ -43,7 +44,7 @@ contains
    !   component over the fragment atoms) stays under tol; the placement
    !   is applied to sta (internal geometry preserved, COM at [d, 0, 0])
    !------------------------------------------------------------------
-   subroutine geom_sep_probe(fproc, mass, list, q, d0, tol, d_out)
+   subroutine geom_sep_probe(fproc, mass, list, q, d0, tol, d_out, dir)
       procedure(force_proc_i) :: fproc       ! the force probe (whole system)
       real(8), intent(in) :: mass(:)         ! per-atom masses [amu]
       integer, intent(in) :: list(:)         ! the fragment's atom list [global atom index]
@@ -52,9 +53,17 @@ contains
       real(8), intent(in) :: d0              ! ladder start distance [Angstrom]
       real(8), intent(in) :: tol             ! interaction-force tolerance [internal ~ eV/A]
       real(8), intent(out) :: d_out          ! the validated distance [Angstrom]
+      real(8), intent(in), optional :: dir(3) ! the separation direction (unit-ish
+                                             ! vector; default +x = the gas-pair form.
+                                             ! A PERIODIC SURFACE must ride +z: the
+                                             ! lateral force never decays along x - the
+                                             ! projectile stays inside the surface's
+                                             ! periodic landscape at every x, so the
+                                             ! ladder would exhaust and blame the PES
+                                             ! for a healthy surface table)
 
       real(8), allocatable :: f_ref(:), f_try(:)
-      real(8) :: com(3), shift(3), d, fmax
+      real(8) :: com(3), shift(3), d, fmax, dirv(3)
       integer :: i, a, n3, nat, nother
       nat = size(mass)
       n3 = 3*nat
@@ -64,18 +73,25 @@ contains
          return
       end if
       allocate (f_ref(n3), f_try(n3))
+      dirv = [ 1.0d0, 0.0d0, 0.0d0 ]
+      if (present(dir)) dirv = dir/max(norm2(dir), 1.0d-300)
 
-      ! the reference: environment force with the fragment parked far aside
-      call shift_frag(q, list, [ -1.0d3, 0.0d0, 0.0d0 ])
+      ! the reference: environment force with the fragment parked far along +dir
+      ! (+dir, not -dir: on a surface +z is the vacuum - the -z side sits inside
+      ! the slab, off any table's domain; for the gas pair both x signs are
+      ! equivalent separations)
+      call shift_frag(q, list, 1.0d3*dirv)
       call fproc(q, f_ref)
-      call shift_frag(q, list, [ 1.0d3, 0.0d0, 0.0d0 ])
+      call shift_frag(q, list, -1.0d3*dirv)
 
-      ! ladder scan: fragment COM at [d, 0, 0], measure the perturbation of
-      ! every NON-fragment atom's force
+      ! ladder scan: fragment COM x-separation to d (the y/z components are
+      ! PRESERVED - a surface projectile rides at its file height; collapsing
+      ! the COM onto the x axis would slam it into the surface plane,
+      ! 2026-10-16), measure the perturbation of every NON-fragment atom's force
       d = d0
       do i = 1, max_step
          com = frag_com(q, mass, list)
-         shift = [ d, 0.0d0, 0.0d0 ] - com
+         shift = (d - dot_product(com, dirv))*dirv
          call shift_frag(q, list, shift)
          call fproc(q, f_try)
          fmax = 0.0d0
@@ -130,7 +146,7 @@ contains
          'decay within the ladder (start ', d0, ' A, growth 1.5x, 20 steps) under the '// &
          'tolerance ', tol, ' - the suspect is the PES itself (a non-decaying '// &
          'separation dependence is a wrong or non-physical delivery)'
-      write (0, '(a)') 'geom_sep_probe: fatal (the geometry initialization is not usable)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'geom_init.f90', 'geom_sep_probe', &
+         'the geometry initialization is not usable')
    end subroutine stop_geoinit
 end module geom_init

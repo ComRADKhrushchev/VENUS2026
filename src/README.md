@@ -43,11 +43,15 @@ src/
                                                   thin reg_*.f90) + dist_* initial-state distribution members;
                                                   README.md = the library charter (E27: system-specific
                                                   method packages live in their systems/ folder)
-  output/      recorder  final_state  density  plot_hist
+  output/      recorder  final_state  density  plot_hist  nma
                                                   online recording (column registry) + offline post-processing
-  utils/       rng  linalg  geometry  specio  hessian
+                                                  + the product normal-mode analyzer (statistics-stage,
+                                                  PRODUCT_NMA = T, 2026-10-14)
+  utils/       rng  linalg  geometry  specio  hessian  fitrot  diag
                                                   instruments (single random stream, diagonalization, rotations,
-                                                  POSCAR/.xyz system-definition readers, central-difference Hessian)
+                                                  POSCAR/.xyz system-definition readers, central-difference Hessian,
+                                                  mass-weighted quaternion best-fit rotation, console diagnostics
+                                                  single entry - the stderr fatal frame + the stdout layout helpers)
   Makefile  README.md  CLAUDE.md  EXTENDING.md
 ```
 
@@ -58,8 +62,8 @@ src/
 | L2 interfaces & frameworks | interface/ | the E14 four-entry interface contract (force_eval / elec_prop / mqc_statistic + the container_term termination slot) + method-package registry (method_reg; E13 purely formal authority - name->pointer dispatch, physical-combination legality left to the members; rows may come from methods/ or a systems/ folder alike - E27) + run-lifetime statistics holders (occ / n_hop with member write-back) + system-definition contract sysdef_interface (E14) + sampling framework + the container schedule container_sched (eight wiring slots + the initialization-assembly guard; the container reg's single `reg_<sys>_slots` handover fills them - 2026-09-22; or Tier 1 zero-reg: a reg-less systems/ folder auto-wires via magic names - see EXTENDING.md §1a, 2026-10-12; the registration-time export slot withdrawn 2026-10-05) + the member-seam spectrum producer (spectrum_interface: the SPECTRUM_SOURCE-selected internal derivation or manual spectrum-table file - 2026-10-05 spectrum-source legislation) |
 | L3 closed families | dynamics/ | propagators only (fixed choices, not extension points; E18: the predicate grammar interpreter withdrawn - termination is the container-side container_term slot in force_interface) |
 | L3 method library | methods/ | flat built-in library (E14, rebuilt from the two former interface_* homes): elec_* MQC method packages - parameter-free generic algorithms bound by the config method key (level 1) or consumed as reusable components via use (level 2) - the samp_* initial-state distributions, the inc_* incident-channel members (paradigm-split, paradigm-guarded registration) and their shared beam_laws component; a new method = one self-contained file exposing the fixed-name member_register/member_init entries - the prebuild methods weave binds it automatically (2026-10-14, docs/plans/2026-10-14-methods-member-weave.md). System-specific members (pes_* PES + termination primitives) are system material, self-contained under systems/ (E12) |
-| L4 recording & post-processing | output/ | trajectory serialization (column registry), final state + the container classification slot (E19)/density of states/plotting (offline-capable) |
-| L5 instruments | utils/ | random stream (single), diagonalization, rotations |
+| L4 recording & post-processing | output/ | trajectory serialization (column registry), final state + the container classification slot (E19)/density of states/plotting (offline-capable) + the product normal-mode analyzer (nma.f90, statistics-stage per-trajectory, PRODUCT_NMA = T, 2026-10-14) |
+| L5 instruments | utils/ | random stream (single), diagonalization, rotations, mass-weighted best-fit rotation (fitrot.f90), console diagnostics single entry (diag.f90) |
 
 Layering essentials: each layer depends only downward, and registry-family members never depend on each other
 (members may call utils instruments internally);

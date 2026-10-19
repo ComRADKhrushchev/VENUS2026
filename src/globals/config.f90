@@ -65,6 +65,11 @@ module config
                                        ! channel, every nat>=2 fragment not served by the
                                        ! 'rotation' word gets one isotropic rot_euler pass
                                        ! about its COM - q and p together)
+     logical :: nma_on = .false.       ! final-state normal-mode analyzer switch (PRODUCT_NMA;
+                                       ! off = the archived stream - the driver's nma_* wiring
+                                       ! stays a bitwise no-op)
+     real(8)  :: nma_fit_tol = 0.0d0   ! label threshold override [A] (NMA_FIT_TOL; 0 = the
+                                       ! per-unit auto default 0.4*min pair distance)
      integer :: bath = 0              ! bath provision selector (BATH enum code; 1 = none,
                                        ! 2 = Andersen velocity-reset species; 0 = the unset
                                        ! default, treated as none) - arms the pre-evolution

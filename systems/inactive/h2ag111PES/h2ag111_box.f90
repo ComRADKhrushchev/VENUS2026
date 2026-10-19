@@ -145,16 +145,37 @@ contains
    !------------------------------------------------------------------
    subroutine h2ag111_pes(q, mass, g, v)
       real(8), intent(in)  :: q(:)     ! coordinates [A] (all dof, flattened)
-      real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (unused)
+      real(8), intent(in)  :: mass(:)  ! per-atom masses [amu] (the ghost rows are
+                                       ! recognized by mass; the NN itself ignores them)
       real(8), intent(out) :: g(:)     ! the composed kernel dV/dq [eV/A] (the interface folds F = -g)
       real(8), intent(out) :: v        ! V [eV]
-      if (size(q) /= 6 .or. size(mass) /= 2) then
-         call stop_box('h2ag111_pes', 'the H2/Ag(111) container needs exactly'// &
-                       ' 2 dynamic atoms (6 dofs) - the system folder must define'// &
-                       ' the two H atoms only (the Ag(111) slab is rigid inside the PES)')
+      integer :: n_g
+      real(8) :: qh(6)
+      ! 2026-10-16 ghost-layer ruling: the roster may carry explicit ghost Ag
+      ! rows (GAg prefix - all-frozen background atoms placed at the surface
+      ! origin by name order AHEAD of the H2 fragment). The NN potential is a
+      ! function of the two H atoms ONLY (the slab is rigid inside the PES) -
+      ! the ghost rows are validated for presence and zero force is delivered
+      ! on them (their DOF never integrates anyway)
+      if (size(q) < 6 .or. size(q)/3*3 /= size(q) .or. size(mass) /= size(q)/3) then
+         call stop_box('h2ag111_pes', 'the H2/Ag(111) container needs whole atoms'// &
+                       ' with at least the two H atoms (6 dofs)')
       end if
-      call pot0(2, q, v)
-      call dpeshon(2, q, g)
+      n_g = size(q)/3 - 2
+      if (n_g == 0) then
+         call pot0(2, q, v)
+         call dpeshon(2, q, g)
+         return
+      end if
+      if (any(abs(mass(1:n_g) - 107.8682d0) > 1.0d-2)) then
+         call stop_box('h2ag111_pes', 'the leading ghost rows must be silver'// &
+                       ' (GAg prefix - the explicit surface reference layer)')
+      end if
+      qh = q(3*n_g+1:3*n_g+6)            ! the two H atoms ride LAST (name order:
+                                         ! the GAg fragment sorts before H2)
+      call pot0(2, qh, v)
+      call dpeshon(2, qh, g(3*n_g+1:3*n_g+6))
+      g(1:3*n_g) = 0.0d0                 ! background rows carry no kernel
    end subroutine h2ag111_pes
 
    !------------------------------------------------------------------
@@ -166,7 +187,9 @@ contains
       type(state_t), intent(in) :: sta  ! physical state (read-only snapshot)
       h2ag111_term = .false.
       if (.not. term_on) return
-      h2ag111_term = (sta%q(3) > z_term) .and. (sta%q(6) > z_term)
+      h2ag111_term = (sta%q(size(sta%q)-2) > z_term) .and. &
+                     (sta%q(size(sta%q)) > z_term)   ! the two H atoms ride last
+                                                      ! (ghost rows may lead, 2026-10-16)
    end function h2ag111_term
 
    !------------------------------------------------------------------

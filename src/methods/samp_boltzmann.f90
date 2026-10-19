@@ -35,6 +35,7 @@ module samp_boltzmann
    use spectrum,      only: w_to_wvn
    use input, only: par_real
    use spectrum_interface, only: spectrum_frag_w
+   use diag,        only: diag_fatal, diag_cat_sampler
    implicit none
    private
    public :: mode_tbl_t, boltz_params_t, boltz_init, boltz_draw, boltz_realize, &
@@ -329,36 +330,36 @@ contains
    end function boltz_last_n
 
    !------------------------------------------------------------------
-   ! private named-abort helpers (name the caller; value variants; STOP 1)
+   ! private named-abort helpers (name the caller; value variants; abort via diag_fatal)
    subroutine stop_boltx(where, msg)
       character(len=*), intent(in) :: where, msg
       write (0, '(a)') trim(where)//': '//trim(msg)
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'samp_boltzmann.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_boltx
 
    subroutine stop_boltz(where, msg, val)
       character(len=*), intent(in) :: where, msg
       real(8), intent(in) :: val
       write (0, '(a,a,es12.4)') trim(where)//': ', trim(msg), val
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'samp_boltzmann.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_boltz
 
    subroutine stop_bolti(where, msg, ival)
       character(len=*), intent(in) :: where, msg
       integer, intent(in) :: ival
       write (0, '(a,a,i0)') trim(where)//': ', trim(msg), ival
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'samp_boltzmann.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_bolti
 
    subroutine stop_bolti2(where, msg, ival1, tail, ival2)
       character(len=*), intent(in) :: where, msg, tail
       integer, intent(in) :: ival1, ival2
       write (0, '(a,a,i0,a,i0)') trim(where)//': ', trim(msg), ival1, ' '//trim(tail), ival2
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'samp_boltzmann.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_bolti2
 
    !------------------------------------------------------------------

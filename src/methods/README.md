@@ -19,7 +19,8 @@ E27).
 | Prefix | Family | Registered by | Present / planned |
 |---|---|---|---|
 | `elec_*` | MQC method packages — {prop member, match member [, sync member]}, one `method_reg` row each | its thin `reg_<package>.f90` (assembly phase; in methods/ for generic packages, in systems/<system>/ for container-composed ones - E27) | `elec_adiabatic` (present — the all-no-op degenerate seed); `elec_tsh` / `elec_iesh` / `elec_ehrenfest` planned (R8-5) |
-| `dist_*` | initial-state distribution members (the B′ sampler family; parameters via config — E12 wording carried, zero embedded system data) | thin `reg_dist_*.f90`, landed at C5 together with the sample routines (K2 E3 slimming ruling) | 12 members present (boltzmann, ebk, incident, surface_oscillator, rotation, j, barrier_excitation, thermostat, glo_target, thermalize, normalmode, wigner); qmmicro dropped (old-library defect variant, C5-R4) |
+| `dist_*` | initial-state distribution members (the B′ sampler family; parameters via config — E12 wording carried, zero embedded system data) | thin `reg_dist_*.f90`, landed at C5 together with the sample routines (K2 E3 slimming ruling) | 10 members present (boltzmann, ebk, rotation, j, normalmode, barrier_excitation, glo_target, thermalize, wigner, erot); surface_oscillator retired 2026-10-15 (zero case usage, superseded by GLO_TARGET / real-slab containers + THERMALIZE); qmmicro dropped (old-library defect variant, C5-R4) |
+| `bath_*` | bath species (the pre-evolution loop's thermostat family — BATH selector, one temperature over the bath scope) | `bath_reg(name [, sweep] [, step] [, reset])` from the fixed-name entries | 2 species present: `bath_andersen` (sweep form: velocity resets) and `bath_nose_hoover` (2026-10-15: the step-takeover form — a Nosé–Hoover two-chain carrying its own Liouville VV splitting inside the loop, per-trajectory equilibrium re-seed; TAU_NOSE key); criteria check_bath_andersen / check_bath_nose_hoover |
 | `amp_*` | shared amplitude integrators — library modules, not packages (Corollary 1: FSSH and Ehrenfest share the same prop code; the method count drops multiplicatively) | none (components, consumed via use — level 2) | `amp_rk` / `amp_expm` planned |
 | `reg_*` | thin registration modules — build material, not methods | (they are the registration) | `reg_adiabatic` (present — the sole reg file of the K2 seed) |
 
@@ -69,8 +70,8 @@ laws; the shape lands with elec_tsh).
 
 `samp_*` members are pre-stored generic initial-state distribution methods: each
 draws one fragment of the trajectory's initial state per its prescription
-(Boltzmann normal-mode quantum numbers, fixed (n,J) EBK levels, surface-oscillator
-stretch ...). E12 wording carried: the members are physics-generic code with zero
+(Boltzmann normal-mode quantum numbers, fixed (n,J) EBK levels, rigid-rotor
+rotation ...). E12 wording carried: the members are physics-generic code with zero
 embedded system data — temperatures, frequencies, quantum numbers, and mode
 switches all arrive as member params filled from config at runtime; system
 material lives in systems/<system>/. The family was renamed `dist_*` -> `samp_*`
@@ -78,16 +79,24 @@ on 2026-09-22..28 (registration words unchanged); the incident channel left the
 family for its own `inc_*` prefix (below).
 
 Present — 10 members: `samp_boltzmann` / `samp_ebk` (migrated from the former
-interface_distributions/ at the E14 rebuild) plus `samp_surface_oscillator`,
-`samp_rotation`, `samp_j`, `samp_barrier_excitation`, `samp_glo_target`,
+interface_distributions/ at the E14 rebuild) plus `samp_rotation`,
+`samp_j`, `samp_barrier_excitation`, `samp_glo_target`,
 `samp_thermalize`, `samp_normalmode` (landed at C5; scheme-code table in
 interface/sampler.f90; `samp_thermostat` was deleted when the thermostat became
-the BATH provision, 2026-09-22), and `samp_wigner` (2026-09-21: the ground-state
+the BATH provision, 2026-09-22), `samp_wigner` (2026-09-21: the ground-state
 Wigner normal-mode distribution — independent Gaussian q/p per mode with
 virial-matched widths; the per-mode energy scale E_SCALE defaults to the
 zero-point level and may be set below it for sub-ZPE sampling; criterion
-program scripts/check_samp_wigner.f90). `qmmicro` is not
+program scripts/check_samp_wigner.f90), and `samp_erot` (2026-10-15:
+NONLINEAR-fragment thermal rotation — three independent principal-axis
+classical thermal energies 0.5*kb*T*Exp(1), the ANT-A1 law, plus a random
+orientation and the rigid-body realization; criterion
+scripts/check_samp_erot.f90). `qmmicro` is not
 carried over (old-library defect variant, dropped by C5-R4).
+`samp_surface_oscillator` retired 2026-10-15 (the analytic two-atom
+harmonic-stretch surface model: zero case usage, superseded by GLO_TARGET
+and real-slab containers + THERMALIZE; criterion check_samp_surface_oscillator
+removed with it).
 
 ## The inc_* incident family (2026-09-28 split) + beam_laws
 

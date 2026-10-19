@@ -23,6 +23,7 @@ module samp_rotation
    use geometry,      only: rot_rand_rmat, rot_apply
    use linalg,        only: eig_sym
    use input, only: par_int
+   use diag,        only: diag_fatal, diag_cat_sampler
    implicit none
    private
    public :: rotation_params_t, rotation_init, rotation_draw, rotation_realize, &
@@ -268,36 +269,36 @@ contains
    end subroutine rotation_sample
 
    !------------------------------------------------------------------
-   ! private named-abort helpers (name the caller; value variants; STOP 1)
+   ! private named-abort helpers (name the caller; value variants; abort via diag_fatal)
    subroutine stop_rotx(where, msg)
       character(len=*), intent(in) :: where, msg
       write (0, '(a)') trim(where)//': '//trim(msg)
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'samp_rotation.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_rotx
 
    subroutine stop_rotz(where, msg, val)
       character(len=*), intent(in) :: where, msg
       real(8), intent(in) :: val
       write (0, '(a,a,es12.4)') trim(where)//': ', trim(msg), val
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'samp_rotation.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_rotz
 
    subroutine stop_roti(where, msg, ival)
       character(len=*), intent(in) :: where, msg
       integer, intent(in) :: ival
       write (0, '(a,a,i0)') trim(where)//': ', trim(msg), ival
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'samp_rotation.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_roti
 
    subroutine stop_roti2(where, msg, ival1, tail, ival2)
       character(len=*), intent(in) :: where, msg, tail
       integer, intent(in) :: ival1, ival2
       write (0, '(a,a,i0,a,i0)') trim(where)//': ', trim(msg), ival1, ' '//trim(tail), ival2
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'samp_rotation.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_roti2
 
    !------------------------------------------------------------------

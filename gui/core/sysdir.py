@@ -53,14 +53,17 @@ ELEM_MASS["D"] = 2.014  # 氘别名(specio.f90 elem_mass)
 
 
 def elem_mass(symbol: str) -> float:
-    """元素符号 → 质量 [amu](大小写规范化;未知名抛 ValueError)。"""
+    """元素符号 → 质量 [amu](大小写规范化;G 前缀糖=全约束背景原子,
+    2026-10-16 立法——整体查表优先, G 元素 Ga/Gd/Ge 不误伤; 未知名抛 ValueError)。"""
     s = symbol.strip()
     if not s:
         raise ValueError("空元素符号")
     norm = s[0].upper() + s[1:].lower()
-    if norm not in ELEM_MASS:
-        raise ValueError(f"未知元素符号: {symbol}")
-    return ELEM_MASS[norm]
+    if norm in ELEM_MASS:
+        return ELEM_MASS[norm]
+    if len(norm) >= 2 and norm[0] == "G" and norm[1].upper() + norm[2:].lower() in ELEM_MASS:
+        return ELEM_MASS[norm[1].upper() + norm[2:].lower()]
+    raise ValueError(f"未知元素符号: {symbol}")
 
 
 @dataclass

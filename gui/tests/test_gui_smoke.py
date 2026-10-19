@@ -52,10 +52,10 @@ def test_main_window_smoke(tmp_path, monkeypatch):
     page1._w["B_MAX"].setText("2.0")
     page1.set_choice("N_B", "1")
     for c in page1._scheme_combos:
-        c.setCurrentText("THERMALIZE" if not c.currentIndex() else "ROTATION")
+        c.setCurrentText("WIGNER" if not c.currentIndex() else "ROTATION")
     page1._scheme_combos[1].setCurrentText("ROTATION")
-    # 片段 0 THERMALIZE 的必给参数(T_EQ/N_EQ/DT_EQ)内联填写(2026-10-13 括号形式)
-    for name, v in (("T_EQ", "300.0"), ("N_EQ", "25"), ("DT_EQ", "0.5")):
+    # 片段 0 WIGNER 的必给参数(T_EQ/N_EQ/DT_EQ)内联填写(2026-10-13 括号形式)
+    for name, v in (("E_SCALE", "1.0"),):
         page1._scheme_params[0][name].setText(v)
     page1.refresh_preview()
     assert "示意" in page1._notes.text()
@@ -75,7 +75,8 @@ def test_main_window_smoke(tmp_path, monkeypatch):
     page1._w["PROJECTILE"].setCurrentText("H2")
     page1._w["CELL"].setText("2.9437 0 0, 1.47185 2.5493 0, 0 0 20")
     page1.set_choice("N_AIM", "1")
-    for c in page1._scheme_combos:
+    page1._scheme_combos[0].setCurrentText("NONE")     # ghost layer leads by name order
+    for c in page1._scheme_combos[1:]:
         c.setCurrentText("EBK")
     page1.refresh_preview()
     page1.run_validation()

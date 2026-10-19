@@ -14,9 +14,12 @@ module recorder
    use force_interface,  only: force_eval
    use elec_interface,   only: occ_get, n_hop_get
    use consts,        only: dyn_ev
+   use diag,          only: diag_fatal, diag_cat_output
    implicit none
    private
    public :: col_val_i, rec_reg_col, rec_select, rec_frame, rec_final, rec_n_sel
+   public :: rec_file_header                           ! the file-open legend (driver writes
+                                                       ! it once at open, before any frame)
    public :: rec_fin_val                                            ! final-row value getter
                                                                     ! (one named column of the
                                                                     ! last written final row)
@@ -47,6 +50,7 @@ module recorder
    logical :: sec_frc = .false.              ! per-atom force section (gate at rec_level>=5)
    logical :: sel_done = .false.             ! rec_select ran (assembly-order guard for the
                                              ! write entries)
+   integer :: sel_level = -1                 ! last preset level (-1 = name-path only)
    logical :: fw_done = .false.              ! framework preregistration flag (lazy, first use)
    integer :: traj_i = 1                     ! trajectory counter [-] (frame header / final row)
    integer :: step_i = 0                     ! per-trajectory frame counter [-]
@@ -111,6 +115,7 @@ contains
       ! 3. set both section gates by the level
       sec_qp  = (level >= lvl_qp)
       sec_frc = (level >= lvl_frc)
+      sel_level = level
       sel_done = .true.
    end subroutine rec_sel_lvl
 
@@ -170,11 +175,38 @@ contains
    end subroutine rec_sel_lst
 
    !------------------------------------------------------------------
+   ! rec_file_header(unit) - the file-open legend: the unit set + every row
+   !   shape. Data rows below stay byte-identical (2026-10-15 ruling §5a).
+   !------------------------------------------------------------------
+   subroutine rec_file_header(unit)
+      integer, intent(in) :: unit
+      integer :: j
+      character(len=1024) :: s
+      call fw_reg()
+      if (.not. sel_done) then
+         call stop_rec('rec_file_header', 'called before rec_select (driver wiring order)')
+      end if
+      write (unit, '(a)') '# VENUS2026 trajectory record (units: eV | A | amu | fs; p amu*A/fs; f eV/A)'
+      s = "# each frame: '# frame traj=<id> step=<n> t=<t [fs]>' + observable row:"
+      do j = 1, n_sel
+         s = trim(s)//' '//trim(col_tbl(sel_idx(j))%name)//'=<v [eV]>'
+      end do
+      if (sel_level >= 0) s = trim(s)//' (level '//trim(i8_str(sel_level))//')'
+      write (unit, '(a)') trim(s)
+      s = "# '# final: traj t"
+      do j = 1, n_sel
+         s = trim(s)//' '//trim(col_tbl(sel_idx(j))%name)
+      end do
+      write (unit, '(a)') trim(s)//"' header + one final row per trajectory (t [fs], values [eV])"
+   end subroutine rec_file_header
+
+   !------------------------------------------------------------------
    ! rec_frame(sta, unit) - write one checkpoint frame: selected column values plus the
    ! gated flattened sections
    ! Frame layout: '# frame traj= step= t=' header; then one 'name=value' line (selection
-   ! order); '# sec_qp begin'/per-atom q,p rows/'# sec_qp end' gated at level>=2;
-   ! '# sec_frc begin'/per-atom force rows/'# sec_frc end' gated at level>=5. Atom row =
+   ! order); '# sec_qp begin [q A | p amu*A/fs]'/per-atom q,p rows/'# sec_qp end' gated at
+   ! level>=2; '# sec_frc begin [f eV/A]'/per-atom force rows/'# sec_frc end' gated at
+   ! level>=5 (the begin suffix carries the units; the end lines stay plain). Atom row =
    ! '<index> <symb> <3 reals> [<3 reals>]'; t = sta%t [fs] as held, energies
    ! [eV]; flush(unit) only at the final row
    !------------------------------------------------------------------
@@ -203,7 +235,7 @@ contains
       end if
       ! 3. all-atom Q/P flattened section (gate: preset level >= 2)
       if (sec_qp) then
-         write (unit, '(a)') '# sec_qp begin'
+         write (unit, '(a)') '# sec_qp begin [q A | p amu*A/fs]'
          do k = 1, nat
             write (unit, '(i0,1x,a,1x,6es24.16)') k, list_atoms%symb(k), &
                sta%q(3*k-2:3*k), sta%p(3*k-2:3*k)
@@ -212,7 +244,7 @@ contains
       end if
       ! 4. per-atom force section (gate: preset level >= 5)
       if (sec_frc) then
-         write (unit, '(a)') '# sec_frc begin'
+         write (unit, '(a)') '# sec_frc begin [f eV/A]'
          do k = 1, nat
             write (unit, '(i0,1x,a,1x,3es24.16)') k, list_atoms%symb(k), sta%f(3*k-2:3*k)
          end do
@@ -371,12 +403,12 @@ contains
    end function i8_str
 
    ! stop_rec(who, msg) - the named-abort channel (same semantics as config_atoms /
-   ! sysdef_interface: name the caller, print the named message, STOP 1)
+   ! sysdef_interface: name the caller, print the named message, abort via diag_fatal)
    subroutine stop_rec(who, msg)
       character(len=*), intent(in) :: who, msg
       write (0, '(a)') trim(who)//': recording error: '//trim(msg)
-      write (0, '(a)') trim(who)//': fatal (the recording is unusable)'
-      stop 1
+      call diag_fatal(diag_cat_output, 'recorder.f90', trim(who), &
+         'the recording is unusable')
    end subroutine stop_rec
 
    ! num_str(v) - a real rendered as a blank-free ES string (keeps the column line's

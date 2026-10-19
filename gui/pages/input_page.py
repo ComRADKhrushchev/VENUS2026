@@ -176,13 +176,15 @@ class InputPage(QWidget):
         self._cell_of_key: dict[str, QWidget] = {}        # 键 → 单元对(标签+控件)
         self._rows: list[tuple[QWidget, list[str]]] = []  # 行容器 → 行内键(整行塌缩判定)
         self._pending: list[str] = []                     # row() 取走的键缓冲
+        self._cell_prefill_done: bool = False             # CELL 自动预填旗标(手动清空后不抢填)
         self._cond_hidden: set[str] = set()               # 条件隐藏(collect 跳过,绝不写出)
         self._word_hidden: set[str] = set()               # 成员词未选而隐藏(旧语义,可收集)
         self._cur_sec: _Section | None = None
         self._cur_lay: QVBoxLayout | None = None
-        self._build_ui()
+        # 去抖定时器先于建 UI(构建期的预填 setText 会触发 _touch)
         self._debounce = QTimer(self, singleShot=True, interval=350)
         self._debounce.timeout.connect(self.refresh_preview)
+        self._build_ui()
 
     # ---------- UI 构建 ----------
     def _build_ui(self):
@@ -323,7 +325,9 @@ class InputPage(QWidget):
 
         # ---- 采样方案(逐片段;扫描后重建;星号=每片段均须选择)----
         group("scheme", "采样方案 *")
-        self._sections["scheme"]._btn.setToolTip("写出键: DIST_SCHEME(每片段一词;扫描后按片段重建)")
+        self._sections["scheme"]._btn.setToolTip(
+            "写出键: DIST_SCHEME(每片段一词;扫描后按片段重建);"
+            "参数逐片段在本组行内联,裸词走成员默认")
         self._scheme_host = QWidget()
         self._scheme_grid = QGridLayout(self._scheme_host)
         self._cur_lay.addWidget(self._scheme_host)
@@ -370,13 +374,6 @@ class InputPage(QWidget):
         row(cell("N_CHI", mcombo("N_CHI")),
             cell("CHI", line("CHI", "rad"), "方位角模式=0 时"))
         row(cell("N_B", mcombo("N_B")))
-
-        # ---- 方案词参数说明(2026-10-13 裁定: 参数只经 DIST_SCHEME 括号,
-        #      逐片段字段随方案行内联显示,本组仅留说明)----
-        group("member", "方案词参数", collapsible=True, expanded=False)
-        self._sections["member"]._btn.setToolTip(
-            "逐片段,在采样方案行内填写;无参数的词写裸词,缺省参数走成员默认")
-        row(QLabel("选定方案词后,参数字段内联于该片段行;裸词走成员默认。"))
 
         # ---- 容器键 ----
         g = group("container", "容器键", collapsible=True, expanded=False)
@@ -562,6 +559,7 @@ class InputPage(QWidget):
     def _rescan(self):
         path = self._sd_line.text().strip()
         self._sysdef = sysdir.scan_system_dir(path) if path else None
+        self._cell_prefill_done = False  # 新扫描: 允许重新预填
         self._rebuild_dynamic()
         self._debounce.start()
 
@@ -643,9 +641,6 @@ class InputPage(QWidget):
                     fields[sp.name] = e
             pc.setVisible(bool(word))
             self._scheme_params.append(fields)
-        # 选了带参数的词后自动展开说明组(新字段在方案行内联,组仅是说明)
-        if any(self._scheme_params) and not self._sections["member"].expanded:
-            self._sections["member"].set_expanded(True)
 
     def _scattering_is_surface(self) -> bool:
         """散射类取 SCATTERING 键值(2026-10-13 裁决:主控键,不由扫描推导)。"""
@@ -675,19 +670,18 @@ class InputPage(QWidget):
         def want(k: str, on: bool):
             show[k] = show.get(k, True) and on
 
-        # 范式呈现(星标+信息行)随 SCATTERING 键即时刷新(扫描或换键同一出处)
+        # 范式呈现(星标)随 SCATTERING 键即时刷新(扫描或换键同一出处);
+        # 信息行在预填之后组装(2026-10-14: 载注 CELL 预填来源)
         if sd is not None and sd.ok:
             self._mark("PROJECTILE", surf or n > 1)
             self._mark("TARGET", (not surf) and n > 1)
             self._mark("CELL", surf)
-            para = "表面散射" if surf else f"气相散射({n} 片段)"
-            box = "; 胞以 CELL 键为准" if surf else ""
-            self._info.setText(f"✓ {para}{box} — 片段: {', '.join(sd.frag_names)}")
 
         # 范式窗口(表面:弹丸+晶胞+落点;气相对:双角色+碰撞参数;单片段:仅碰撞参数)
         want("PROJECTILE", surf or n > 1)
         want("TARGET", (not surf) and n > 1)
         want("B_MAX", not surf)
+        want("N_B", not surf)  # 表面 b 合法值仅 0, 瞄准模式无意义(2026-10-14)
         want("CELL", surf)
         want("N_AIM", surf)
         # 落点模式 2(定点)才需要坐标
@@ -722,7 +716,32 @@ class InputPage(QWidget):
                     w.clear()
                 elif isinstance(w, QComboBox):
                     w.setCurrentIndex(0)
+                if k == "CELL":
+                    self._cell_prefill_done = False  # 系统清空(范式切换): 允许复填
             self._apply_row_visibility(k)
+        self._maybe_prefill_cell()
+        if sd is not None and sd.ok:  # 信息行在预填后组装(载预填注记)
+            para = "表面散射" if surf else f"气相散射({n} 片段)"
+            box = "; 胞以 CELL 键为准" if surf else ""
+            if surf and self._cell_prefill_done:
+                src = next((f.name for f in sd.frags if f.cell), "")
+                box += f"(预填自 {src})" if src else "(已预填)"
+            self._info.setText(f"✓ {para}{box} — 片段: {', '.join(sd.frag_names)}")
+
+    def _maybe_prefill_cell(self):
+        """表面散射且 CELL 为空: 自扫描到的 POSCAR 胞预填(2026-10-14)。
+
+        CELL 键仍是权威——预填值可改可清;手动清空后刷新不抢填
+        (旗标不复位), 范式切换的系统清空则复位旗标允许切回时复填。
+        """
+        sd = self._sysdef
+        if (self._cell_prefill_done or not self._scattering_is_surface()
+                or sd is None or not sd.ok or not sd.cell
+                or self._w["CELL"].text().strip()):
+            return
+        fmt = ", ".join(" ".join("%g" % v for v in row) for row in sd.cell)
+        self._w["CELL"].setText(fmt)
+        self._cell_prefill_done = True
 
     def _apply_row_visibility(self, key: str):
         """单元对可见性 = 条件显隐 ∧ 词基显隐;同行其余键左移补位;

@@ -10,6 +10,7 @@
 !   its name with a contained subroutine (the dispatcher is plot_hist).
 !=====================================================================
 module hist
+   use diag, only: diag_fatal, diag_cat_output
    implicit none
    private
    public :: hist_spec_t, hist_data_t, plot_hist
@@ -51,20 +52,20 @@ contains
       ! 1. guards: known kind; positive bin count and nonempty range
       if (spec%kind < k_e_hist .or. spec%kind > k_bnc) then
          write (0, '(a,i0)') 'plot_hist: unknown histogram kind ', spec%kind
-         write (0, '(a)') 'plot_hist: fatal (the kind key is outside the kind set)'
-         stop 1
+         call diag_fatal(diag_cat_output, 'plot_hist.f90', 'plot_hist', &
+            'the kind key is outside the kind set')
       end if
       if (spec%n_bin < 1) then
          write (0, '(a,i0)') 'plot_hist: nonpositive bin count ', spec%n_bin
-         write (0, '(a)') 'plot_hist: fatal (the bin geometry is not computable)'
-         stop 1
+         call diag_fatal(diag_cat_output, 'plot_hist.f90', 'plot_hist', &
+            'the bin geometry is not computable')
       end if
       if (spec%v_hi <= spec%v_lo) then
          write (0, '(2(a,es12.4))') 'plot_hist: empty histogram range v_hi <= v_lo (v_lo = ', &
             spec%v_lo, ', v_hi = ', spec%v_hi, ')'
-         write (0, '(a)') 'plot_hist: fatal (the bin width would be nonpositive -'// &
-            ' the range must satisfy v_hi > v_lo)'
-         stop 1
+         call diag_fatal(diag_cat_output, 'plot_hist.f90', 'plot_hist', &
+            'the bin width would be nonpositive -'// &
+            ' the range must satisfy v_hi > v_lo')
       end if
       ! 2. clamp the bin count to the fixed-count array bound; floor the merge threshold
       nb = spec%n_bin

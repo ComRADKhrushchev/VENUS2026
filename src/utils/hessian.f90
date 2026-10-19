@@ -10,6 +10,7 @@
 !=====================================================================
 module hessian
    use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
+   use diag, only: diag_fatal, diag_cat_output
    implicit none
    private
    public :: force_proc, hessian_cd
@@ -37,17 +38,18 @@ contains
       real(8) :: h_step
       real(8) :: q_probe(size(q)), f_plus(size(q)), f_minus(size(q))
       integer :: n, j
+      character(len=160) :: msg
       n = size(q)
       if (size(hess,1) /= n .or. size(hess,2) /= n) then
-         write (0, '(a,i0,a,i0,a,i0)') 'hessian_cd: hess shape ', size(hess,1), ' x ', &
+         write (msg, '(a,i0,a,i0,a,i0)') 'hessian_cd: hess shape ', size(hess,1), ' x ', &
             size(hess,2), ' does not match q length ', n
-         stop 1
+         call diag_fatal(diag_cat_output, 'hessian.f90', 'hessian_cd', trim(msg))
       end if
       h_step = h_default
       if (present(h)) then
          if (.not. ieee_is_finite(h) .or. h <= 0.0d0) then
-            write (0, '(a,es13.5)') 'hessian_cd: step h must be positive and finite, got ', h
-            stop 1
+            write (msg, '(a,es13.5)') 'hessian_cd: step h must be positive and finite, got ', h
+            call diag_fatal(diag_cat_output, 'hessian.f90', 'hessian_cd', trim(msg))
          end if
          h_step = h
       end if
@@ -75,14 +77,15 @@ contains
       integer, intent(in) :: j        ! displaced coordinate index
       logical, intent(in) :: plus     ! .true. = the +h probe, .false. = the -h probe
       character(len=2) :: sgn
+      character(len=160) :: msg
       integer :: i
       sgn = '-h'
       if (plus) sgn = '+h'
       do i = 1, size(f)
          if (.not. ieee_is_finite(f(i))) then
-            write (0, '(a,i0,a,a,a,i0)') 'hessian_cd: force component ', i, &
+            write (msg, '(a,i0,a,a,a,i0)') 'hessian_cd: force component ', i, &
                ' is non-finite at the ', sgn, ' probe of coordinate ', j
-            stop 1
+            call diag_fatal(diag_cat_output, 'hessian.f90', 'require_finite', trim(msg))
          end if
       end do
    end subroutine require_finite

@@ -26,6 +26,7 @@ module inc_pair
    use seam_cast, only: seam_int, seam_real
    use beam_laws,    only: beam_params_t, beam_t, beam_init, beam_draw, &
                            beam_com_shift, beam_set_com_vel
+   use diag, only: diag_fatal, diag_cat_sampler
    implicit none
    private
    public :: inc_pair_init, inc_pair_draw, inc_pair_realize, inc_pair_sample, &
@@ -135,20 +136,20 @@ contains
       call inc_pair_realize(sta)
    end subroutine inc_pair_sample
 
-   ! named-abort helpers (name the caller; STOP 1)
+   ! named-abort helpers (name the caller; abort via diag_fatal)
    subroutine stop_pairx(where, msg)
       character(len=*), intent(in) :: where, msg
       write (0, '(a)') trim(where)//': '//trim(msg)
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'inc_pair.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_pairx
 
    subroutine stop_pairi(where, msg, ival)
       character(len=*), intent(in) :: where, msg
       integer, intent(in) :: ival
       write (0, '(a,a,i0)') trim(where)//': ', trim(msg), ival
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'inc_pair.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_pairi
    !------------------------------------------------------------------
    ! member_register - the fixed-name weave entry (prebuild binds it into
@@ -205,8 +206,8 @@ logical function armed_here()
 subroutine stop_regp(where, msg)
       character(len=*), intent(in) :: where, msg
       write (0, '(a)') trim(where)//': '//trim(msg)
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'inc_pair.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_regp
 
 end module inc_pair

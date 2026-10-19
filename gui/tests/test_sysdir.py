@@ -29,7 +29,7 @@ def test_scan_pair_case():
     sd = sysdir.scan_system_dir(ROOT / "cases" / "case_harmonic_scatter" / "system")
     assert sd.ok, sd.errors
     assert sd.frag_names == ["frag_a", "frag_b"]
-    assert sd.frags[0].nat == 2 and sd.frags[1].nat == 2
+    assert sd.frags[1].nat == 2  # H2 follows the ghost layer and sd.frags[1].nat == 2
     assert sd.frags[0].coords[1][0] == pytest.approx(0.7)
     assert sd.frags[1].coords[1][0] == pytest.approx(0.8)
     assert sd.frags[0].masses == pytest.approx([1.008, 1.008])
@@ -39,8 +39,8 @@ def test_scan_surface_case():
     """case_spectrum_source/h2ag_ebk:H2.poscar 带胞,box 余弦定理(范式自 SCATTERING 键)。"""
     sd = sysdir.scan_system_dir(ROOT / "cases" / "case_spectrum_source" / "h2ag_ebk" / "system")
     assert sd.ok, sd.errors
-    assert sd.frag_names == ["H2"]
-    assert sd.frags[0].nat == 2
+    assert sd.frag_names == ["GAg", "H2"]  # ghost layer leads by name order (2026-10-16)
+    assert sd.frags[1].nat == 2  # H2 follows the ghost layer
     c = sd.cell
     assert c is not None
     # 六方 Ag(111) 原胞 a=2.9437:|a1| = |a2| = 2.9437

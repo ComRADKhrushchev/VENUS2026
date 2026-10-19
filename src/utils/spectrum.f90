@@ -17,6 +17,7 @@
 module spectrum
    use consts, only: hbar_evfs, ev2wvn, wvn2ev
    use linalg, only: eig_sym
+   use diag, only: diag_fatal, diag_cat_output
    implicit none
    private
    public :: spectrum_modes, stretch_mode, w_to_wvn, wvn_to_w
@@ -156,7 +157,7 @@ contains
    subroutine stop_spec(msg)
       character(len=*), intent(in) :: msg
       write (0, '(a)') 'spectrum_modes: '//trim(msg)
-      write (0, '(a)') 'spectrum_modes: fatal (the spectrum table is unusable)'
-      stop 1
+      call diag_fatal(diag_cat_output, 'spectrum.f90', 'spectrum_modes', &
+         'the spectrum table is unusable')
    end subroutine stop_spec
 end module spectrum

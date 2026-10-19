@@ -103,8 +103,14 @@ $(BUILD)/sys/%.o: ../systems/%.f90 | $(BUILD)
 # second. Ruling: docs/plans/2026-10-12-auto-pes-container.md §2.
 SRC_REGM := $(wildcard methods/reg_*.f90)
 SRC_REGS := $(wildcard ../systems/*/reg_*.f90)
+# the methods weave (2026-10-14) makes registry_gen `use` the MEMBER modules
+# (samp_/inc_/bath_/elec_* prefixes + the propagator seat) - same first-make
+# window as the auto-PES systems objects above; the static set covers them
+SRC_MWV  := $(wildcard methods/samp_*.f90 methods/inc_*.f90 methods/bath_*.f90 methods/elec_*.f90) \
+            dynamics/propagator.f90
 OBJ_REG  := $(patsubst %.f90,$(BUILD)/%.o,$(SRC_REGM)) \
-            $(patsubst ../systems/%.f90,$(BUILD)/sys/%.o,$(SRC_REGS))
+            $(patsubst ../systems/%.f90,$(BUILD)/sys/%.o,$(SRC_REGS)) \
+            $(patsubst %.f90,$(BUILD)/%.o,$(SRC_MWV))
 $(BUILD)/registry_gen.o: $(BUILD)/registry_gen.f90 $(OBJ_REG) $(OBJ_SYS) | $(BUILD)
 	$(FC) $(FFLAGS) $< -o $@
 

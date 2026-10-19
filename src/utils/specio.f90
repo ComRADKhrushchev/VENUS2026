@@ -11,9 +11,10 @@
 !   named abort in a reader.
 !=====================================================================
 module specio
+   use diag, only: diag_fatal, diag_cat_output
    implicit none
    private
-   public :: read_poscar, read_xyz, elem_mass
+   public :: read_poscar, read_xyz, elem_mass, elem_fold
 
    ! Element mass table (module-private paired arrays; pure physical-constant data):
    ! symbol + standard atomic weight per row, H..Og. Values are the IUPAC standard
@@ -62,13 +63,19 @@ module specio
                    293.0d0, 294.0d0, 294.0d0 /
 contains
    !------------------------------------------------------------------
-   ! read_poscar(u, title, cell, names, xyz, ok [, errmsg]) - parse one POSCAR: comment
+   ! read_poscar(u, title, cell, names, xyz, ok [, errmsg [, dof]]) - parse one POSCAR: comment
    !              line, universal scaling factor, three lattice vectors, element-symbols
    !              line, per-species counts line, Direct/Cartesian tag, coordinate rows;
    !              a velocity block following the coordinates is read past, never
    !              interpreted (step 7)
+   ! dof (optional): per-coordinate constraint flags [3 x natoms] (.true. = free) from
+   !              the Selective-dynamics section - the SD line present arms per-row
+   !              parsing of the three trailing T/F flags; absent section or absent
+   !              dof argument leaves every flag .true. (the historical behavior -
+   !              the flag-aware parse runs ONLY when dof is passed, so the legacy
+   !              call path is bit-identical)
    !------------------------------------------------------------------
-   subroutine read_poscar(u, title, cell, names, xyz, ok, errmsg)
+   subroutine read_poscar(u, title, cell, names, xyz, ok, errmsg, dof)
       integer, intent(in) :: u    ! unit number (the caller opens/positions and closes the
                                    ! file - this reader is a pure unit consumer, no file
                                    ! names)
@@ -87,14 +94,18 @@ contains
                                    ! named abort in a reader)
       character(len=*), intent(out), optional :: errmsg  ! failure description (names the
                                    ! offending line; meaningful only when ok = .false.)
+      logical, allocatable, intent(out), optional :: dof(:,:)  ! per-coordinate free flags
+                                   ! [.true. = free, .false. = constrained] (3 x natoms)
       character(len=512) :: line
-      character(len=16) :: toks(max_sp)
+      character(len=64) :: toks(max_sp)   ! wide tokens: a truncated numeric token
+                                      ! would silently lose ULPs (the nlfrag
+                                      ! regression, 2026-10-16)
       character(len=4) :: symb(max_sp)
       character(len=96) :: emsg_row   ! wide enough for the longest missing-row message
       integer :: cnt(max_sp)
       integer :: ios, i, k, nat, nsp, ntok, iat
       real(8) :: s, s_eff, vec(3,3), fr(3), det0
-      logical :: direct
+      logical :: direct, sd_on
 
       ok = .false.
       if (present(errmsg)) errmsg = ''
@@ -211,8 +222,11 @@ contains
       end do
 
       ! 5. mode tag: first letter D/d = Direct (fractional), C/c = Cartesian; an optional
-      !    "Selective dynamics" line may precede it (per-coordinate T/F flags - read past
-      !    and NOT interpreted: freezing dof is system knowledge)
+      !    "Selective dynamics" line may precede it (per-coordinate T/F flags - the SD
+      !    section is FORMAT: with the dof argument passed the three flags per
+      !    coordinate row are parsed out (sd_on); without it they are read past and
+      !    NOT interpreted, the historical behavior - freezing dof is system knowledge)
+      sd_on = .false.
       read (u, '(a)', iostat=ios) line
       if (ios /= 0) then
          call fail(errmsg, 'POSCAR: mode-tag line missing')
@@ -220,12 +234,17 @@ contains
       end if
       line = adjustl(line)
       if (line(1:1) == 'S' .or. line(1:1) == 's') then
+         sd_on = .true.
          read (u, '(a)', iostat=ios) line
          if (ios /= 0) then
             call fail(errmsg, 'POSCAR: mode-tag line missing after the Selective-dynamics line')
             return
          end if
          line = adjustl(line)
+      end if
+      if (present(dof)) then
+         allocate (dof(3,nat))
+         dof = .true.                     ! SD section absent = every flag free
       end if
       select case (line(1:1))
       case ('D', 'd')
@@ -243,8 +262,10 @@ contains
       !    would contract row 1 with fr instead, coinciding only for diagonal cells);
       !    Cartesian -> xyz(:,i) = s_eff * cartesian_i (the universal factor scales
       !    Cartesian coordinates too, per the format definition); trailing
-      !    per-coordinate T/F flags read past; the coordinate block stops here -
-      !    a velocity block, if present, is handled by step 7
+      !    per-coordinate T/F flags read past, EXCEPT under (sd_on .and. present(dof))
+      !    where the three flags per row are parsed into dof (token parse - the
+      !    legacy list-directed read runs otherwise, bit-identical); the coordinate
+      !    block stops here - a velocity block, if present, is handled by step 7
       do iat = 1, nat
          read (u, '(a)', iostat=ios) line
          if (ios /= 0) then
@@ -252,11 +273,38 @@ contains
             call fail(errmsg, trim(emsg_row))
             return
          end if
-         read (line, *, iostat=ios) fr
-         if (ios /= 0) then
-            write (emsg_row, '(a,i0,a)') 'POSCAR coordinate row ', iat, ': short or non-numeric: '
-            call fail(errmsg, trim(emsg_row)//' '//trim(line))
-            return
+         if (sd_on .and. present(dof)) then
+            call split_tokens(line, toks, ntok)
+            if (ntok < 3) then
+               write (emsg_row, '(a,i0,a)') 'POSCAR coordinate row ', iat, &
+                  ': Selective-dynamics row too short (need 3 coordinates): '
+               call fail(errmsg, trim(emsg_row)//' '//trim(line))
+               return
+            end if
+            read (toks(1), *, iostat=ios) fr(1)
+            read (toks(2), *, iostat=ios) fr(2)
+            read (toks(3), *, iostat=ios) fr(3)
+            if (ios /= 0) then
+               write (emsg_row, '(a,i0,a)') 'POSCAR coordinate row ', iat, ': non-numeric coordinate: '
+               call fail(errmsg, trim(emsg_row)//' '//trim(line))
+               return
+            end if
+            if (ntok >= 6) then
+               ! the three trailing T/F flags (VASP SD form; a row may omit them -
+               ! the G-prefix sugar writes flag-free rows - omitted = all free)
+               if (.not. tf_flags(toks(4), toks(5), toks(6), dof(1,iat), dof(2,iat), dof(3,iat))) then
+                  write (emsg_row, '(a,i0,a)') 'POSCAR coordinate row ', iat, ': bad Selective-dynamics flag (need T/F): '
+                  call fail(errmsg, trim(emsg_row)//' '//trim(line))
+                  return
+               end if
+            end if
+         else
+            read (line, *, iostat=ios) fr
+            if (ios /= 0) then
+               write (emsg_row, '(a,i0,a)') 'POSCAR coordinate row ', iat, ': short or non-numeric: '
+               call fail(errmsg, trim(emsg_row)//' '//trim(line))
+               return
+            end if
          end if
          if (direct) then
             xyz(:,iat) = matmul(fr, cell)
@@ -288,10 +336,14 @@ contains
    end subroutine read_poscar
 
    !------------------------------------------------------------------
-   ! read_xyz(u, names, xyz, ok [, errmsg]) - parse one .xyz frame: atom-count line,
+   ! read_xyz(u, names, xyz, ok [, errmsg [, dof]]) - parse one .xyz frame: atom-count line,
    !              comment line, "Symbol x y z" rows (no cell - by format definition)
+   ! dof (optional): per-coordinate free flags [3 x n] - a row may carry three
+   !              trailing T/F tokens after the coordinates (poscar Selective-dynamics
+   !              form); rows without them are all-free. Parsed only when dof is
+   !              passed - the legacy list-directed path runs otherwise, bit-identical.
    !------------------------------------------------------------------
-   subroutine read_xyz(u, names, xyz, ok, errmsg)
+   subroutine read_xyz(u, names, xyz, ok, errmsg, dof)
       integer, intent(in) :: u    ! unit number (the caller opens/positions and closes the
                                    ! file - pure unit consumer, no file names)
       character(len=4), allocatable, intent(out) :: names(:)  ! per-atom element symbols
@@ -303,11 +355,16 @@ contains
                                    ! same rule as read_poscar)
       character(len=*), intent(out), optional :: errmsg  ! failure description (names the
                                    ! offending row; meaningful only when ok = .false.)
+      logical, allocatable, intent(out), optional :: dof(:,:)  ! per-coordinate free flags
+                                   ! [.true. = free] (3 x n)
       character(len=512) :: line
+      character(len=64) :: toks(8)   ! wide: a truncated numeric token would
+                                   ! silently lose ULPs (the nlfrag regression, 2026-10-16)
       character(len=64) :: emsg_row
-      character(len=16) :: sfield
-      integer :: ios, n, i
+      character(len=64) :: sfield
+      integer :: ios, n, i, ntok
       real(8) :: p(3)
+      logical :: f1, f2, f3
 
       ok = .false.
       if (present(errmsg)) errmsg = ''
@@ -338,7 +395,13 @@ contains
       end if
 
       ! 3. n "Symbol x y z" rows -> names(i), xyz(:,i); trailing extended columns read
-      !    past, never interpreted
+      !    past, never interpreted - EXCEPT three T/F tokens under a passed dof
+      !    argument (the Selective-dynamics flag form; any other trailing columns
+      !    stay ignored). The legacy list-directed read runs when dof is absent.
+      if (present(dof)) then
+         allocate (dof(3,n))
+         dof = .true.
+      end if
       do i = 1, n
          read (u, '(a)', iostat=ios) line
          if (ios /= 0) then
@@ -346,11 +409,47 @@ contains
             call fail(errmsg, trim(emsg_row))
             return
          end if
-         read (line, *, iostat=ios) sfield, p(1), p(2), p(3)
-         if (ios /= 0) then
-            write (emsg_row, '(a,i0,a)') 'xyz coordinate row ', i, ': short or non-numeric: '
-            call fail(errmsg, trim(emsg_row)//' '//trim(line))
-            return
+         if (present(dof)) then
+            call split_tokens(line, toks, ntok)
+            if (ntok < 4) then
+               write (emsg_row, '(a,i0,a)') 'xyz coordinate row ', i, ': short (need Symbol x y z): '
+               call fail(errmsg, trim(emsg_row)//' '//trim(line))
+               return
+            end if
+            sfield = toks(1)
+            read (toks(2), *, iostat=ios) p(1)
+            read (toks(3), *, iostat=ios) p(2)
+            read (toks(4), *, iostat=ios) p(3)
+            if (ios /= 0) then
+               write (emsg_row, '(a,i0,a)') 'xyz coordinate row ', i, ': non-numeric coordinate: '
+               call fail(errmsg, trim(emsg_row)//' '//trim(line))
+               return
+            end if
+            if (ntok >= 7) then
+               if (tf_flags(toks(5), toks(6), toks(7), f1, f2, f3)) then
+                  dof(1,i) = f1
+                  dof(2,i) = f2
+                  dof(3,i) = f3
+               end if
+            end if
+            ! the G-prefix sugar takes authority over a flag-less row: a bare
+            ! 'GAu x y z' row freezes all three dof here (the xyz trailing
+            ! columns are optional and semantically weak - they do not join the
+            ! poscar contradiction rule; an explicit T-flag clash is a poscar
+            ! Selective-dynamics affair)
+            block
+               character(len=4) :: gb
+               logical :: gh_
+               call elem_fold(sfield, gb, gh_)
+               if (gh_) dof(:,i) = .false.
+            end block
+         else
+            read (line, *, iostat=ios) sfield, p(1), p(2), p(3)
+            if (ios /= 0) then
+               write (emsg_row, '(a,i0,a)') 'xyz coordinate row ', i, ': short or non-numeric: '
+               call fail(errmsg, trim(emsg_row)//' '//trim(line))
+               return
+            end if
          end if
          if (len_trim(sfield) > 4) then
             write (emsg_row, '(a,i0,a)') 'xyz coordinate row ', i, ': symbol longer than 4 characters: '
@@ -396,13 +495,90 @@ contains
       ! 4. miss -> named abort naming the symbol (the pure-function channel has no
       !    soft-error return and an unusable symbol admits no default fallback - unlike
       !    the readers' ok/errmsg channel, this is a hard stop by design)
-      write (0, '(a)') 'elem_mass: unknown element symbol: '//trim(symbol)
-      stop 1
+      call diag_fatal(diag_cat_output, 'specio.f90', 'elem_mass', &
+         'elem_mass: unknown element symbol: '//trim(symbol))
    end function elem_mass
+
+   !------------------------------------------------------------------
+   ! elem_fold(symbol, base, ghost) - unfold the G-prefix sugar: a symbol whose
+   !              WHOLE form is not an element but whose 'G'-stripped remainder is
+   !              ('GAu' -> 'Au') folds to that element with ghost = .true. (the
+   !              authoring-side shorthand for a fully-constrained atom). Whole-form
+   !              lookup FIRST - the real G-elements (Ga/Gd/Ge) must never be
+   !              misread as prefixed; a symbol that is neither an element nor a
+   !              prefixed element keeps ghost = .false. and returns unchanged (the
+   !              mass-table miss remains elem_mass's named abort, not this fold's)
+   !------------------------------------------------------------------
+   subroutine elem_fold(symbol, base, ghost)
+      character(len=*), intent(in)  :: symbol  ! as written in the file (any case)
+      character(len=4), intent(out) :: base    ! the element symbol (case-normalized)
+      logical,          intent(out) :: ghost   ! .true. = the G-prefix sugar was applied
+      character(len=4) :: norm
+      norm = trim(adjustl(symbol))
+      norm(1:1) = upcase(norm(1:1))
+      if (len_trim(norm) >= 2) norm(2:2) = dncase(norm(2:2))
+      if (len_trim(norm) >= 3) then
+         norm(3:3) = dncase(norm(3:3))
+      end if
+      base = norm(1:2)
+      ghost = .false.
+      if (symb_lookup(norm) > 0) return        ! whole form is an element (incl. Ga/Gd/Ge)
+      if (norm(1:1) == 'G' .and. len_trim(norm) >= 2) then
+         block
+            character(len=4) :: stripped
+            stripped = norm(2:len_trim(norm))
+            stripped(1:1) = upcase(stripped(1:1))   ! the case-normalized probe again
+            if (symb_lookup(trim(stripped)) > 0) then
+               base = trim(stripped)
+               ghost = .true.
+            end if
+         end block
+      end if
+   end subroutine elem_fold
 
    !------------------------------------------------------------------
    ! private helpers (pure string/number mechanics - no format knowledge of their own)
    !------------------------------------------------------------------
+
+   ! tf_flags(t1, t2, t3, f1, f2, f3) - parse three Selective-dynamics flag tokens
+   ! (T/t = free, F/f = constrained); .false. return = at least one token is not a
+   ! flag token (caller reports the offending row)
+   function tf_flags(t1, t2, t3, f1, f2, f3) result(isflag)
+      character(len=*), intent(in)  :: t1, t2, t3
+      logical,          intent(out) :: f1, f2, f3
+      logical :: isflag
+      isflag = tf_one(t1, f1) .and. tf_one(t2, f2) .and. tf_one(t3, f3)
+   end function tf_flags
+
+   function tf_one(tok, f) result(isflag)
+      character(len=*), intent(in)  :: tok
+      logical,          intent(out) :: f
+      logical :: isflag
+      isflag = .true.
+      select case (trim(adjustl(tok)))
+      case ('T', 't')
+         f = .true.
+      case ('F', 'f')
+         f = .false.
+      case default
+         isflag = .false.
+         f = .true.
+      end select
+   end function tf_one
+
+   ! symb_lookup(symbol) - element-table row of a normalized symbol (0 = miss); the
+   !                      shared probe behind elem_mass and elem_fold
+   pure function symb_lookup(sym) result(row)
+      character(len=*), intent(in) :: sym
+      integer :: row, i
+      row = 0
+      do i = 1, n_elem
+         if (tbl_symb(i) == trim(sym)) then
+            row = i
+            return
+         end if
+      end do
+   end function symb_lookup
 
    ! fail(errmsg, msg) - record the failure description when the caller passed the
    ! optional channel (the ok = .false. flag itself is set by the caller)

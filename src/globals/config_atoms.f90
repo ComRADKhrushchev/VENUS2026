@@ -10,6 +10,10 @@
 !   and the PROJECTILE/TARGET role reconcile (gas pairs require both keys naming
 !   distinct fragments, surface requires PROJECTILE alone, single-fragment gas
 !   rejects either).
+!   list_products_load pulls the same way from the product buffer (the
+!   system/products/ declarations; sysdef_load_products must run first): one
+!   prod_t row per declared product species, name-sorted by the scan, qz
+!   flattened in file order.
 !   All members are derived or transferred; the window fields' gate is the
 !   SCATTERING-key class.
 !=====================================================================
@@ -17,11 +21,17 @@ module config_atoms
    use config, only: reactants
    use sysdef_interface, only: buffer_loaded, buffer_frag_count, buffer_frag_nat, &
                             buffer_frag_name, buffer_atom_symbols, buffer_atom_masses, &
-                            buffer_atom_geometry
+                            buffer_atom_geometry, buffer_atom_dof, &
+                            buffer_prod_loaded, buffer_prod_count, buffer_prod_name, &
+                            buffer_prod_nat, buffer_prod_symbols, buffer_prod_masses, &
+                            buffer_prod_geometry
    use input, only: buffer_n_rows, buffer_key, buffer_val, buffer_line
+   use diag, only: diag_fatal, diag_cat_system
    implicit none
    private
    public :: list_atoms_t, frag_t, list_atoms, list_atoms_load, list_atoms_clear
+   public :: prod_t, list_products, list_products_load
+   public :: atom_ghost, substrate_mask
 
    ! Fragment table symmetric and arrayed: one homogeneous frag_t row per
    ! fragment - no A/B asymmetry, no 2-fragment cap
@@ -38,15 +48,26 @@ module config_atoms
    end type
 
    type :: list_atoms_t
-      real(8), allocatable :: mass(:)          ! per-atom masses [amu] (rigid-surface atoms fixed
-                                               ! with a huge mass ~1d30)
+      real(8), allocatable :: mass(:)          ! per-atom masses [amu] (a fully-constrained
+                                               ! atom keeps its physical mass here - the DOF
+                                               ! mask below, not the mass, freezes it)
       character(len=4), allocatable :: symb(:) ! per-atom element symbols [-] (arrive from the
                                                ! system-definition files via the sysdef interface
-                                               ! products)
+                                               ! products; G-prefixed sugar already unfolded -
+                                               ! the stored symbol is the base element)
       type(frag_t), allocatable :: frag(:)     ! fragment table - one homogeneous row per fragment;
                                                ! the surface rows' extra content is still blank
       real(8), allocatable :: q0(:)            ! whole-system equilibrium geometry [Å] (assembled
                                                 ! from the fragment geometries by atom index)
+      logical, allocatable :: dof(:,:)         ! per-coordinate free flags [-] (3 x natoms;
+                                                ! .true. = free. The kinematic axis of the
+                                                ! 2026-10-16 ruling: forces are computed for
+                                                ! every coordinate (VASP-like), the integrators
+                                                ! advance only the free ones; an all-false row
+                                                ! DERIVES the ghost category (a background atom:
+                                                ! no sampling, no statistics, placeable by the
+                                                ! surface TARGET) - a category bit is deliberately
+                                                ! NOT stored, the mask is the single source)
       real(8) :: skew = 0.0d0                  ! unit-cell skew angle [rad] (derived from the
                                                 ! CELL input vectors, in radians)
       real(8) :: box_lx = 0.0d0                ! unit-cell x edge length [Å]
@@ -55,8 +76,13 @@ module config_atoms
                                                ! single write: the PROJECTILE key names
                                                ! frag(i_proj); 0 = no collision roles in this run)
       integer :: i_targ = 0                   ! target fragment row [-] (the TARGET key, same
-                                               ! write site; 0 = none - surface paradigm and
-                                               ! single-fragment gas carry no target row)
+                                               ! write site; 0 = none - single-fragment gas
+                                               ! carries no target row. Surface paradigm: the
+                                               ! 2026-10-16 ruling returns TARGET to surface
+                                               ! scattering as the OPTIONAL explicit substrate
+                                               ! fragment - its placement (q0 reset) is the
+                                               ! incident channel's; un-TARGETed substrate
+                                               ! fragments keep the ride-untouched semantics)
       ! Left blank (content, not form): what the surface-paradigm fragment rows carry
       ! beyond the homogeneous shape - finalized together with the surface members /
       ! incident channel
@@ -66,6 +92,21 @@ module config_atoms
                                ! assembled by list_atoms_load; state dimensions =
                                ! 3*size(list_atoms%mass) - no cached natoms/ndof fields,
                                ! size-derived)
+
+   ! Declared final-state product species (one row per system/products/ file;
+   ! name-sorted by the scan - the same rule as the fragment table)
+   type :: prod_t
+      character(len=64) :: name = ''               ! product species name (the file stem) [-]
+      integer :: nat = 0                           ! product atom count [count]
+      character(len=4), allocatable :: symb(:)     ! per-atom element symbols [-]
+      real(8), allocatable :: mass(:)              ! per-atom masses [amu]
+      real(8), allocatable :: qz(:)                ! product equilibrium geometry [Å],
+                                                   ! 3*nat flattened, file order
+   end type prod_t
+
+   type(prod_t), allocatable :: list_products(:)   ! product table (assembled by
+                                                   ! list_products_load; empty = no
+                                                   ! products channel in this run)
 contains
    !------------------------------------------------------------------
    ! list_atoms_load() - assemble and validate the atom list from the sysdef buffer
@@ -75,6 +116,7 @@ contains
    subroutine list_atoms_load()
       character(len=4), allocatable :: symb(:)
       real(8), allocatable :: amass(:), geom(:,:)
+      logical, allocatable :: adof(:,:)
       real(8) :: cell(3,3), box_lx, box_ly, cos_skew
       character(len=256) :: msg
       integer :: n_atoms, n_frag, i, j, k, offset
@@ -89,9 +131,11 @@ contains
       symb  = buffer_atom_symbols()
       amass = buffer_atom_masses()
       geom  = buffer_atom_geometry()
+      adof  = buffer_atom_dof()
       n_atoms = size(symb)
       if (n_atoms <= 0 .or. size(amass) /= n_atoms .or. &
-          size(geom,1) /= 3 .or. size(geom,2) /= n_atoms) then
+          size(geom,1) /= 3 .or. size(geom,2) /= n_atoms .or. &
+          size(adof,1) /= 3 .or. size(adof,2) /= n_atoms) then
          call stop_assembly('buffered per-atom products inconsistent (empty or mismatched lengths)')
       end if
       n_frag = buffer_frag_count()
@@ -99,9 +143,11 @@ contains
 
       call reset_derived()
       allocate (list_atoms%symb(n_atoms), list_atoms%mass(n_atoms), list_atoms%q0(3*n_atoms))
+      allocate (list_atoms%dof(3,n_atoms))
       allocate (list_atoms%frag(n_frag))
       list_atoms%symb = symb
       list_atoms%mass = amass
+      list_atoms%dof = adof
 
       ! 2. fragment tables: one contiguous run per fragment
       offset = 0
@@ -191,6 +237,65 @@ contains
    end subroutine list_atoms_load
 
    !------------------------------------------------------------------
+   ! list_products_load() - assemble the product table from the sysdef product
+   !                 buffer (one-way pull; sysdef_load_products must run first -
+   !                 assembly-order error otherwise; independent of list_atoms)
+   !------------------------------------------------------------------
+   subroutine list_products_load()
+      character(len=4), allocatable :: symb(:)
+      real(8), allocatable :: mass(:), geom(:,:)
+      character(len=256) :: msg
+      integer :: n, i, off
+
+      ! 0. ordering-rule guard (assembly-order error)
+      if (.not. buffer_prod_loaded()) then
+         call stop_assembly('no buffered product declarations - sysdef_load_products must '// &
+                            'run first (assembly-order error, the config_atoms ordering statute)', &
+                            who='list_products_load')
+      end if
+
+      ! 1. per-atom transfer (fresh copies from the product-buffer getters)
+      symb = buffer_prod_symbols()
+      mass = buffer_prod_masses()
+      n = buffer_prod_count()
+
+      ! 2. one row per product species; contiguous runs carved out of the
+      !    concatenated per-atom transfer (same run rule as the fragment table)
+      if (allocated(list_products)) deallocate (list_products)
+      allocate (list_products(n))
+      off = 0
+      do i = 1, n
+         associate (pr => list_products(i))
+            pr%name = buffer_prod_name(i)
+            pr%nat = buffer_prod_nat(i)
+            ! bounds guard BEFORE any allocate/section access (fail-safe
+            ! defensive order, same statute as the fragment runs)
+            if (off + pr%nat > size(symb)) then
+               write (msg, '(a,i0,a,i0,a,i0)') 'product ', i, ' atom count ', pr%nat, &
+                  ' exceeds the remaining buffered atoms (', size(symb) - off, ' left)'
+               call stop_assembly(trim(msg), who='list_products_load')
+            end if
+            pr%symb = symb(off+1:off+pr%nat)
+            pr%mass = mass(off+1:off+pr%nat)
+            geom = buffer_prod_geometry(i)
+            if (size(geom,2) /= pr%nat) then
+               write (msg, '(a,i0,a,i0,a,i0)') 'product ', i, ' geometry carries ', &
+                  size(geom,2), ' atoms but its atom count is ', pr%nat
+               call stop_assembly(trim(msg), who='list_products_load')
+            end if
+            allocate (pr%qz(3*pr%nat))
+            pr%qz = reshape(geom, [3*pr%nat])
+            off = off + pr%nat
+         end associate
+      end do
+      if (off /= size(symb)) then
+         write (msg, '(a,i0,a,i0)') 'buffered product atom counts sum to ', off, &
+            ' but the buffered atom count is ', size(symb)
+         call stop_assembly(trim(msg), who='list_products_load')
+      end if
+   end subroutine list_products_load
+
+   !------------------------------------------------------------------
    ! list_atoms_clear() - deallocate all allocatable members and reset the scalars
    !                   to their generic defaults
    !------------------------------------------------------------------
@@ -199,6 +304,7 @@ contains
       if (allocated(list_atoms%symb)) deallocate (list_atoms%symb)
       if (allocated(list_atoms%frag)) deallocate (list_atoms%frag)
       if (allocated(list_atoms%q0)) deallocate (list_atoms%q0)
+      if (allocated(list_atoms%dof)) deallocate (list_atoms%dof)
       list_atoms%skew = 0.0d0
       list_atoms%box_lx = 0.0d0
       list_atoms%box_ly = 0.0d0
@@ -218,6 +324,7 @@ contains
       if (allocated(list_atoms%symb)) deallocate (list_atoms%symb)
       if (allocated(list_atoms%frag)) deallocate (list_atoms%frag)
       if (allocated(list_atoms%q0)) deallocate (list_atoms%q0)
+      if (allocated(list_atoms%dof)) deallocate (list_atoms%dof)
       list_atoms%skew = 0.0d0
       list_atoms%box_lx = 0.0d0
       list_atoms%box_ly = 0.0d0
@@ -295,11 +402,11 @@ contains
          list_atoms%i_proj = ip
          list_atoms%i_targ = it
       else
-         if (user_row('TARGET') > 0) then
-            call stop_assembly('key TARGET is a gas-pair role key, but this system derived '// &
-               'the surface paradigm - the surface is not an atom list fragment and the '// &
-               'target role does not exist here')
-         end if
+         ! surface paradigm (2026-10-16 ruling): PROJECTILE required; TARGET OPTIONAL -
+         ! the explicit substrate fragment. Its placement (per-trajectory q0 reset) is
+         ! the incident channel's; the bath domain and the statistics exclusions key
+         ! off it (substrate_mask). Un-TARGETed substrate fragments keep the historical
+         ! ride-untouched semantics - v1 holds one TARGET fragment
          k = user_row('PROJECTILE')
          if (k == 0) then
             call stop_assembly('surface paradigm (surface_model = 1) is missing the required '// &
@@ -308,8 +415,73 @@ contains
          end if
          sval = buffer_val(k)
          list_atoms%i_proj = name_row('PROJECTILE', sval, buffer_line(k))
+         k = user_row('TARGET')
+         if (k > 0) then
+            sval = buffer_val(k)
+            it = name_row('TARGET', sval, buffer_line(k))
+            if (it == list_atoms%i_proj) then
+               call stop_assembly('keys PROJECTILE and TARGET both name fragment "'// &
+                  trim(list_atoms%frag(it)%name)//'" - the surface target is the substrate '// &
+                  'fragment and must differ from the projectile; available names: '//frag_names())
+            end if
+            list_atoms%i_targ = it
+         end if
       end if
    end subroutine role_reconcile
+
+   !------------------------------------------------------------------
+   ! atom_ghost(i) - the derived ghost category: an atom whose three dof flags are
+   !                 all .false. (fully constrained = a background atom: excluded from
+   !                 sampling, statistics and the bath domain; placeable by the surface
+   !                 TARGET). The mask is the single source - no separate category bit
+   !                 is stored (2026-10-16 ruling: one fixed-mechanism entry point)
+   !------------------------------------------------------------------
+   pure logical function atom_ghost(i)
+      integer, intent(in) :: i
+      atom_ghost = .false.
+      if (allocated(list_atoms%dof)) then
+         if (i >= 1 .and. i <= size(list_atoms%dof, 2)) then
+            atom_ghost = .not. any(list_atoms%dof(:, i))
+         end if
+      end if
+   end function atom_ghost
+
+   !------------------------------------------------------------------
+   ! substrate_mask() - the substrate domain (the role axis of the 2026-10-16 ruling):
+   !                 the ownerless atoms (no fragment claims them) UNION the TARGET
+   !                 fragment's atoms, minus ghost rows (a frozen atom has nothing to
+   !                 thermalize). This is the bath's action domain and the unified
+   !                 statistics/exclusion predicate - one definition, every consumer
+   !------------------------------------------------------------------
+   function substrate_mask() result(m)
+      logical, allocatable :: m(:)
+      integer :: nat, nf, fi, fa
+      nat = 0
+      if (allocated(list_atoms%mass)) nat = size(list_atoms%mass)
+      allocate (m(nat))
+      m = .false.
+      if (nat == 0) return
+      ! ownerless atoms: claimed by no fragment row
+      if (allocated(list_atoms%frag)) then
+         nf = size(list_atoms%frag)
+         do fi = 1, nf
+            do fa = 1, list_atoms%frag(fi)%nat
+               m(list_atoms%frag(fi)%list(fa)) = .true.
+            end do
+         end do
+         m = .not. m                 ! ownerless = not claimed
+         ! plus the TARGET fragment's atoms
+         if (list_atoms%i_targ >= 1 .and. list_atoms%i_targ <= nf) then
+            do fa = 1, list_atoms%frag(list_atoms%i_targ)%nat
+               m(list_atoms%frag(list_atoms%i_targ)%list(fa)) = .true.
+            end do
+         end if
+      end if
+      ! ghost rows leave the domain
+      do fi = 1, nat
+         if (atom_ghost(fi)) m(fi) = .false.
+      end do
+   end function substrate_mask
 
    ! name_row(key, nm, ln) - list_atoms fragment row whose name matches nm (case-insensitive
    !                         trim fold; 0 is never returned on a miss - the miss is the
@@ -383,12 +555,27 @@ contains
       end do
    end function user_row
 
-   ! stop_assembly(msg) - the named-abort channel: print the named message, STOP 1
-   subroutine stop_assembly(msg)
+   ! stop_assembly(msg [, who [, what]]) - the named-abort channel: print the named
+   !                                      message under the caller's banner, abort via diag_fatal
+   !                                      (no who = the list_atoms_load historical
+   !                                      form, byte-identical; who without what
+   !                                      keeps the historical product-table text;
+   !                                      what lets a caller re-caption the fatal
+   !                                      line for a non-product-table context)
+   subroutine stop_assembly(msg, who, what)
       character(len=*), intent(in) :: msg
-      write (0, '(a)') 'list_atoms_load: assembly error: '//trim(msg)
-      write (0, '(a)') 'list_atoms_load: fatal (the atom list is unusable)'
-      stop 1
+      character(len=*), intent(in), optional :: who, what
+      character(len=32) :: banner
+      character(len=64) :: text
+      banner = 'list_atoms_load'
+      text = 'the atom list is unusable'
+      if (present(who)) then
+         banner = who
+         text = 'the product table is unusable'
+         if (present(what)) text = what
+      end if
+      write (0, '(a)') trim(banner)//': assembly error: '//trim(msg)
+      call diag_fatal(diag_cat_system, 'config_atoms.f90', trim(banner), trim(text))
    end subroutine stop_assembly
 
 end module config_atoms

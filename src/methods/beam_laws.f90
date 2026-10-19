@@ -23,6 +23,7 @@ module beam_laws
    use rng,          only: rng_u, rng_gamma
    use state,        only: state_t
    use config_atoms, only: list_atoms
+   use diag,       only: diag_fatal, diag_cat_sampler
    implicit none
    private
    public :: beam_params_t, beam_t, beam_init, beam_draw
@@ -343,27 +344,27 @@ contains
       dens = v*v*v*exp(-((v - b%v0_c)/b%alpha_c)**2)
    end function dens
 
-   ! named-abort helpers (name the caller; STOP 1)
+   ! named-abort helpers (name the caller; abort via diag_fatal)
    subroutine stop_beamx(where, msg)
       character(len=*), intent(in) :: where, msg
       write (0, '(a)') trim(where)//': '//trim(msg)
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'beam_laws.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_beamx
 
    subroutine stop_beamz(where, msg, val)
       character(len=*), intent(in) :: where, msg
       real(8), intent(in) :: val
       write (0, '(a,a,es12.4)') trim(where)//': ', trim(msg), val
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'beam_laws.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_beamz
 
    subroutine stop_beami(where, msg, ival)
       character(len=*), intent(in) :: where, msg
       integer, intent(in) :: ival
       write (0, '(a,a,i0)') trim(where)//': ', trim(msg), ival
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'beam_laws.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_beami
 end module beam_laws

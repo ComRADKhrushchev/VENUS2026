@@ -136,7 +136,10 @@ def validate(
             if _written(values, "B_MAX"):
                 err("B_MAX", "表面散射不支持 B_MAX(横向落点由 N_AIM 落点模式专有,2026-10-01 裁决)")
             if targ:
-                err("TARGET", "表面散射不支持 TARGET(仅 PROJECTILE)")
+                if targ.lower() == proj.lower():
+                    err("TARGET", "表面 TARGET 是可选衬底片段,须与 PROJECTILE 不同名(2026-10-16 立法)")
+                elif targ.lower() not in names:
+                    err("TARGET", f"TARGET 未命中片段(可用: {', '.join(sysdef.frag_names)})")
             if not proj:
                 err("PROJECTILE", "表面散射须提供 PROJECTILE")
             elif proj.lower() not in names:
@@ -262,6 +265,11 @@ def validate(
             err("T_BATH", "BATH=ANDERSEN 须 T_BATH > 0")
         if (_num(values, "NU_COLL") or 0.0) <= 0.0:
             err("NU_COLL", "BATH=ANDERSEN 须 NU_COLL > 0")
+    if bath == "NOSE_HOOVER":
+        if (_num(values, "T_BATH") or 0.0) <= 0.0:
+            err("T_BATH", "BATH=NOSE_HOOVER 须 T_BATH > 0")
+        if (_num(values, "TAU_NOSE") or 0.0) <= 0.0:
+            err("TAU_NOSE", "BATH=NOSE_HOOVER 须 TAU_NOSE > 0")
 
     # ---- 8. 方案词括号参数(2026-10-13 裁定: 逐片段取参;samp_*.f90 init 约束)----
     ds = values.get("DIST_SCHEME", "").strip()
@@ -271,6 +279,11 @@ def validate(
             items = parse_dist_scheme(ds)
         except ValueError as exc:
             err("DIST_SCHEME", str(exc))
+
+    # NONE 不带任何参数(Fortran 侧由 input_audit_dist_par 兜底中止, 预检更早报)
+    for i, (w, params) in enumerate(items):
+        if w == "NONE" and params:
+            err("DIST_SCHEME", f"NONE 不带参数(第 {i + 1} 片段: 无成员词, '{', '.join(params)}' 无人消费)")
 
     # 各词的必给参数(缺省走成员字段默认;标注"须 >0"默认 0 的参数必须显式给)
     word_required = {
@@ -317,6 +330,10 @@ def validate(
             v = _pf(params, "T_ROT", i)
             if v is not None and v <= 0.0:
                 err("T_ROT", f"{tag}: 须 T_ROT > 0")
+        elif word == "EROT":
+            v = _pf(params, "T_ROT", i)
+            if v is not None and v <= 0.0:
+                err("T_ROT", f"{tag}: 须 T_ROT > 0")
         elif word == "ROTATION":
             v = _pi(params, "J_ROT", i)
             if v is not None and v < 0:
@@ -326,21 +343,6 @@ def validate(
                 v = _pi(params, k, i)
                 if v is not None and v < 0:
                     err(k, f"{tag}: 须 ≥ 0")
-        elif word == "SURFACE_OSCILLATOR":
-            n_osc = _pi(params, "N_OSC", i)
-            if n_osc is not None and n_osc not in (0, 1):
-                err("N_OSC", f"{tag}: 须为 0(热)/1(定态)")
-            if n_osc == 0:
-                v = _pf(params, "T_OSC", i)
-                if v is not None and v <= 0.0:
-                    err("T_OSC", f"{tag}: N_OSC=0 须 T_OSC > 0(缺省 300 合法)")
-            if n_osc == 1:
-                v = _pi(params, "N_LEVEL", i)
-                if v is not None and v < 0:
-                    err("N_LEVEL", f"{tag}: 须 ≥ 0")
-            v = _pf(params, "K_OSC", i)
-            if v is not None and v <= 0.0:
-                err("K_OSC", f"{tag}: 须 > 0")
         elif word == "NORMALMODE":
             v = _pf(params, "E_VIB", i)
             if v is not None and v <= 0.0:
@@ -389,5 +391,8 @@ def validate(
     # ---- 9. MANUAL 谱表(bath 同级的显式检查)----
     if spec_src == "MANUAL" and not _written(values, "SPECTRUM_FILE"):
         err("SPECTRUM_FILE", "SPECTRUM_SOURCE=MANUAL 须给谱表文件")
+
+    # PRODUCT_NMA 表面拒绝已退役(2026-10-15 单位面裁决: 程序侧换选择性规则——
+    # 片段单位仅收 PROJECTILE 片段、衬底载体排除; 预检不再镜像拒)
 
     return issues

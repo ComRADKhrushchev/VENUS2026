@@ -9,10 +9,14 @@
 !   Projectile COM = drop site + b offset + r_sep back-off; the surface
 !   absorbs recoil (the beam momentum is not split - the projectile COM
 !   velocity is assigned in full, w = 1). Exactly one PROJECTILE fragment
-!   (i_proj names it); every OTHER fragment is a substrate carrier (its
-!   own dist_scheme member samples it; the incident channel never touches
-!   it) - the surface's crystal frame is the POSCAR cell, a system-level
-!   fact, so a substrate fragment is never re-placed or rotated by the
+!   (i_proj names it); TARGET (optional, the 2026-10-16 ruling) names the
+!   explicit substrate fragment - the channel RESETS its atoms to the file
+!   lattice positions (q0) before placing the projectile, closing the
+!   placement responsibility chain the surface paradigm had lost; every
+!   OTHER fragment is a substrate carrier (its own dist_scheme member
+!   samples it; the incident channel never touches it) - the surface's
+!   crystal frame is the POSCAR cell, a system-level fact, so a
+!   non-TARGET substrate fragment is never re-placed or rotated by the
 !   beam assembly. The drop site: origin (N_AIM = 0), uniform in the unit
 !   cell (1), or the fixed site AIM_X/AIM_Y [Angstrom, POSCAR frame] (2);
 !   B_MAX must NOT be written (ruled 2026-10-01 - lateral placement is
@@ -29,6 +33,7 @@ module inc_surface
    use seam_cast, only: seam_int, seam_real
    use beam_laws,    only: beam_params_t, beam_t, beam_init, beam_draw, &
                            beam_com_shift, beam_set_com_vel
+   use diag, only: diag_fatal, diag_cat_sampler
    implicit none
    private
    public :: inc_surface_init, inc_surface_draw, inc_surface_realize, inc_surface_sample, &
@@ -107,6 +112,7 @@ contains
    subroutine inc_surface_realize(sta)
       type(state_t), intent(inout) :: sta
       real(8) :: u_inc(3), p_site(3)
+      integer :: fa, g_atom, i3
       if (.not. beam%inited) then
          call stop_surfx('inc_surface_realize', 'realize called before inc_surface_init - '// &
             'the member carries no parameter set')
@@ -114,6 +120,19 @@ contains
       if (size(sta%q) < 3*nat_hi .or. size(sta%p) < 3*nat_hi) then
          call stop_surfx('inc_surface_realize', 'state too small for the collision fragments - '// &
             'state_create must follow the atom list')
+      end if
+      ! 1. TARGET placement (2026-10-16 ruling): the explicit substrate fragment's
+      !    atoms reset to the file lattice positions (q0) - the placement
+      !    responsibility chain returns to the surface paradigm. Ghost rows land on
+      !    their declared positions; mobile rows of an un-bathed target start from
+      !    the lattice - the bath provision and this reset together define the
+      !    substrate's per-trajectory initial state
+      if (list_atoms%i_targ >= 1 .and. list_atoms%i_targ <= size(list_atoms%frag)) then
+         do fa = 1, list_atoms%frag(list_atoms%i_targ)%nat
+            g_atom = list_atoms%frag(list_atoms%i_targ)%list(fa)
+            i3 = 3*(g_atom - 1)
+            sta%q(i3+1:i3+3) = list_atoms%q0(i3+1:i3+3)
+         end do
       end if
       u_inc = (/ -beam%sinth_s*cos(beam%chi_s), -beam%sinth_s*sin(beam%chi_s), -beam%costh_s /)
       p_site = (/ beam%rx0_s + beam%bval_s*cos(beam%phi_s) + beam%r_sep_c*beam%sinth_s*cos(beam%chi_s), &
@@ -133,20 +152,20 @@ contains
       call inc_surface_realize(sta)
    end subroutine inc_surface_sample
 
-   ! named-abort helpers (name the caller; STOP 1)
+   ! named-abort helpers (name the caller; abort via diag_fatal)
    subroutine stop_surfx(where, msg)
       character(len=*), intent(in) :: where, msg
       write (0, '(a)') trim(where)//': '//trim(msg)
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'inc_surface.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_surfx
 
    subroutine stop_surfi(where, msg, ival)
       character(len=*), intent(in) :: where, msg
       integer, intent(in) :: ival
       write (0, '(a,a,i0)') trim(where)//': ', trim(msg), ival
-      write (0, '(a)') trim(where)//': fatal (the initial state is not sampled)'
-      stop 1
+      call diag_fatal(diag_cat_sampler, 'inc_surface.f90', trim(where), &
+         'the initial state is not sampled')
    end subroutine stop_surfi
    !------------------------------------------------------------------
    ! member_register - the fixed-name weave entry (prebuild binds it into

@@ -25,13 +25,14 @@
 module input
    use control, only: task, n_traj, title, i_seed, max_steps
    use config,  only: propagator, electronic, reactants, observables
+   use diag,    only: diag_fatal, diag_cat_input
    implicit none
    private
    public :: read_input
    public :: buffer_n_rows, buffer_key, buffer_block, buffer_line, buffer_val
    public :: input_declare_keys, input_audit_declared, pull
    public :: par_int, par_real, input_audit_dist_par
-   public :: input_dist_code, input_dist_word
+   public :: input_dist_code, input_dist_word, input_bath_code, input_bath_word
 
    integer, parameter :: key_len  = 32     ! keyword capacity [character]
    integer, parameter :: val_len  = 512    ! value capacity [character]
@@ -110,7 +111,7 @@ module input
    ! DT_MIN/DT_MAX (the adaptive member's sequence-length bounds): kind_real, NOT
    ! kind_posreal - a clamp value <= 0 is the legal unclamped default (0 = off);
    ! consumed by the radau member only (fixed-step members ignore them)
-   type(key_spec_t), parameter :: key_tab(28) = [ &
+   type(key_spec_t), parameter :: key_tab(30) = [ &
       key_spec_t('TASK',         blk_flow,   kind_enum,  enum_task,  .false., 'TRAJECTORY'), &
       key_spec_t('N_TRAJ',       blk_flow,   kind_int,   enum_none,  .false., '1'), &
       key_spec_t('TITLE',        blk_flow,   kind_char,  enum_none,  .false., '', slotw=80), &
@@ -130,6 +131,8 @@ module input
       key_spec_t('R_SEP',        blk_system, kind_real,  enum_none,  .true.,  ''), &
       key_spec_t('DIST_SCHEME',  blk_system, kind_elist, enum_dist,  .true.,  ''), &
       key_spec_t('RANDOM_ORIENT', blk_system, kind_log,  enum_none,  .false., 'F'), &
+      key_spec_t('PRODUCT_NMA',   blk_system, kind_log,  enum_none,  .false., 'F'), &
+      key_spec_t('NMA_FIT_TOL',   blk_system, kind_real, enum_none,  .false., '0.0'), &
       key_spec_t('BATH',          blk_system, kind_enum, enum_bath,  .false., 'NONE'), &
       key_spec_t('N_BATH',        blk_system, kind_int,  enum_none,  .false., '0'), &
       key_spec_t('DT_BATH',       blk_system, kind_real, enum_none,  .false., '0.0'), &
@@ -150,19 +153,46 @@ module input
       enum_row_t('TRAJECTORY', 1) ]
    type(enum_row_t), parameter :: integ_tbl(3) = [ &
       enum_row_t('VERLET', 1), enum_row_t('SYMPLECTIC', 2), enum_row_t('RADAU', 3) ]
+   ! NONE (11): the carrier rides with NO internal sampling - monoatomic
+   ! fragments (the honest word where a dummy member word used to sit) and
+   ! not-internally-sampled polyatomic carriers (a frozen substrate); no
+   ! member, no seam, no dispatch (samp_run skips the word; a bracket on it
+   ! aborts at input_audit_dist_par - no member owns the pairs)
+   ! SURFACE_OSCILLATOR (analytic two-atom harmonic-stretch surface model,
+   ! legacy harmonic_sampling material) retired 2026-10-15: zero case usage,
+   ! superseded by GLO_TARGET (stochastic surface response) and real-slab
+   ! containers + THERMALIZE (thermal substrates)
+   ! EROT (10) landed 2026-10-15: NONLINEAR-fragment thermal rotation -
+   ! three principal-axis classical thermal energies (ANT-A1 law), the
+   ! linear rotor's channel stays J + ROTATION
    type(enum_row_t), parameter :: dist_tbl(10) = [ &
       enum_row_t('BOLTZMANN', 1), enum_row_t('EBK', 2), &
       enum_row_t('ROTATION', 3), enum_row_t('J', 4), &
-      enum_row_t('SURFACE_OSCILLATOR', 5), enum_row_t('NORMALMODE', 6), &
-      enum_row_t('BARRIER_EXCITATION', 7), &
-      enum_row_t('GLO_TARGET', 8), &
-      enum_row_t('THERMALIZE', 9), enum_row_t('WIGNER', 10) ]
+      enum_row_t('NORMALMODE', 5), &
+      enum_row_t('BARRIER_EXCITATION', 6), &
+      enum_row_t('GLO_TARGET', 7), &
+      enum_row_t('WIGNER', 9), &
+      enum_row_t('EROT', 10), &
+      enum_row_t('NONE', 11) ]  ! THERMALIZE retired to the bath registry
+                                 ! (2026-10-16 ruling: it consumes the PES and the
+                                 ! whole-state geometry - a bath-domain mechanism,
+                                 ! never a per-fragment sampling word; the surviving
+                                 ! codes keep their values - no renumber)
 
    ! bath provision words (THERMOSTAT left the dist registry 2026-09-22: the
    ! Andersen species is a bath, not a per-fragment distribution word - the
-   ! BATH selector arms the pre-evolution bath loop inside samp_run)
-   type(enum_row_t), parameter :: bath_tbl(2) = [ &
-      enum_row_t('NONE', 1), enum_row_t('ANDERSEN', 2) ]
+   ! BATH selector arms the pre-evolution bath loop inside samp_run; the
+   ! Nosé–Hoover two-chain species joined 2026-10-15 - the step-takeover
+   ! form: it carries its own Liouville VV splitting inside the bath loop,
+   ! no registered-propagator dependency; its per-trajectory chain re-seed
+   ! (equilibrium draw + first-step Maxwell seed) rides the loop-head reset
+   ! hook and the loop's sanctioned in-loop RNG exception)
+   type(enum_row_t), parameter :: bath_tbl(4) = [ &
+      enum_row_t('NONE', 1), enum_row_t('ANDERSEN', 2), &
+      enum_row_t('NOSE_HOOVER', 3), &
+      enum_row_t('THERMALIZE', 4) ]  ! the 2026-10-16 migration: the one-shot
+                                      ! Maxwell-seed + free equilibration run,
+                                      ! retired from the dist registry (was code 8)
 
    ! spectrum producer words (2026-10-05 spectrum-source legislation: the container
    ! export slot is withdrawn - the producer is the internal derivation (default) or
@@ -192,7 +222,7 @@ module input
       character(len=key_len) :: key = ''    ! member parameter key (e.g. 'N_B')
       character(len=32) :: member = ''      ! owning member name (init target)
    end type dispatch_row_t
-   type(dispatch_row_t), parameter :: dispatch_tbl(13) = [ &
+   type(dispatch_row_t), parameter :: dispatch_tbl(14) = [ &
       dispatch_row_t('N_E_REL',  'incident_surface/pair'), &
       dispatch_row_t('T_TRANS',  'incident_surface/pair'), &
       dispatch_row_t('V_WIDTH',  'incident_surface/pair'), &
@@ -204,8 +234,9 @@ module input
       dispatch_row_t('N_AIM',    'incident_surface/pair'), &
       dispatch_row_t('AIM_X',    'incident_surface'), &
       dispatch_row_t('AIM_Y',    'incident_surface'), &
-      dispatch_row_t('T_BATH',   'bath_andersen'), &
-      dispatch_row_t('NU_COLL',  'bath_andersen') ]
+      dispatch_row_t('T_BATH',   'bath_andersen/bath_thermalize'), &
+      dispatch_row_t('NU_COLL',  'bath_andersen'), &
+      dispatch_row_t('TAU_NOSE', 'bath_nose_hoover') ]
 
    ! Per-fragment bracket parameters (the 2026-10-13 ruling's delivery form):
    ! each DIST_SCHEME item may carry WORD[NAME=VALUE, ...]. The parse splits the
@@ -238,8 +269,8 @@ contains
       call collect_input(file, ok, errmsg)
       if (.not. ok) then
          write (0, '(a)') 'read_input: input error: '//trim(errmsg)
-         write (0, '(a)') 'read_input: fatal (unusable input - the standalone grammar has no fallback track, E21/E22)'
-         stop 1
+         call diag_fatal(diag_cat_input, 'input.f90', 'read_input', &
+            'unusable input - the standalone grammar has no fallback track, E21/E22')
       end if
    end subroutine read_input
 
@@ -288,31 +319,31 @@ contains
       do i = 1, size(keys)
          if (len_trim(keys(i)) == 0) then
             write (0, '(a)') 'input_declare_keys: an empty key name in the container list'
-            write (0, '(a)') 'input_declare_keys: fatal (a container key must be a name)'
-            stop 1
+            call diag_fatal(diag_cat_input, 'input.f90', 'input_declare_keys', &
+               'a container key must be a name')
          end if
          if (len_trim(keys(i)) > key_len) then
             write (0, '(a)') 'input_declare_keys: key '//trim(keys(i))//' exceeds the '// &
                              'keyword width '//trim(i2s(key_len))
-            write (0, '(a)') 'input_declare_keys: fatal (a container key must fit the grammar)'
-            stop 1
+            call diag_fatal(diag_cat_input, 'input.f90', 'input_declare_keys', &
+               'a container key must fit the grammar')
          end if
          if (key_index(trim(keys(i))) > 0 .or. dispatch_index(trim(keys(i))) > 0) then
             write (0, '(a)') 'input_declare_keys: key '//trim(keys(i))//' collides with a '// &
                              'program key or a member-parameter key'
-            write (0, '(a)') 'input_declare_keys: fatal (a container key must be a new name)'
-            stop 1
+            call diag_fatal(diag_cat_input, 'input.f90', 'input_declare_keys', &
+               'a container key must be a new name')
          end if
          if (declared_index(trim(keys(i))) > 0) then
             write (0, '(a)') 'input_declare_keys: key '//trim(keys(i))//' declared twice'
-            write (0, '(a)') 'input_declare_keys: fatal (one declaration per container key)'
-            stop 1
+            call diag_fatal(diag_cat_input, 'input.f90', 'input_declare_keys', &
+               'one declaration per container key')
          end if
          if (n_declared >= max_declared) then
             write (0, '(a)') 'input_declare_keys: declared-key capacity '//trim(i2s(max_declared))// &
                              ' exhausted at key '//trim(keys(i))
-            write (0, '(a)') 'input_declare_keys: fatal (defensive capacity guard)'
-            stop 1
+            call diag_fatal(diag_cat_input, 'input.f90', 'input_declare_keys', &
+               'defensive capacity guard')
          end if
          n_declared = n_declared + 1
          declared_tbl(n_declared) = to_upper(trim(keys(i)))   ! the parse uppercases the
@@ -328,15 +359,15 @@ contains
       if (declared_index(trim(key)) == 0) then
          write (0, '(a)') 'pull: key '//trim(key)//' is not a declared container key '// &
                           '(input_declare_keys runs in the container reg _all)'
-         write (0, '(a)') 'pull: fatal (an undeclared pull is a container-authoring error)'
-         stop 1
+         call diag_fatal(diag_cat_input, 'input.f90', 'pull', &
+            'an undeclared pull is a container-authoring error')
       end if
       k = staged_index(trim(key))
       if (k == 0) return                       ! never buffered: the caller default stands
       if (kv_tbl(k)%used) then
          write (0, '(a)') 'pull: key '//trim(key)//' pulled twice (one key, one consumer)'
-         write (0, '(a)') 'pull: fatal (a double pull is a container-authoring error)'
-         stop 1
+         call diag_fatal(diag_cat_input, 'input.f90', 'pull', &
+            'a double pull is a container-authoring error')
       end if
       kv_tbl(k)%used = .true.
    end function pull_row
@@ -346,8 +377,8 @@ contains
    subroutine pull_fatal(errmsg)
       character(len=*), intent(in) :: errmsg
       write (0, '(a)') 'pull: input error: '//trim(errmsg)
-      write (0, '(a)') 'pull: fatal (a buffered container parameter is not consumable)'
-      stop 1
+      call diag_fatal(diag_cat_input, 'input.f90', 'pull', &
+         'a buffered container parameter is not consumable')
    end subroutine pull_fatal
 
    !------------------------------------------------------------------
@@ -402,10 +433,10 @@ contains
       if (present(found)) found = k > 0
       if (k == 0) return
       if (len_trim(kv_tbl(k)%val) > len(target)) then
-         write (0, '(a)') 'pull: key '//trim(key)//': value width '// &
-                          trim(i2s(len_trim(kv_tbl(k)%val)))//' exceeds its slot width '// &
-                          trim(i2s(len(target)))//' (silent truncation closed - fatal)'
-         stop 1
+         call diag_fatal(diag_cat_input, 'input.f90', 'pull_char', &
+            'pull: key '//trim(key)//': value width '// &
+            trim(i2s(len_trim(kv_tbl(k)%val)))//' exceeds its slot width '// &
+            trim(i2s(len(target)))//' (silent truncation closed - fatal)')
       end if
       target = trim(kv_tbl(k)%val)
    end subroutine pull_char
@@ -426,15 +457,15 @@ contains
          write (0, '(a)') 'pull: key '//trim(key)//trim(line_tag(ln))// &
                           ': bad 3-vector value "'//trim(kv_tbl(k)%val)//'" (exactly three '// &
                           'comma-separated numbers expected)'
-         write (0, '(a)') 'pull: fatal (a buffered container parameter is not consumable)'
-         stop 1
+         call diag_fatal(diag_cat_input, 'input.f90', 'pull', &
+            'a buffered container parameter is not consumable')
       end if
       read (kv_tbl(k)%val, *, iostat=ios) target(1), target(2), target(3)
       if (ios /= 0) then
          write (0, '(a)') 'pull: key '//trim(key)//trim(line_tag(ln))// &
                           ': bad 3-vector value "'//trim(kv_tbl(k)%val)//'"'
-         write (0, '(a)') 'pull: fatal (a buffered container parameter is not consumable)'
-         stop 1
+         call diag_fatal(diag_cat_input, 'input.f90', 'pull', &
+            'a buffered container parameter is not consumable')
       end if
    end subroutine pull_r3
 
@@ -460,9 +491,9 @@ contains
                           'or the seam skipped: SYSTEM_DIR unstaged?)'
       end do
       if (bad) then
-         write (0, '(a)') 'input_audit_declared: fatal (a buffered container key outside '// &
-                          'the container seam is a configuration or authoring error)'
-         stop 1
+         call diag_fatal(diag_cat_input, 'input.f90', 'input_audit_declared', &
+            'a buffered container key outside '// &
+            'the container seam is a configuration or authoring error')
       end if
    end subroutine input_audit_declared
 
@@ -513,28 +544,28 @@ contains
       integer :: k
       if (.not. allocated(dist_pars)) then
          write (0, '(a)') 'par: no DIST_SCHEME pair table staged (read_input must run first)'
-         write (0, '(a)') 'par: fatal (the bracket seam was consulted outside the parse)'
-         stop 1
+         call diag_fatal(diag_cat_input, 'input.f90', 'par', &
+            'the bracket seam was consulted outside the parse')
       end if
       if (ifrag < 1 .or. ifrag > size(dist_pars)) then
          write (0, '(a)') 'par: fragment index '//trim(i2s(ifrag))//' lies outside the '// &
                           'DIST_SCHEME list of '//trim(i2s(size(dist_pars)))//' item(s)'
-         write (0, '(a)') 'par: fatal (a member pulling a fragment it does not own)'
-         stop 1
+         call diag_fatal(diag_cat_input, 'input.f90', 'par', &
+            'a member pulling a fragment it does not own')
       end if
       if (trim(dist_pars(ifrag)%word) /= to_upper(trim(word))) then
          write (0, '(a)') 'par: fragment '//trim(i2s(ifrag))//' carries scheme word '// &
                           trim(dist_pars(ifrag)%word)//', not '//trim(to_upper(word))
-         write (0, '(a)') 'par: fatal (a member pulling a fragment it does not own)'
-         stop 1
+         call diag_fatal(diag_cat_input, 'input.f90', 'par', &
+            'a member pulling a fragment it does not own')
       end if
       do j = 1, dist_pars(ifrag)%n_pair
          if (trim(dist_pars(ifrag)%pair(j)%name) == to_upper(trim(name))) then
             if (dist_pars(ifrag)%pair(j)%used) then
                write (0, '(a)') 'par: parameter '//trim(name)//' of fragment '// &
                                 trim(i2s(ifrag))//' pulled twice (one name, one consumer)'
-               write (0, '(a)') 'par: fatal (a double pull is a member-authoring error)'
-               stop 1
+               call diag_fatal(diag_cat_input, 'input.f90', 'par', &
+                  'a double pull is a member-authoring error')
             end if
             dist_pars(ifrag)%pair(j)%used = .true.
             return
@@ -549,8 +580,8 @@ contains
       integer, intent(in) :: ifrag
       write (0, '(a)') 'par: DIST_SCHEME fragment '//trim(i2s(ifrag))//' ('//trim(to_upper(word))// &
                        '): parameter '//trim(name)//': '//trim(why)
-      write (0, '(a)') 'par: fatal (a bracket parameter is not consumable)'
-      stop 1
+      call diag_fatal(diag_cat_input, 'input.f90', 'par', &
+         'a bracket parameter is not consumable')
    end subroutine par_fatal
 
    !------------------------------------------------------------------
@@ -577,9 +608,9 @@ contains
          end do
       end do
       if (bad) then
-         write (0, '(a)') 'input_audit_dist_par: fatal (a bracket parameter outside its '// &
-                          'member seam is a configuration or authoring error)'
-         stop 1
+         call diag_fatal(diag_cat_input, 'input.f90', 'input_audit_dist_par', &
+            'a bracket parameter outside its '// &
+            'member seam is a configuration or authoring error')
       end if
    end subroutine input_audit_dist_par
 
@@ -756,9 +787,9 @@ contains
          if (n_kv >= size(kv_tbl)) then
             write (0, '(a)') 'inject_defaults: buffer capacity exhausted at key '// &
                              trim(key_tab(r)%name)//': rows would exceed size(kv_tbl)'
-            write (0, '(a)') 'inject_defaults: fatal (defensive capacity guard - '// &
-                             'unreachable through the current fill routes)'
-            stop 1
+            call diag_fatal(diag_cat_input, 'input.f90', 'inject_defaults', &
+               'defensive capacity guard - '// &
+               'unreachable through the current fill routes')
          end if
          n_kv = n_kv + 1
          kv_tbl(n_kv)%key = key_tab(r)%name
@@ -879,6 +910,12 @@ contains
             reactants%random_orient = lval                ! universal orientation stage switch
                                                          ! (the sampler stage reads it; default F
                                                          ! keeps the archived stream)
+         case ('PRODUCT_NMA')                           ! final-state analyzer switch (the
+            reactants%nma_on = lval                     ! driver arms the analyzer from it;
+                                                         ! default F keeps the stream bitwise)
+         case ('NMA_FIT_TOL')                           ! label threshold override (0 = the
+            reactants%nma_fit_tol = rval                ! per-unit auto default; the sign gate
+                                                         ! lives in the analyzer's arm guard)
          case ('BATH')
             reactants%bath = ival                         ! bath provision selector (arms the
                                                          ! pre-evolution bath loop; NONE default)
@@ -1559,6 +1596,43 @@ contains
          end if
       end do
    end function input_dist_word
+
+   !------------------------------------------------------------------
+   ! input_bath_code(word) - the bath word's provision code (0 = absent;
+   !                          input_dist_code's bath sibling - the members'
+   !                          init gates ride it, so a table renumber can
+   !                          never silently disarm a species)
+   !------------------------------------------------------------------
+   pure integer function input_bath_code(word)
+      character(len=*), intent(in) :: word  ! bath word, any case
+      integer :: i
+      input_bath_code = 0
+      do i = 1, size(bath_tbl)
+         if (trim(bath_tbl(i)%word) == to_upper(trim(word))) then
+            input_bath_code = bath_tbl(i)%code
+            exit
+         end if
+      end do
+   end function input_bath_code
+
+   !------------------------------------------------------------------
+   ! input_bath_word(code) - the bath provision code's word in the LOWERCASE
+   !                          dispatch form ('' = outside the table; the
+   !                          species-name resolution form bath_setup rides -
+   !                          input_dist_word's bath sibling, 2026-10-15)
+   !------------------------------------------------------------------
+   pure function input_bath_word(code) result(word)
+      integer, intent(in) :: code         ! bath provision code
+      character(len=32) :: word           ! lowercase dispatch form
+      integer :: i
+      word = ''
+      do i = 1, size(bath_tbl)
+         if (bath_tbl(i)%code == code) then
+            word = to_lower(trim(bath_tbl(i)%word))
+            exit
+         end if
+      end do
+   end function input_bath_word
 
    ! to_upper(s) - ASCII uppercase of a trimmed string
    pure function to_upper(s) result(t)

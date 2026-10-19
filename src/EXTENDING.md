@@ -116,7 +116,7 @@ reg 骨架（reg_mysystem_slots 一次交接八槽的形态）已随 2026-10-14 
 原 reg _init 体的归属地);prebuild 扫描 methods/ 自动织入 registry_gen(2026-10-14
 methods 侧注册清单化,docs/plans/2026-10-14-methods-member-weave.md)。scheme 词另在
 `input.f90` 的 dist_tbl 加一行(文法放行;全库唯一词↔码表,samp_code 即委托它)。
-零 reg 文件、零 sampler 编辑;前缀文件无 member_register 即 prebuild 中止。
+零 reg 文件、零 sampler 编辑;前缀文件无 member_register 即 prebuild 中止。词表另含 `NONE`(码 11)——不采内态载体的诚实用词(单原子/冻结多原子基底),无成员无参数,samp_run 跳过派发。
 (2026-09-28: 族前缀 dist_→samp_ 更名;入射通道不在本族——它按组装范式拆为
 inc_surface/inc_pair/inc_single 三成员 + beam_laws 共享组件,见
 docs/plans/2026-09-28-incident-split-surface-paradigm.md。)

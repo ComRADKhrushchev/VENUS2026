@@ -148,6 +148,102 @@ _CELL_EDGES = [(0, 1), (1, 2), (2, 3), (3, 0),
                (4, 5), (5, 6), (6, 7), (7, 4),
                (0, 4), (1, 5), (2, 6), (3, 7)]
 
+
+def _slerp_arc(center, d_from, d_to, radius, n=24):
+    """center 处从 d_from 方向到 d_to 方向的弧点列 (n,3)(最短角路径; 纯函数)。"""
+    a = np.asarray(d_from, dtype=float)
+    b = np.asarray(d_to, dtype=float)
+    a /= np.linalg.norm(a)
+    b /= np.linalg.norm(b)
+    ang = float(np.arccos(np.clip(np.dot(a, b), -1.0, 1.0)))
+    if ang < 1e-9:
+        return np.zeros((0, 3))
+    axis = np.cross(a, b)
+    if np.linalg.norm(axis) < 1e-9:            # 反向: 任取正交轴
+        axis = np.cross(a, [0.0, 0.0, 1.0])
+        if np.linalg.norm(axis) < 1e-9:
+            axis = np.cross(a, [0.0, 1.0, 0.0])
+    axis /= np.linalg.norm(axis)
+    out = []
+    for t in np.linspace(0.0, ang, n):
+        rot = (a * np.cos(t) + np.cross(axis, a) * np.sin(t))
+        out.append(center + radius * rot)
+    return np.array(out, dtype=float)
+
+
+def guide_elements(scene):
+    """入射角辅助线元素(2026-10-14): 锚=落点; 表面范式抬至衬底顶面+间隙
+    (防被不透明表面原子遮挡), 气相(pair)保持 z=0 层。无束流/角色缺失返 None。
+
+    元素: normal_seg(法线短枝)/dir_seg(弹丸方向短枝)/theta_arc(法线→弹丸
+    方向弧)/chi_arc(+x→方位向水平弧)/chi_ray(方位射线), 以及 theta/chi 原值。
+    """
+    if scene.beam is None or not (0 <= scene.i_proj < len(scene.frag_coms)):
+        return None
+    d = scene.beam.drop
+    z_lift = 0.0
+    if scene.i_targ < 0:                        # 表面范式: 衬底=非弹丸原子
+        a, b = scene.frag_slices[scene.i_proj]
+        zs = [p[2] for k, p in enumerate(scene.positions) if not a <= k < b]
+        if zs:
+            z_lift = max(zs) + 0.4
+    anchor = np.array([float(d[0]), float(d[1]), z_lift])
+    v = np.asarray(scene.frag_coms[scene.i_proj], dtype=float) - anchor
+    L = float(np.linalg.norm(v))
+    if L < 1e-9:
+        return None
+    vhat = v / L
+    r = min(max(0.35 * L, 1.2), 4.0)
+    stub = 1.6 * r
+    normal_seg = np.array([anchor, anchor + (0.0, 0.0, stub)])
+    dir_seg = np.array([anchor, anchor + stub * vhat])
+    theta_arc = _slerp_arc(anchor, (0.0, 0.0, 1.0), vhat, r)
+    e_chi = np.array([np.cos(scene.beam.chi), np.sin(scene.beam.chi), 0.0])
+    chi_arc = _slerp_arc(anchor, (1.0, 0.0, 0.0), e_chi, 0.8 * r)
+    chi_ray = np.array([anchor, anchor + stub * e_chi])
+    return {"anchor": anchor, "normal_seg": normal_seg, "dir_seg": dir_seg,
+            "theta_arc": theta_arc, "chi_arc": chi_arc, "chi_ray": chi_ray,
+            "theta": scene.beam.theta, "chi": scene.beam.chi}
+
+
+def lattice_segments(cell, pos, cap: int = 16):
+    """覆盖原子横向足迹的周期晶格网格(2026-10-14, 取代原点单胞框)。
+
+    沿 a/b 晶向整数格线铺满足迹(floor/ceil), 底/顶两层 + 四角立柱;
+    每方向跨度封顶 cap(防病态大 slab)。返回 (段数组 (m,2,3), z_lo, z_hi);
+    横向晶矢奇异(零面积投影)返回空段。纯函数(numpy), 可离屏单测。
+    """
+    c = np.asarray(cell, dtype=float)
+    M = c[:2, :2]                      # 行 = a1/a2 横向晶矢(c 为表面法向)
+    det = M[0, 0] * M[1, 1] - M[0, 1] * M[1, 0]
+    P = np.asarray(pos, dtype=float)
+    if abs(det) < 1e-9 or P.size == 0:
+        return np.zeros((0, 2, 3)), 0.0, 0.0
+    fr = P[:, :2] @ np.linalg.inv(M)   # 分数坐标(行向量式: p = f·M)
+    i0 = int(np.floor(fr[:, 0].min()))
+    j0 = int(np.floor(fr[:, 1].min()))
+    i1 = i0 + min(int(np.ceil(fr[:, 0].max())) - i0, cap)
+    j1 = j0 + min(int(np.ceil(fr[:, 1].max())) - j0, cap)
+    z_lo, z_hi = float(P[:, 2].min()), float(P[:, 2].max())
+    flat = z_hi - z_lo < 1e-9
+
+    def corner(i, j, z):
+        xy = i * M[0] + j * M[1]
+        return (float(xy[0]), float(xy[1]), float(z))
+
+    zs = (z_lo,) if flat else (z_lo, z_hi)
+    segs: list[tuple[tuple, tuple]] = []
+    for z in zs:
+        for j in range(j0, j1 + 1):
+            segs.append((corner(i0, j, z), corner(i1, j, z)))
+        for i in range(i0, i1 + 1):
+            segs.append((corner(i, j0, z), corner(i, j1, z)))
+    if not flat:
+        for i in (i0, i1):
+            for j in (j0, j1):
+                segs.append((corner(i, j, z_lo), corner(i, j, z_hi)))
+    return np.array(segs, dtype=float), z_lo, z_hi
+
 # b 环圆周采样点数(构造处与单测的环件识别共用, 勿在两处各写字面量)
 RING_SEGMENTS = 72
 
@@ -260,9 +356,14 @@ class _Gl3D(QWidget):
         for i, j in _bonds(pos, scene):
             self._seg(pos[i], pos[j], (0.35, 0.35, 0.35, 1.0), 2.0)
         if scene.cell is not None:
-            cs = _cell_corners(scene.cell)
-            for i, j in _CELL_EDGES:
-                self._seg(cs[i], cs[j], (0.55, 0.65, 0.75, 0.9), 1.2)
+            # 周期晶格网格覆盖表面片段足迹(2026-10-14; 单件批段, 色走 theme 令牌)
+            # _rgb01 已含 alpha=1.0——不得再追加(5 元色组会让真 GL 的
+            # glVertexAttrib4f 抛 TypeError, 逐项被吞→不可见, 2026-10-14 实机报障)
+            segs, _, _ = lattice_segments(scene.cell, pos)
+            if len(segs):
+                rgba = _rgb01(theme.COLORS["gl_cell"])
+                self._add(GLLinePlotItem(pos=segs.reshape(-1, 3), color=rgba,
+                                         width=1.4, antialias=True, mode="lines"))
         if scene.aim_marker is not None:
             m = np.asarray(scene.aim_marker, dtype=float)
             d = 0.6
@@ -277,6 +378,18 @@ class _Gl3D(QWidget):
                 ring = np.stack([ctr[0] + r * np.cos(th), ctr[1] + r * np.sin(th),
                                  np.full_like(th, ctr[2])], axis=1)
                 self._add(GLLinePlotItem(pos=ring, color=(1.0, 0.55, 0.1, 0.8), width=2.0))
+        # 入射角辅助线(2026-10-14): 法线/弹丸方向短枝 + θ 弧 + χ 弧与方位射线
+        gd = guide_elements(scene)
+        if gd is not None:
+            rgba = _rgb01(theme.COLORS["gl_guide"])  # 4 元组(含 alpha=1), 勿再追加
+            for seg in (gd["normal_seg"], gd["dir_seg"], gd["chi_ray"]):
+                self._add(GLLinePlotItem(pos=np.asarray(seg, dtype=float),
+                                         color=rgba, width=1.6, antialias=True,
+                                         mode="lines"))
+            for arc in (gd["theta_arc"], gd["chi_arc"]):
+                if len(arc) >= 2:
+                    self._add(GLLinePlotItem(pos=arc, color=rgba, width=1.6,
+                                             antialias=True))
         for com, vel in zip(scene.frag_coms, scene.frag_vels):
             v = np.asarray(vel, dtype=float)
             n = float(np.linalg.norm(v))
@@ -297,7 +410,11 @@ class _Gl3D(QWidget):
         span = float(np.linalg.norm(hi - lo)) or 10.0
         step = nice_step(span)
         self._draw_axes(lo, hi, step)
-        self._scale_label.setText(f"刻度 {step:g} Å")
+        txt = f"刻度 {step:g} Å"
+        if scene.beam is not None:  # 入射角读数(度数直观; 弧度在表单/键表)
+            txt += (f" · θ={np.degrees(scene.beam.theta):.1f}°"
+                    f" · χ={np.degrees(scene.beam.chi):.1f}°")
+        self._scale_label.setText(txt)
         self._scale_label.show()
         self._reposition_scale()
         # 相机中心绑取景中心(靶 COM/落点;未解析回退全原子均值)——靶恒居中,
@@ -347,7 +464,13 @@ class _Projection2D(QWidget):
         p.drawText(QPointF(rect.left(), rect.top() - 6), title)
         pts = pos[:, list(ax)]
         extra = []
-        if scene.cell is not None:
+        # 晶格: 俯视画周期网格(覆盖足迹, 取景含网格端点), 侧视画胞框 z 范围
+        grid2d = None
+        if scene.cell is not None and tuple(ax) == (0, 1):
+            grid2d, _, _ = lattice_segments(scene.cell, pos)
+            if len(grid2d):
+                extra.append(grid2d.reshape(-1, 3)[:, list(ax)])
+        if scene.cell is not None and grid2d is None:
             extra.append(_cell_corners(scene.cell)[:, list(ax)])
         if scene.aim_marker is not None:
             extra.append(np.asarray([scene.aim_marker])[..., list(ax)])
@@ -365,14 +488,42 @@ class _Projection2D(QWidget):
             return QPointF(rect.left() + off[0] + u[0] * span[0] * scale,
                            rect.bottom() - off[1] - u[1] * span[1] * scale)
 
-        # 晶胞投影
+        # 晶格投影: 俯视=周期网格, 侧视=胞框
         if scene.cell is not None:
-            pen = QPen(QColor(140, 160, 180))
+            pen = QPen(QColor(105, 120, 148))
             pen.setStyle(Qt.PenStyle.DashLine)
             p.setPen(pen)
-            cs = _cell_corners(scene.cell)[:, list(ax)]
-            for i, j in _CELL_EDGES:
-                p.drawLine(X(cs[i]), X(cs[j]))
+            if tuple(ax) == (0, 1):
+                for s in (grid2d if grid2d is not None and len(grid2d)
+                          else lattice_segments(scene.cell, pos)[0]):
+                    p.drawLine(X(s[0][:2]), X(s[1][:2]))
+            else:
+                cs = _cell_corners(scene.cell)[:, list(ax)]
+                for i, j in _CELL_EDGES:
+                    p.drawLine(X(cs[i]), X(cs[j]))
+        # 入射角辅助线(2026-10-14): 俯视=χ 弧+方位线, 侧视=法线/方向短枝+θ 弧
+        gd = guide_elements(scene)
+        if gd is not None:
+            pen = QPen(QColor(theme.COLORS["gl_guide"]))
+            p.setPen(pen)
+
+            def draw_seg(s):
+                p.drawLine(X((s[0][ax[0]], s[0][ax[1]])),
+                           X((s[1][ax[0]], s[1][ax[1]])))
+
+            def draw_poly(pts):
+                for u, v in zip(pts[:-1], pts[1:]):
+                    p.drawLine(X((u[ax[0]], u[ax[1]])), X((v[ax[0]], v[ax[1]])))
+
+            if tuple(ax) == (0, 1):
+                draw_seg(gd["chi_ray"])
+                if len(gd["chi_arc"]) >= 2:
+                    draw_poly(gd["chi_arc"])
+            else:
+                draw_seg(gd["normal_seg"])
+                draw_seg(gd["dir_seg"])
+                if len(gd["theta_arc"]) >= 2:
+                    draw_poly(gd["theta_arc"])
         # 瞄准点 + B_MAX 盘
         if scene.aim_marker is not None:
             m = np.asarray(scene.aim_marker, dtype=float)[list(ax)]

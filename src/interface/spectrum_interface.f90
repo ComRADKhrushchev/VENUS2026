@@ -27,6 +27,15 @@
 !   with a decaying tail derives like any other; a non-decaying one,
 !   e.g. an interaction-region NN, fails the gate as a fact about THAT
 !   PES, not about the paradigm).
+!   The product-species pull spectrum_prod_w mirrors the COMPUTE probe
+!   with its own cache: products land on element-matched system slots
+!   (the container reads the slots' element identity - a species-level
+!   probe must not park an atom on another element's slot), every
+!   declared product at its declared internal geometry plus the
+!   leftover system atoms, isolated the same ext/2 + r_asym + ext/2
+!   way; ONE Hessian of the same bound container force serves every
+!   product pull (V1 is COMPUTE-only - the product channel has no
+!   MANUAL face; SPECTRUM_SOURCE gates fragments alone).
 !   MANUAL: the spectrum-table file (SPECTRUM_FILE) is the only
 !   producer - composition-keyed records of frequencies [cm^-1, the
 !   spectroscopy face, converted here through wvn_to_w - the unique
@@ -44,13 +53,15 @@
 !=====================================================================
 module spectrum_interface
    use config,           only: reactants
-   use config_atoms,     only: list_atoms
+   use config_atoms,     only: list_atoms, list_products
    use force_interface,  only: container_probe_force
    use hessian,          only: hessian_cd, force_proc
    use spectrum,         only: spectrum_modes, w_to_wvn, wvn_to_w
+   use diag,             only: diag_fatal, diag_cat_output
    implicit none
    private
    public :: spectrum_frag_w, spectrum_frag_wvn, spectrum_frag_diatomic
+   public :: spectrum_prod_w
 
    integer, parameter :: manual_cap = 8      ! manual-record capacity [record]
    integer, parameter :: sym_cap = 32        ! record composition capacity [atom]
@@ -81,6 +92,18 @@ module spectrum_interface
    type(tab_t), allocatable, save :: deriv_tbl(:)
    logical, allocatable, save :: deriv_done(:)
    logical, save :: probed = .false.
+
+   ! product-species derivation cache: the product probe geometry + ONE
+   ! full-system Hessian (its own state - the product placement is another
+   ! probe, never mixed with the fragment cache above), the element-matched
+   ! slot table (CSR: product i's system slots are
+   ! prod_slot(prod_off(i):prod_off(i+1)-1)), and the per-product tables
+   ! built lazily
+   real(8), allocatable, save :: q_pprobe(:), hess_p(:,:)
+   integer, allocatable, save :: prod_off(:), prod_slot(:)
+   type(tab_t), allocatable, save :: prod_tbl(:)
+   logical, allocatable, save :: prod_done(:)
+   logical, save :: pprobed = .false.
 
    ! manual records, loaded once on the first MANUAL pull
    type(rec_t), save :: manual_tbl(manual_cap)
@@ -522,11 +545,13 @@ contains
    !                 is the PULLED fragment's smallest vibrational
    !                 eigenvalue (the pair-minimum of the withdrawn
    !                 all-fragments form would force deriving the other
-   !                 side's table too - against the per-fragment pull)
+   !                 side's table too - against the per-fragment pull).
+   !                 The scan is per atom pair over the WHOLE 3x3
+   !                 block, same form as decay_gate_prod
    !------------------------------------------------------------------
    subroutine decay_gate(frag)
       integer, intent(in) :: frag
-      integer :: j, a, b, nf
+      integer :: j, a, b, ca, cb, ga, gb, nf
       real(8) :: lam, cross, mca, mcb
       nf = size(list_atoms%frag)
       lam = deriv_tbl(frag)%w(1)**2
@@ -535,12 +560,17 @@ contains
          if (list_atoms%frag(j)%nat <= 1) cycle   ! a monoatomic partner carries
                                                   ! no mode scale (the pair rides)
          cross = 0.0d0
-         do a = 1, 3*list_atoms%frag(frag)%nat
-            do b = 1, 3*list_atoms%frag(j)%nat
-               mca = sqrt(list_atoms%mass(list_atoms%frag(frag)%list((a + 2)/3)))
-               mcb = sqrt(list_atoms%mass(list_atoms%frag(j)%list((b + 2)/3)))
-               cross = max(cross, abs(hess_c(3*list_atoms%frag(frag)%list((a + 2)/3) - 3 + a, &
-                                           3*list_atoms%frag(j)%list((b + 2)/3) - 3 + b))/(mca*mcb))
+         do a = 1, list_atoms%frag(frag)%nat
+            ga = list_atoms%frag(frag)%list(a)
+            mca = sqrt(list_atoms%mass(ga))
+            do b = 1, list_atoms%frag(j)%nat
+               gb = list_atoms%frag(j)%list(b)
+               mcb = sqrt(list_atoms%mass(gb))
+               do ca = 1, 3
+                  do cb = 1, 3
+                     cross = max(cross, abs(hess_c(3*ga - 3 + ca, 3*gb - 3 + cb))/(mca*mcb))
+                  end do
+               end do
             end do
          end do
          if (cross > cross_rel*lam) then
@@ -551,6 +581,245 @@ contains
          end if
       end do
    end subroutine decay_gate
+
+   !==================================================================
+   ! COMPUTE producer, product species
+   !==================================================================
+
+   !------------------------------------------------------------------
+   ! spectrum_prod_w(iprod, w, c) - the product-species pull: declared
+   !                 product iprod's mode table (COMPUTE always - V1 has
+   !                 no MANUAL face for products). w [rad/fs] ascending,
+   !                 c (3nat x n) mass-weighted orthonormal in the
+   !                 declared geometry's Cartesian frame
+   !------------------------------------------------------------------
+   subroutine spectrum_prod_w(iprod, w, c)
+      integer, intent(in) :: iprod
+      real(8), allocatable, intent(out) :: w(:), c(:,:)
+      real(8), allocatable :: hf(:,:), massf(:)
+      integer :: a, b, ka, kb
+      if (.not. allocated(list_products)) then
+         call stop_si('spectrum_prod_w', 'no product table - the product spectrum'// &
+                      ' seam runs after list_products assembly (assembly-order error)')
+      end if
+      if (iprod < 1 .or. iprod > size(list_products)) then
+         call stop_si('spectrum_prod_w', 'product index out of the declared-product'// &
+                      ' range')
+      end if
+      if (list_products(iprod)%nat <= 1) then       ! monoatomic: no internal dof,
+         allocate (w(0), c(3, 0))                   ! no force call, no gate
+         return
+      end if
+      if (.not. pprobed) call build_prod_probe()
+      if (.not. prod_done(iprod)) then
+         associate (pr => list_products(iprod))
+            allocate (hf(3*pr%nat, 3*pr%nat), massf(pr%nat))
+            massf = pr%mass
+            do a = 1, pr%nat              ! the FULL product block (pair
+               do b = 1, pr%nat           ! couplings inside the product ride)
+                  ka = prod_slot(prod_off(iprod)+a-1)
+                  kb = prod_slot(prod_off(iprod)+b-1)
+                  hf(3*a-2:3*a, 3*b-2:3*b) = hess_p(3*ka-2:3*ka, 3*kb-2:3*kb)
+               end do
+            end do
+            call spectrum_modes(hf, massf, pr%qz, prod_tbl(iprod)%w, prod_tbl(iprod)%c)
+         end associate
+         call decay_gate_prod(iprod)
+         prod_done(iprod) = .true.
+      end if
+      w = prod_tbl(iprod)%w
+      c = prod_tbl(iprod)%c
+   end subroutine spectrum_prod_w
+
+   !------------------------------------------------------------------
+   ! build_prod_probe() - the product probe geometry and ONE
+   !                 central-difference Hessian of the bound container
+   !                 force, cached process-wide. Slot assignment is
+   !                 element-matched: each product atom (declaration
+   !                 order) takes the lowest unoccupied system slot of
+   !                 the same element - the container reads the slots'
+   !                 element identity (container_pes receives the
+   !                 list_atoms slots), so a species-level probe must
+   !                 land products on same-element atoms; an atom with
+   !                 no unclaimed same-element slot names the product
+   !                 and the element (an element-level rearrangement
+   !                 check). The unmatched system atoms keep their slots
+   !                 and close the line as one leftover group at its q0
+   !                 arrangement. Groups sit at their internal
+   !                 geometries, COMs on the x axis, separated
+   !                 ext/2 + r_asym + ext/2; a lone product covering the
+   !                 whole system needs no isolation - its declared
+   !                 geometry IS the probe (mirrors build_probe's nf==1:
+   !                 re-placing the COM would serve nothing and would
+   !                 hand a translation-dependent container other than
+   !                 the declared placement)
+   !------------------------------------------------------------------
+   subroutine build_prod_probe()
+      integer :: np, n, n3, ng, i, j, k, ks, ntot, nrest
+      integer, allocatable :: rslot(:)
+      real(8), allocatable :: rcoord(:), rmass(:), ext(:), coms(:,:), xpos(:)
+      logical, allocatable :: taken(:)
+      np = size(list_products)
+      if (.not. allocated(list_atoms%mass) .or. .not. allocated(list_atoms%symb)) then
+         call stop_si('build_prod_probe', 'no atom list - the product probe needs'// &
+                      ' the system slots (assembly-order error)')
+      end if
+      n = size(list_atoms%mass)
+      n3 = 3*n
+      ! 1. element-matched slot assignment (CSR: product i's slots are
+      !    prod_slot(prod_off(i):prod_off(i+1)-1)); greedy lowest-slot per
+      !    atom in declaration order - homonuclear symmetry makes the
+      !    greedy choice unique and physically sufficient
+      ntot = 0
+      do i = 1, np
+         ntot = ntot + list_products(i)%nat
+      end do
+      allocate (prod_off(np+1), prod_slot(ntot), taken(n))
+      taken = .false.
+      prod_off(1) = 1
+      do i = 1, np
+         do j = 1, list_products(i)%nat
+            k = 0
+            do ks = 1, n
+               if (.not. taken(ks) .and. &
+                   ci4(list_atoms%symb(ks)) == ci4(list_products(i)%symb(j))) then
+                  k = ks
+                  exit
+               end if
+            end do
+            if (k == 0) then
+               call stop_si('build_prod_probe', 'product '''//trim(list_products(i)%name)// &
+                            ''' declares an atom of element '''//trim(list_products(i)%symb(j))// &
+                            ''' but no unclaimed same-element system slot remains -'// &
+                            ' products must be element rearrangements of the system'// &
+                            ' atoms')
+            end if
+            prod_slot(prod_off(i)+j-1) = k
+            taken(k) = .true.
+         end do
+         prod_off(i+1) = prod_off(i) + list_products(i)%nat
+      end do
+      ! 2. the leftover slots (ascending); their q0 arrangement is the
+      !    closing group
+      nrest = n - ntot
+      allocate (rslot(nrest))
+      ks = 0
+      do k = 1, n
+         if (.not. taken(k)) then
+            ks = ks + 1
+            rslot(ks) = k
+         end if
+      end do
+      ng = np
+      if (nrest > 0) ng = np + 1
+      allocate (q_pprobe(n3), hess_p(n3, n3), prod_tbl(np), prod_done(np))
+      prod_done = .false.
+      ! 3. placement: groups at their internal geometries, COMs on the x
+      !    axis with atom-scale isolation; the lone full-coverage product
+      !    keeps its declared placement as-is
+      if (ng == 1) then
+         do j = 1, list_products(1)%nat
+            k = prod_slot(prod_off(1)+j-1)
+            q_pprobe(3*k-2:3*k) = list_products(1)%qz(3*j-2:3*j)
+         end do
+      else
+         allocate (ext(ng), coms(3, ng), xpos(ng))
+         do i = 1, np
+            call grp_stat(list_products(i)%qz, list_products(i)%mass, coms(:, i), ext(i))
+         end do
+         if (nrest > 0) then
+            allocate (rcoord(3*nrest), rmass(nrest))
+            do ks = 1, nrest
+               rcoord(3*ks-2:3*ks) = list_atoms%q0(3*rslot(ks)-2:3*rslot(ks))
+               rmass(ks) = list_atoms%mass(rslot(ks))
+            end do
+            call grp_stat(rcoord, rmass, coms(:, ng), ext(ng))
+         end if
+         xpos(1) = 0.0d0
+         do i = 2, ng
+            xpos(i) = xpos(i-1) + ext(i-1)/2 + r_asym + ext(i)/2
+         end do
+         do i = 1, np
+            do j = 1, list_products(i)%nat
+               k = prod_slot(prod_off(i)+j-1)
+               q_pprobe(3*k-2:3*k) = list_products(i)%qz(3*j-2:3*j) - coms(:, i) + &
+                                     [xpos(i), 0.0d0, 0.0d0]
+            end do
+         end do
+         do ks = 1, nrest
+            k = rslot(ks)
+            q_pprobe(3*k-2:3*k) = rcoord(3*ks-2:3*ks) - coms(:, ng) + [xpos(ng), 0.0d0, 0.0d0]
+         end do
+         deallocate (ext, coms, xpos)
+         if (nrest > 0) deallocate (rcoord, rmass)
+      end if
+      deallocate (taken, rslot)
+      ! 4. one Hessian of the bound container force (internal-per-A fold)
+      call hessian_cd(probe_wrap, q_pprobe, hess_p)
+      pprobed = .true.
+   end subroutine build_prod_probe
+
+   !------------------------------------------------------------------
+   ! grp_stat(qz, mass, com, ext) - one probe group's placement facts:
+   !                 the mass-weighted COM and the largest atom distance
+   !                 from it (the isolation extent)
+   !------------------------------------------------------------------
+   subroutine grp_stat(qz, mass, com, ext)
+      real(8), intent(in) :: qz(:), mass(:)
+      real(8), intent(out) :: com(3), ext
+      real(8) :: wsum, d
+      integer :: j
+      wsum = sum(mass)
+      com = 0.0d0
+      do j = 1, size(mass)
+         com = com + mass(j)*qz(3*j-2:3*j)
+      end do
+      com = com/wsum
+      ext = 0.0d0
+      do j = 1, size(mass)
+         d = norm2(qz(3*j-2:3*j) - com)
+         ext = max(ext, d)
+      end do
+   end subroutine grp_stat
+
+   !------------------------------------------------------------------
+   ! decay_gate_prod(iprod) - the product version of the cross-block
+   !                 gate: product iprod's Hessian block is its isolated
+   !                 spectrum only if the interaction with EVERY atom
+   !                 outside the product (another product's atoms and
+   !                 the leftover atoms alike) has decayed at the probe.
+   !                 The reference curvature is the PULLED product's
+   !                 smallest vibrational eigenvalue (no partner skip -
+   !                 the outside atoms are gated one by one, monoatomic
+   !                 or not: the reference never reads the partner)
+   !------------------------------------------------------------------
+   subroutine decay_gate_prod(iprod)
+      integer, intent(in) :: iprod
+      integer :: a, ca, cb, ia, k, n
+      real(8) :: lam, cross, mca, mcb
+      n = size(list_atoms%mass)
+      lam = prod_tbl(iprod)%w(1)**2
+      do k = 1, n
+         if (any(prod_slot(prod_off(iprod):prod_off(iprod+1)-1) == k)) cycle
+         cross = 0.0d0
+         mcb = sqrt(list_atoms%mass(k))
+         do a = 1, list_products(iprod)%nat
+            ia = prod_slot(prod_off(iprod)+a-1)
+            mca = sqrt(list_atoms%mass(ia))
+            do ca = 1, 3
+               do cb = 1, 3
+                  cross = max(cross, abs(hess_p(3*ia - 3 + ca, 3*k - 3 + cb))/(mca*mcb))
+               end do
+            end do
+         end do
+         if (cross > cross_rel*lam) then
+            call stop_si('decay_gate_prod', 'the product-surroundings coupling has'// &
+                         ' not decayed at the probe separation - this PES carries'// &
+                         ' no decaying isolated-product tail (the product channel'// &
+                         ' has no MANUAL producer in V1)')
+         end if
+      end do
+   end subroutine decay_gate_prod
 
    ! probe_wrap(q, f) - the bound container through the interface probe
    subroutine probe_wrap(q, f)
@@ -674,7 +943,7 @@ contains
    subroutine stop_si(who, msg)
       character(len=*), intent(in) :: who, msg
       write (0, '(a)') trim(who)//': spectrum error: '//trim(msg)
-      write (0, '(a)') trim(who)//': fatal (the spectrum table is unusable)'
-      stop 1
+      call diag_fatal(diag_cat_output, 'spectrum_interface.f90', trim(who), &
+         'the spectrum table is unusable')
    end subroutine stop_si
 end module spectrum_interface

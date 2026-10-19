@@ -301,3 +301,130 @@ def test_symmetric_window():
         assert np.all(nlo <= lo) and np.all(nhi >= hi)
         half = np.maximum(c - lo, hi - c)
         assert np.allclose(nhi - nlo, 2 * half)
+
+
+# ---------- 周期晶格网格(2026-10-14: 覆盖表面片段足迹, 取代原点单胞框) ----------
+
+def test_lattice_segments_covers_footprint():
+    from gui.view3d.preview_view import lattice_segments
+    cell = [[6.0, 0, 0], [0, 6.0, 0], [0, 0, 20.0]]
+    pos = np.array([[0.5, 0.5, 0.1], [13.2, 7.4, 2.0]])
+    segs, zlo, zhi = lattice_segments(cell, pos)
+    assert segs.ndim == 3 and segs.shape[1] == 2 and segs.shape[2] == 3
+    assert (zlo, zhi) == (pytest.approx(0.1), pytest.approx(2.0))
+    pts = segs.reshape(-1, 3)
+    assert pts[:, 0].min() == pytest.approx(0.0)   # floor(0.5/6)=0
+    assert pts[:, 0].max() == pytest.approx(18.0)  # ceil(13.2/6)=3 胞
+    assert pts[:, 1].max() == pytest.approx(12.0)  # ceil(7.4/6)=2 胞
+
+
+def test_lattice_segments_cap_and_degenerate():
+    from gui.view3d.preview_view import lattice_segments
+    cell = [[1.0, 0, 0], [0, 1.0, 0], [0, 0, 1.0]]
+    pos = np.array([[0.5, 0.5, 0.0], [500.5, 500.5, 0.0]])
+    segs, _, _ = lattice_segments(cell, pos, cap=4)
+    pts = segs.reshape(-1, 3)
+    assert pts[:, 0].max() - pts[:, 0].min() == pytest.approx(4.0), "每方向跨度封顶 cap"
+    # 奇异横向晶矢: 空段
+    segs0, z0, z1 = lattice_segments([[1, 0, 0], [2, 0, 0], [0, 0, 1]], np.zeros((1, 3)))
+    assert len(segs0) == 0
+
+
+def test_lattice_segments_skewed_corners():
+    """斜胞: 格点是 a1/a2 平行四边形组合(corner(1,1)=a1+a2)。"""
+    from gui.view3d.preview_view import lattice_segments
+    a1, a2 = np.array([2.0, 0.0]), np.array([1.0, np.sqrt(3.0)])
+    cell = [[a1[0], a1[1], 0], [a2[0], a2[1], 0], [0, 0, 5.0]]
+    pos = np.array([[1.0, 0.6, 0.5]])
+    segs, _, _ = lattice_segments(cell, pos)
+    pts = segs.reshape(-1, 3)[:, :2]
+    assert np.any(np.all(np.isclose(pts, a1 + a2), axis=1)), "corner(1,1)=a1+a2 应在场"
+
+
+# ---------- 入射角辅助线(2026-10-14: θ/χ 弧 + 法线/方位基准, 表面抬层防遮挡) ----------
+
+
+def _pair_scene(thta="0.35"):
+    from conftest import ROOT
+    from gui.core import preview, sysdir
+    from gui.core.inputwrite import parse_input_file
+    sd = sysdir.scan_system_dir(ROOT / "cases" / "case_harmonic_scatter" / "system")
+    vals = dict(parse_input_file(ROOT / "cases" / "case_harmonic_scatter" / "input_qct.txt"))
+    vals.update(THTA_MAX=thta, N_THTA="0")
+    return preview.assemble_preview(sd, vals, i_proj=0, i_targ=1)
+
+
+def test_slerp_arc_endpoints_and_midpoint():
+    from gui.view3d.preview_view import _slerp_arc
+    arc = _slerp_arc((0, 0, 0), (0, 0, 1), (1, 0, 0), 2.0, n=25)
+    assert len(arc) == 25
+    assert np.allclose(arc[0], [0, 0, 2])
+    assert np.allclose(arc[-1], [2, 0, 0])
+    mid = 2 * np.array([np.cos(np.pi / 4), 0.0, np.sin(np.pi / 4)])
+    assert np.allclose(arc[12], mid, atol=1e-9), "n=25 时索引 12 恰为半程"
+
+
+def test_guide_elements_pair_anchor_zero():
+    from gui.view3d.preview_view import guide_elements
+    gd = guide_elements(_pair_scene())
+    assert gd is not None
+    assert gd["anchor"][2] == pytest.approx(0.0), "气相(pair)锚在 z=0 层"
+    assert gd["theta"] == pytest.approx(0.35)
+    assert len(gd["theta_arc"]) >= 2 and len(gd["normal_seg"]) == 2
+
+
+def test_guide_elements_surface_lift():
+    """表面范式: 有衬底原子→锚抬至衬底顶面+0.4; 单片段表面(无衬底)→ z=0。"""
+    import tempfile
+    from pathlib import Path as P
+    from gui.core import preview, sysdir
+    from gui.view3d.preview_view import guide_elements
+    with tempfile.TemporaryDirectory() as td:
+        sysd = P(td) / "system"
+        sysd.mkdir()
+        (sysd / "slab.poscar").write_text('slab\n1.0\n6 0 0\n0 6 0\n0 0 8\nH\n1\nCartesian\n3 3 1.5\n', encoding="utf-8")
+        (sysd / "proj.xyz").write_text('1\n\nH 0 0 0\n', encoding="utf-8")
+        sd = sysdir.scan_system_dir(sysd)
+        vals = {"SCATTERING": "SURFACE", "CELL": "6 0 0, 0 6 0, 0 0 8",
+                "E_REL": "10", "R_SEP": "6", "THTA_MAX": "0.5", "N_THTA": "0",
+                "DIST_SCHEME": "BOLTZMANN,BOLTZMANN"}
+        sc = preview.assemble_preview(sd, vals, i_proj=0)   # 名序: proj.xyz 为片段 0
+        gd = guide_elements(sc)
+        assert gd is not None
+        assert gd["anchor"][2] == pytest.approx(1.5 + 0.4), "衬底顶面 1.5 + 间隙 0.4"
+        # 单片段表面(无衬底原子): 锚回 z=0
+        solo = P(td) / "solo"
+        solo.mkdir()
+        xyz = chr(10).join(["1", "", "H 0 0 0", ""])
+        (solo / "proj.xyz").write_text(xyz, encoding="utf-8")
+        sd2 = sysdir.scan_system_dir(solo)
+        sc2 = preview.assemble_preview(sd2, dict(vals, DIST_SCHEME="BOLTZMANN"), i_proj=0)
+        gd2 = guide_elements(sc2)
+        assert gd2 is not None and gd2["anchor"][2] == pytest.approx(0.0)
+
+
+def test_scale_label_carries_angles():
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication([])
+    gl = _Gl3D()
+    gl.set_scene(_pair_scene())
+    txt = gl._scale_label.text()
+    assert "θ=" in txt and "χ=" in txt and "°" in txt, txt
+    assert "20.1" in txt, "θ=0.35 rad ≈ 20.1°"
+
+
+def test_gl_line_items_have_valid_color_tuples():
+    """真 GL 看守(2026-10-14 实机报障): GLLinePlotItem 的元组色必须 4 元
+    (r,g,b,a)——_rgb01 已含 alpha, 再追加会让 glVertexAttrib4f 抛 TypeError
+    (paint 期逐项被吞→元素不可见; offscreen 不渲染 paint 故以此看守)。"""
+    from PyQt6.QtWidgets import QApplication
+    from pyqtgraph.opengl import GLLinePlotItem
+    app = QApplication.instance() or QApplication([])
+    gl = _Gl3D()
+    gl.set_scene(_pair_scene())
+    n = 0
+    for it in gl._items:
+        if isinstance(it, GLLinePlotItem) and isinstance(it.color, tuple):
+            assert len(it.color) == 4, f"线元色组 {len(it.color)} 元: {it.color}"
+            n += 1
+    assert n >= 3, "场景应含多条元组色线元(键/晶格/辅助线)"

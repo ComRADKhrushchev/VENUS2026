@@ -16,7 +16,7 @@ def _surf_sd():
 def _pair_values():
     return {
         "SYSTEM_DIR": "system", "E_REL": "200.0", "R_SEP": "8.0", "DT": "0.05",
-        "DIST_SCHEME": "THERMALIZE[T_EQ=300.0, N_EQ=25, DT_EQ=0.05], ROTATION[J_ROT=3]",
+        "DIST_SCHEME": "WIGNER[E_SCALE=1.0], ROTATION[J_ROT=3]",
         "PROJECTILE": "frag_a", "TARGET": "frag_b",
         "B_MAX": "2.0", "N_B": "1",
     }
@@ -38,7 +38,8 @@ def test_surface_rules():
     sd = _surf_sd()
     base = {
         "SYSTEM_DIR": "system", "E_REL": "200.0", "R_SEP": "8.0", "DT": "0.05",
-        "DIST_SCHEME": "EBK[N_VIB=1, N_ROT=2]", "PROJECTILE": "H2",
+        "DIST_SCHEME": "NONE, EBK[N_VIB=1, N_ROT=2]", "PROJECTILE": "H2",
+        "TARGET": "GAg",
         "SCATTERING": "SURFACE", "CELL": "2.9437 0 0, 1.47185 2.5493 0, 0 0 20",
         "N_B": "0", "N_AIM": "1",
     }
@@ -71,10 +72,10 @@ def test_role_rules():
 
 
 def test_dist_scheme_length():
-    v = dict(_pair_values(), DIST_SCHEME="THERMALIZE")
+    v = dict(_pair_values(), DIST_SCHEME="WIGNER")
     assert any(i.key == "DIST_SCHEME" and "片段数" in i.msg
                for i in validate.validate(v, _pair_sd()))
-    v = dict(_pair_values(), DIST_SCHEME="THERMALIZE,INCIDENT")
+    v = dict(_pair_values(), DIST_SCHEME="WIGNER,INCIDENT")
     assert any(i.key == "DIST_SCHEME" for i in validate.validate(v, _pair_sd()))
 
 
@@ -128,3 +129,31 @@ def test_integrator_order_domain():
     assert not any(i.key == "ORDER" for i in validate.validate(v4, _pair_sd()))
     v5 = dict(_pair_values(), INTEGRATOR="RADAU", ORDER="16")
     assert any(i.key == "ORDER" for i in validate.validate(v5, _pair_sd()))
+
+
+def test_none_word_no_params():
+    # NONE 带参数须预检报错(第 8 节); 裸 NONE 在单片段体系合法
+    v = dict(_pair_values(), DIST_SCHEME="NONE[FOO=1]")
+    assert any(i.key == "DIST_SCHEME" and "NONE 不带参数" in i.msg
+               for i in validate.validate(v, _pair_sd()))
+    v = dict(_pair_values(), DIST_SCHEME="NONE")
+    assert not any(i.key == "DIST_SCHEME" and "NONE" in i.msg
+                   for i in validate.validate(v, _pair_sd()))
+
+
+def test_product_nma_surface_accepted():
+    """PRODUCT_NMA=T: GAS 过 / SURFACE 也过(2026-10-15 单位面裁决——程序侧旧表面
+    整体中止退役, 换选择性规则: 片段单位仅收 PROJECTILE 片段, 衬底载体排除;
+    预检拒段同步退役, 不再报错)。"""
+    # 气相 + T: 合法通过(无 PRODUCT_NMA 相关错误)
+    v = dict(_pair_values(), PRODUCT_NMA="T")
+    assert not any(i.key == "PRODUCT_NMA" for i in validate.validate(v, _pair_sd()))
+    # 表面 + T: 现在接受(旧预检拒已随程序侧守卫退役)
+    sv = {
+        "SYSTEM_DIR": "system", "E_REL": "200.0", "R_SEP": "8.0", "DT": "0.05",
+        "DIST_SCHEME": "NONE, EBK[N_VIB=1, N_ROT=2]", "PROJECTILE": "H2",
+        "TARGET": "GAg",
+        "SCATTERING": "SURFACE", "CELL": "2.9437 0 0, 1.47185 2.5493 0, 0 0 20",
+        "N_B": "0", "N_AIM": "1", "PRODUCT_NMA": "T",
+    }
+    assert not any(i.key == "PRODUCT_NMA" for i in validate.validate(sv, _surf_sd()))
